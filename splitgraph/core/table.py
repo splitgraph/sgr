@@ -3,6 +3,7 @@ import itertools
 import logging
 import threading
 from contextlib import contextmanager
+from hashlib import sha256
 from math import ceil
 from typing import (
     TYPE_CHECKING,
@@ -12,6 +13,7 @@ from typing import (
     Generator,
     Iterator,
     List,
+    Mapping,
     Optional,
     Sequence,
     Tuple,
@@ -31,7 +33,11 @@ from splitgraph.core.output import pluralise, truncate_list
 from splitgraph.core.sql import select
 from splitgraph.core.types import Quals, TableSchema
 from splitgraph.engine import ResultShape
-from splitgraph.engine.postgres.engine import get_change_key
+from splitgraph.engine.postgres.engine import (
+    PG_INDEXABLE_TYPES,
+    add_ud_flag_column,
+    get_change_key,
+)
 from splitgraph.exceptions import ObjectIndexingError
 from tqdm import tqdm
 
@@ -124,19 +130,21 @@ class QueryPlan:
             self.required_objects, table, quals
         )
         # Estimate the number of rows in the filtered objects
-        object_meta = self.object_manager.get_object_meta(self.filtered_objects)
-        self.estimated_rows = sum([o.rows_inserted - o.rows_deleted for o in object_meta.values()])
+        self.object_meta = self.object_manager.get_object_meta(self.filtered_objects)
+        self.estimated_rows = sum(
+            [o.rows_inserted - o.rows_deleted for o in self.object_meta.values()]
+        )
 
         # Estimate the row size in bytes by looking at the total object size
         # This can sometimes be important if we're querying wide tables with JSON data where
         # a single cell can be a few KB -- in some cases, this can make PG think it's going to get
         # less data than there actually be and pick suboptimal plans.
-        total_rows_inserted = sum(o.rows_inserted for o in object_meta.values())
+        total_rows_inserted = sum(o.rows_inserted for o in self.object_meta.values())
 
         self.size_per_row = (
             (
-                sum(o.size for o in object_meta.values())
-                / sum(o.rows_inserted for o in object_meta.values())
+                sum(o.size for o in self.object_meta.values())
+                / sum(o.rows_inserted for o in self.object_meta.values())
                 * _CSTORE_COMPRESSION
             )
             if total_rows_inserted
@@ -158,7 +166,11 @@ class QueryPlan:
         # manager and release the objects that we don't need so that they can be garbage
         # collected. The tradeoff is that we perform more calls to apply_fragments (hence
         # more roundtrips).
-        self.non_singletons, self.singletons = self._extract_singleton_fragments()
+        (
+            self.non_singletons,
+            self.singletons,
+            self.object_groups,
+        ) = self._extract_singleton_fragments()
 
         logging.info(
             "Fragment grouping: %d singletons, %d non-singletons",
@@ -179,7 +191,7 @@ class QueryPlan:
             self.singleton_queries = []
         self.tracer.log("generate_singleton_queries")
 
-    def _extract_singleton_fragments(self) -> Tuple[List[str], List[str]]:
+    def _extract_singleton_fragments(self) -> Tuple[List[str], List[str], List[List[str]]]:
         # Get fragment boundaries (min-max PKs of every fragment).
         table_pk = get_change_key(self.table.table_schema)
         object_pks = self.object_manager.get_min_max_pks(self.filtered_objects, table_pk)
@@ -202,7 +214,11 @@ class QueryPlan:
                 singletons.append(group[0][0])
             else:
                 non_singletons.extend(object_id for object_id, _, _ in group)
-        return non_singletons, singletons
+        return (
+            non_singletons,
+            singletons,
+            [[object_id for object_id, _, _ in group] for group in object_groups],
+        )
 
 
 QueryPlanCacheKey = Tuple[Optional[Tuple[Tuple[Tuple[str, str, Any]]]], Tuple[str]]
@@ -286,6 +302,60 @@ class Table:
         plan = QueryPlan(self, quals, columns)
         self._query_plans[key] = plan
         return plan
+
+    def materialize_as_view(
+        self,
+        destination: str,
+        lq_server: str,
+        destination_schema: Optional[str] = None,
+    ) -> None:
+        # Circular import
+        from splitgraph.hooks.data_source.fdw import create_foreign_table
+
+        # Create a view that queries the Splitgraph image on the fly by reassembling objects.
+        # It points to a union of "shim" foreign tables that determine whether or not they need
+        # to be scanned through and, if so, downloading the backing object and running the scan.
+        destination_schema = destination_schema or self.repository.to_schema()
+        engine = self.repository.object_engine
+
+        # Get all objects that this table might need.
+        plan = self.get_query_plan(quals=None, columns=[c.name for c in self.table_schema])
+        object_groups = plan.object_groups
+
+        filtered_objects = plan.filtered_objects
+
+        object_mounts: Dict[str, str] = {}
+
+        # Create shim FDW object tables for each object
+        for object_id in filtered_objects:
+            # Even if some tables share some objects, they might be used in different contexts
+            # by different tables (given the same query, one object might be needed in one table
+            # but not the other if it's part of an overlapping group). Make a separate foreign table
+            # for each object and give it a hash.
+            table_name = (
+                "sg_shim_"
+                + sha256(("%s/%s" % (self.table_name, object_id)).encode("utf-8")).hexdigest()[:55]
+            )
+            object_mounts[object_id] = table_name
+            query, args = create_foreign_table(
+                destination_schema,
+                lq_server,
+                table_name,
+                add_ud_flag_column(self.table_schema),
+                extra_options={"table": self.table_name, "object_id": object_id},
+            )
+
+            engine.run_sql(query, args)
+
+        view = generate_lq_view(
+            self.table_schema,
+            destination_schema,
+            destination,
+            destination_schema,
+            object_groups,
+            object_mounts,
+        )
+        engine.run_sql(view)
 
     def materialize(
         self,
@@ -617,3 +687,78 @@ class Table:
             unlogged=True,
         )
         return staging_table
+
+
+def _schema_spec_to_cols(schema_spec: TableSchema) -> Tuple[List[str], List[str]]:
+    pk_cols = [p.name for p in schema_spec if p.is_pk]
+    non_pk_cols = [p.name for p in schema_spec if not p.is_pk]
+
+    if not pk_cols:
+        pk_cols = [p.name for p in schema_spec if p.pg_type in PG_INDEXABLE_TYPES]
+        non_pk_cols = [p.name for p in schema_spec if p.pg_type not in PG_INDEXABLE_TYPES]
+    return pk_cols, non_pk_cols
+
+
+def generate_lq_view(
+    table_schema: TableSchema,
+    destination_schema: str,
+    destination: str,
+    object_schema: str,
+    object_groups: List[List[str]],
+    object_name_map: Optional[Mapping[str, str]] = None,
+) -> Composable:
+    object_name_map = object_name_map or {}
+
+    pk_cols, non_pk_cols = _schema_spec_to_cols(table_schema)
+    pk_cols_s = SQL(",").join(map(Identifier, pk_cols))
+    all_cols = SQL(",").join(Identifier(c.name) for c in table_schema)
+
+    # Create a view that resolves the query
+    view = SQL("CREATE VIEW {}.{} AS (").format(
+        Identifier(destination_schema), Identifier(destination)
+    )
+
+    # Flatten an overlapping group of objects into a single table, resolving versions
+    def _flatten(group: List[str]) -> Composable:
+        assert object_name_map
+        result = (
+            # Stage 1: merge all objects in this group and tag each row with an incrementing
+            # version number (latter objects overwrite earlier)
+            SQL("WITH _sg_all_versions AS (")
+            + SQL(" UNION ALL ").join(
+                SQL("SELECT %s AS _sg_row_version, * FROM {}.{}" % i).format(
+                    Identifier(object_schema), Identifier(object_name_map.get(o, o))
+                )
+                for i, o in enumerate(group)
+            )
+            # Stage 2: group by the primary key and order by the row version
+            # for conflicting rows
+            + SQL("), _sg_flattened AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY ")
+            + pk_cols_s
+            + SQL(" ORDER BY _sg_row_version DESC) AS _sg_row_order FROM _sg_all_versions) SELECT")
+            # Stage 3: select the latest versions of every row, making sure it hasn't been
+            # deleted.
+            + all_cols
+            + SQL("FROM _sg_flattened WHERE _sg_row_order = 1 AND sg_ud_flag = TRUE")
+        )
+        return result
+
+    # TODO doesn't handle empty tables
+    view += SQL(" UNION ALL ").join(
+        SQL("SELECT ")
+        + all_cols
+        + SQL(" FROM ")
+        + (
+            (
+                (SQL("(") + _flatten(g) + SQL(")"))
+                if len(g) > 1
+                else SQL("{}.{}").format(
+                    Identifier(object_schema), Identifier(object_name_map.get(g[0], g[0]))
+                )
+            )
+        )
+        for g in object_groups
+        if g
+    )
+    view += SQL(")")
+    return view

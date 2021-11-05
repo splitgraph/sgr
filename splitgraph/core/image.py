@@ -213,6 +213,51 @@ class Image(NamedTuple):
             )
             self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
 
+    def lq_checkout_experimental(
+        self,
+        target_schema: Optional[str] = None,
+        only_tables: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Faster version of LQ that supports on-the-fly materialization, downloads and
+        parallel scans.
+        """
+
+        # Circular import
+        from splitgraph.hooks.data_source.fdw import init_fdw
+
+        target_schema = target_schema or self.repository.to_schema()
+        server_id = "%s_lq_checkout_server" % target_schema
+        engine = self.repository.engine
+        object_engine = self.repository.object_engine
+
+        init_fdw(
+            object_engine,
+            server_id=server_id,
+            wrapper="multicorn",
+            server_options={
+                "wrapper": "splitgraph.core.fdw_object_wrapper.ObjectWrapperForeignDataWrapper",
+                "engine": engine.name,
+                "object_engine": object_engine.name,
+                "namespace": self.repository.namespace,
+                "repository": self.repository.repository,
+                "image_hash": self.image_hash,
+            },
+        )
+
+        for table_name in self.get_tables():
+            if only_tables and table_name not in only_tables:
+                continue
+
+            logging.debug(
+                "Mounting %s:%s/%s into %s",
+                self.repository.to_schema(),
+                self.image_hash,
+                table_name,
+                target_schema,
+            )
+            self.get_table(table_name).materialize_as_view(table_name, server_id, target_schema)
+
     @contextmanager
     def query_schema(
         self, wrapper: Optional[str] = FDW_CLASS, commit: bool = True
