@@ -5,7 +5,7 @@ import os
 from contextlib import contextmanager
 from copy import copy
 from itertools import islice
-from typing import Optional
+from typing import List, Optional
 
 import requests
 import splitgraph.config
@@ -28,7 +28,10 @@ except ImportError:
 try:
     from multicorn.utils import log_to_postgres
 except ImportError:
-    log_to_postgres = print
+
+    def log_to_postgres(*args, **kwargs):
+        print(*args)
+
 
 _PG_LOGLEVEL = logging.INFO
 
@@ -45,7 +48,11 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
         sample = [[""] * len(sample[0])] + sample
 
     # Ignore empty lines (newlines at the end of file etc)
-    sample = [line for line in sample if len(line) > 0]
+    sample = [row for row in sample if len(row) > 0]
+
+    sample = [
+        pad_csv_row(row, num_cols=len(sample[0]), row_number=i) for i, row in enumerate(sample)
+    ]
 
     sg_schema = infer_sg_schema(sample, None, None)
 
@@ -66,6 +73,25 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
         columns=[ColumnDefinition(column_name=c.name, type_name=c.pg_type) for c in sg_schema],
         options=new_table_options,
     )
+
+
+def pad_csv_row(row: List[str], num_cols: int, row_number: int) -> List[str]:
+    """Preprocess a CSV file row to make the parser more robust."""
+
+    # Truncate/pad the row to the expected number of columns to match the header. We'd
+    # rather return a CSV file full of varchars and NaNs than error out directly.
+    row_len = len(row)
+    if row_len > num_cols:
+        log_to_postgres(
+            "Row %d has %d column(s), truncating" % (row_number, row_len), level=logging.WARNING
+        )
+        row = row[:num_cols]
+    elif row_len < num_cols:
+        log_to_postgres(
+            "Row %d has %d column(s), padding" % (row_number, row_len), level=logging.WARNING
+        )
+        row.extend([""] * (num_cols - row_len))
+    return row
 
 
 @contextmanager
@@ -111,6 +137,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
 
         # The foreign datawrapper columns (name -> ColumnDefinition).
         self.fdw_columns = fdw_columns
+        self._num_cols = len(fdw_columns)
 
         self.csv_options = CSVOptions.from_fdw_options(fdw_options)
 
@@ -145,7 +172,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
 
     def _read_csv(self, csv_reader, csv_options):
         header_skipped = False
-        for row in csv_reader:
+        for row_number, row in enumerate(csv_reader):
             if not header_skipped and csv_options.header:
                 header_skipped = True
                 continue
@@ -154,11 +181,14 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             if not row:
                 continue
 
+            row = pad_csv_row(row, row_number=row_number, num_cols=self._num_cols)
+
             # CSVs don't really distinguish NULLs and empty strings well. We know
             # that empty strings should be NULLs when coerced into non-strings but we
             # can't easily access type information here. Do a minor hack and treat
             # all empty strings as NULLs.
             row = [r if r != "" else None for r in row]
+
             yield row
 
     def execute(self, quals, columns, sortkeys=None):

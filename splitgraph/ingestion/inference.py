@@ -52,7 +52,7 @@ def _infer_column_schema(column_sample: Sequence[str]) -> str:
         try:
             seen_value = False
             for c in column_sample:
-                if c == "":
+                if c == "" or c is None:
                     continue
 
                 seen_value = True
@@ -61,7 +61,7 @@ def _infer_column_schema(column_sample: Sequence[str]) -> str:
             # columns that are just empty strings (they'll be a string).
             if seen_value:
                 return candidate
-        except ValueError:
+        except (ValueError, TypeError):
             continue
 
     # No suitable conversion, fall back to varchar
