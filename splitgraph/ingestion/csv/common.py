@@ -135,7 +135,7 @@ def make_csv_reader(
         errors="ignore" if csv_options.ignore_decode_errors else "strict",
     )
 
-    reader = csv.reader(io_stream, **csv_options.to_csv_kwargs())
+    reader = csv.reader(io_stream, **csv_options.to_csv_kwargs(), skipinitialspace=True)
     return csv_options, reader
 
 

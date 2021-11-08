@@ -27,6 +27,14 @@ def parse_bigint(integer: str):
     return result
 
 
+def parse_json(json_s: str):
+    # Avoid false positives for strings like "  123" that json.loads can
+    # parse as JSON but PostgreSQL can't (fall back to strings).
+    if "{" not in json_s:
+        raise ValueError("Not a JSON object")
+    json.loads(json_s)
+
+
 _CONVERTERS: List[Tuple[str, Callable]] = [
     ("timestamp", parse_dt),
     ("date", parse_date),
@@ -35,7 +43,7 @@ _CONVERTERS: List[Tuple[str, Callable]] = [
     ("bigint", parse_bigint),
     ("numeric", float),
     ("boolean", parse_boolean),
-    ("json", json.loads),
+    ("json", parse_json),
 ]
 
 
