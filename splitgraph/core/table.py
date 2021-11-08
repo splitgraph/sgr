@@ -118,7 +118,10 @@ class QueryPlan:
 
         self.object_manager = table.repository.objects
 
-        self.required_objects = table.objects
+        # Make sure objects don't repeat (the second copy of the same object does nothing).
+        # Some process makes certain datasets have duplicate objects, disabling the singleton
+        # "fast path" and requiring materialization.
+        self.required_objects = list(dict.fromkeys(table.objects))
         self.tracer.log("resolve_objects")
         self.filtered_objects = self.object_manager.filter_fragments(
             self.required_objects, table, quals
