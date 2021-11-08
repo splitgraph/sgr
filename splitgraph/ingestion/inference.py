@@ -3,6 +3,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from splitgraph.core.output import parse_date, parse_dt, parse_time
 from splitgraph.core.types import TableColumn, TableSchema
+from splitgraph.ingestion.csv.common import pad_csv_row
 
 
 def parse_boolean(boolean: str):
@@ -27,6 +28,14 @@ def parse_bigint(integer: str):
     return result
 
 
+def parse_json(json_s: str):
+    # Avoid false positives for strings like "  123" that json.loads can
+    # parse as JSON but PostgreSQL can't (fall back to strings).
+    if "{" not in json_s:
+        raise ValueError("Not a JSON object")
+    json.loads(json_s)
+
+
 _CONVERTERS: List[Tuple[str, Callable]] = [
     ("timestamp", parse_dt),
     ("date", parse_date),
@@ -35,7 +44,7 @@ _CONVERTERS: List[Tuple[str, Callable]] = [
     ("bigint", parse_bigint),
     ("numeric", float),
     ("boolean", parse_boolean),
-    ("json", json.loads),
+    ("json", parse_json),
 ]
 
 
@@ -44,7 +53,7 @@ def _infer_column_schema(column_sample: Sequence[str]) -> str:
         try:
             seen_value = False
             for c in column_sample:
-                if c == "":
+                if c == "" or c is None:
                     continue
 
                 seen_value = True
@@ -53,7 +62,7 @@ def _infer_column_schema(column_sample: Sequence[str]) -> str:
             # columns that are just empty strings (they'll be a string).
             if seen_value:
                 return candidate
-        except ValueError:
+        except (ValueError, TypeError):
             continue
 
     # No suitable conversion, fall back to varchar
@@ -61,7 +70,7 @@ def _infer_column_schema(column_sample: Sequence[str]) -> str:
 
 
 def infer_sg_schema(
-    sample: Sequence[Sequence[str]],
+    sample: Sequence[List[str]],
     override_types: Optional[Dict[str, str]] = None,
     primary_keys: Optional[List[str]] = None,
 ):
@@ -70,7 +79,12 @@ def infer_sg_schema(
     result: TableSchema = []
 
     header = sample[0]
-    columns = list(zip(*sample[1:]))
+
+    sample = [
+        pad_csv_row(row, num_cols=len(sample[0]), row_number=i) for i, row in enumerate(sample[1:])
+    ]
+
+    columns = list(zip(*sample))
     if len(columns) != len(header):
         raise ValueError(
             "Malformed CSV: header has %d columns, rows have %d columns"

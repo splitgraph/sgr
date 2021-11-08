@@ -12,7 +12,12 @@ import splitgraph.config
 from splitgraph.config import get_singleton
 from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.common import generate_column_names
-from splitgraph.ingestion.csv.common import CSVOptions, get_s3_params, make_csv_reader
+from splitgraph.ingestion.csv.common import (
+    CSVOptions,
+    get_s3_params,
+    make_csv_reader,
+    pad_csv_row,
+)
 from splitgraph.ingestion.inference import infer_sg_schema
 from urllib3 import HTTPResponse
 
@@ -28,7 +33,10 @@ except ImportError:
 try:
     from multicorn.utils import log_to_postgres
 except ImportError:
-    log_to_postgres = print
+
+    def log_to_postgres(*args, **kwargs):
+        print(*args)
+
 
 _PG_LOGLEVEL = logging.INFO
 
@@ -43,6 +51,9 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
 
     if not csv_options.header:
         sample = [[""] * len(sample[0])] + sample
+
+    # Ignore empty lines (newlines at the end of file etc)
+    sample = [row for row in sample if len(row) > 0]
 
     sg_schema = infer_sg_schema(sample, None, None)
 
@@ -108,6 +119,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
 
         # The foreign datawrapper columns (name -> ColumnDefinition).
         self.fdw_columns = fdw_columns
+        self._num_cols = len(fdw_columns)
 
         self.csv_options = CSVOptions.from_fdw_options(fdw_options)
 
@@ -142,15 +154,23 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
 
     def _read_csv(self, csv_reader, csv_options):
         header_skipped = False
-        for row in csv_reader:
+        for row_number, row in enumerate(csv_reader):
             if not header_skipped and csv_options.header:
                 header_skipped = True
                 continue
+
+            # Ignore empty rows too
+            if not row:
+                continue
+
+            row = pad_csv_row(row, row_number=row_number, num_cols=self._num_cols)
+
             # CSVs don't really distinguish NULLs and empty strings well. We know
             # that empty strings should be NULLs when coerced into non-strings but we
             # can't easily access type information here. Do a minor hack and treat
             # all empty strings as NULLs.
             row = [r if r != "" else None for r in row]
+
             yield row
 
     def execute(self, quals, columns, sortkeys=None):

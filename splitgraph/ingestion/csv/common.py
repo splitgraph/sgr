@@ -1,6 +1,7 @@
 import csv
 import io
-from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Tuple
+import logging
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Tuple
 
 from minio import Minio
 
@@ -9,6 +10,13 @@ if TYPE_CHECKING:
 
 import chardet
 from splitgraph.core.output import ResettableStream
+
+try:
+    from multicorn.utils import log_to_postgres
+except ImportError:
+
+    def log_to_postgres(*args, **kwargs):
+        print(*args)
 
 
 class CSVOptions(NamedTuple):
@@ -135,7 +143,7 @@ def make_csv_reader(
         errors="ignore" if csv_options.ignore_decode_errors else "strict",
     )
 
-    reader = csv.reader(io_stream, **csv_options.to_csv_kwargs())
+    reader = csv.reader(io_stream, **csv_options.to_csv_kwargs(), skipinitialspace=True)
     return csv_options, reader
 
 
@@ -155,3 +163,22 @@ def get_s3_params(fdw_options: Dict[str, Any]) -> Tuple[Minio, str, str]:
     s3_object_prefix = fdw_options.get("s3_object_prefix", "")
 
     return s3_client, s3_bucket, s3_object_prefix
+
+
+def pad_csv_row(row: List[str], num_cols: int, row_number: int) -> List[str]:
+    """Preprocess a CSV file row to make the parser more robust."""
+
+    # Truncate/pad the row to the expected number of columns to match the header. We'd
+    # rather return a CSV file full of varchars and NaNs than error out directly.
+    row_len = len(row)
+    if row_len > num_cols:
+        log_to_postgres(
+            "Row %d has %d column(s), truncating" % (row_number, row_len), level=logging.WARNING
+        )
+        row = row[:num_cols]
+    elif row_len < num_cols:
+        log_to_postgres(
+            "Row %d has %d column(s), padding" % (row_number, row_len), level=logging.WARNING
+        )
+        row.extend([""] * (num_cols - row_len))
+    return row
