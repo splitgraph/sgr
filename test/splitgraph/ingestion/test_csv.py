@@ -647,3 +647,63 @@ def test_csv_ignore_decoding_errors():
     assert len(data) == 2
     assert data[0] == ["name", "number"]
     assert data[1] == ["TA��ÇÃOº", "17"]
+
+
+def test_csv_grades():
+    # Test a grades.csv file from https://people.sc.fsu.edu/~jburkardt/data/csv/csv.html with
+    # multiple features:
+    #  * Line 10 is missing a comma, which means the next field merges: test we pad it and
+    #    still try to do best-effort inference
+    #  * Fields/separators have commas
+
+    with open(os.path.join(INGESTION_RESOURCES_CSV, "grades.csv"), "rb") as f:
+        options = CSVOptions()
+        options, reader = make_csv_reader(f, options)
+
+        assert options.encoding == "utf-8"
+        assert options.header is True
+        assert options.delimiter == ","
+        assert options.quotechar == '"'
+
+        data = list(reader)
+        assert len(data) == 17
+        # Error on line 10 leads to two fields merging
+        assert len(data[9]) == 8
+        assert len(data[0]) == 9
+        assert data[0] == [
+            "Last name",
+            "First name",
+            "SSN",
+            "Test1",
+            "Test2",
+            "Test3",
+            "Test4",
+            "Final",
+            "Grade",
+        ]
+
+        schema = generate_column_names(infer_sg_schema(data))
+        assert schema == [
+            TableColumn(
+                ordinal=1, name="Last name", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=2, name="First name", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=3, name="SSN", pg_type="character varying", is_pk=False, comment=None
+            ),
+            # This field has to be a varchar because of line 10 (becomes "49.0      1.0")
+            TableColumn(
+                ordinal=4, name="Test1", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(ordinal=5, name="Test2", pg_type="numeric", is_pk=False, comment=None),
+            TableColumn(ordinal=6, name="Test3", pg_type="numeric", is_pk=False, comment=None),
+            TableColumn(ordinal=7, name="Test4", pg_type="numeric", is_pk=False, comment=None),
+            TableColumn(
+                ordinal=8, name="Final", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=9, name="Grade", pg_type="character varying", is_pk=False, comment=None
+            ),
+        ]

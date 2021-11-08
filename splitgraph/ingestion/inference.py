@@ -3,6 +3,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from splitgraph.core.output import parse_date, parse_dt, parse_time
 from splitgraph.core.types import TableColumn, TableSchema
+from splitgraph.ingestion.csv.common import pad_csv_row
 
 
 def parse_boolean(boolean: str):
@@ -69,7 +70,7 @@ def _infer_column_schema(column_sample: Sequence[str]) -> str:
 
 
 def infer_sg_schema(
-    sample: Sequence[Sequence[str]],
+    sample: Sequence[List[str]],
     override_types: Optional[Dict[str, str]] = None,
     primary_keys: Optional[List[str]] = None,
 ):
@@ -78,7 +79,12 @@ def infer_sg_schema(
     result: TableSchema = []
 
     header = sample[0]
-    columns = list(zip(*sample[1:]))
+
+    sample = [
+        pad_csv_row(row, num_cols=len(sample[0]), row_number=i) for i, row in enumerate(sample[1:])
+    ]
+
+    columns = list(zip(*sample))
     if len(columns) != len(header):
         raise ValueError(
             "Malformed CSV: header has %d columns, rows have %d columns"
