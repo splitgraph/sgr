@@ -2,7 +2,6 @@ import datetime
 import os
 import re
 from distutils.dir_util import copy_tree
-from test.splitgraph.commands.test_schema_changes import reassign_ordinals
 from test.splitgraph.conftest import INGESTION_RESOURCES
 from test.splitgraph.utils import reassign_ordinals
 from unittest import mock
