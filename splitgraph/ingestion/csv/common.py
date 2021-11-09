@@ -24,7 +24,7 @@ class CSVOptions(NamedTuple):
     autodetect_dialect: bool = True
     autodetect_encoding: bool = True
     autodetect_sample_size: int = 65536
-    schema_inference_rows: int = 10000
+    schema_inference_rows: int = 100000
     delimiter: str = ","
     quotechar: str = '"'
     header: bool = True
@@ -38,7 +38,7 @@ class CSVOptions(NamedTuple):
             autodetect_dialect=get_bool(fdw_options, "autodetect_dialect"),
             autodetect_encoding=get_bool(fdw_options, "autodetect_encoding"),
             autodetect_sample_size=int(fdw_options.get("autodetect_sample_size", 65536)),
-            schema_inference_rows=int(fdw_options.get("schema_inference_rows", 10000)),
+            schema_inference_rows=int(fdw_options.get("schema_inference_rows", 100000)),
             header=get_bool(fdw_options, "header"),
             delimiter=fdw_options.get("delimiter", ","),
             quotechar=fdw_options.get("quotechar", '"'),
