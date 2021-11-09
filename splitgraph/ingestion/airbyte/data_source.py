@@ -66,8 +66,8 @@ class AirbyteDataSource(SyncableDataSource, ABC):
 
     docker_image: Optional[str] = None
     airbyte_name: Optional[str] = None
-    receiver_image = "airbyte/destination-postgres:latest"
-    normalization_image = "airbyte/normalization:0.1.36"
+    receiver_image = "airbyte/destination-postgres:0.3.12"
+    normalization_image = "airbyte/normalization:0.1.59"
     cursor_overrides: Optional[Dict[str, List[str]]] = None
     primary_key_overrides: Optional[Dict[str, List[str]]] = None
     docker_environment: Optional[Dict[str, str]] = None
@@ -169,6 +169,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             "password": engine.conn_params["SG_ENGINE_PWD"],
             "database": engine.conn_params["SG_ENGINE_DB_NAME"],
             "schema": schema,
+            "ssl": False,
         }
 
     def _run_discovery(self, config: Optional[AirbyteConfig] = None) -> AirbyteCatalog:
