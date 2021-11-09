@@ -1158,7 +1158,9 @@ class FragmentManager(MetadataManager):
         to reproduce how PG's ::text works, we give it back the rows and get it to cast them
         to text for us.
         """
-        inner_tuple = "(" + ",".join("%s::" + c.pg_type for c in table.table_schema) + ")"
+        inner_tuple = (
+            "(" + ",".join("%s::" + ct for _, ct in get_change_key(table.table_schema)) + ")"
+        )
         rows = [r for o in object_pks for r in o]
 
         result = []
