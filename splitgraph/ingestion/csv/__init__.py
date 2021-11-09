@@ -126,37 +126,53 @@ class CSVDataSource(ForeignDataWrapperDataSource):
             "autodetect_header": {
                 "type": "boolean",
                 "description": "Detect whether the CSV file has a header automatically",
+                "default": True,
             },
             "autodetect_dialect": {
                 "type": "boolean",
                 "description": "Detect the CSV file's dialect (separator, quoting characters etc) automatically",
+                "default": True,
             },
             "autodetect_encoding": {
                 "type": "boolean",
                 "description": "Detect the CSV file's encoding automatically",
+                "default": True,
             },
             "autodetect_sample_size": {
                 "type": "integer",
                 "description": "Sample size, in bytes, for encoding/dialect/header detection",
+                "default": 65536,
             },
             "schema_inference_rows": {
                 "type": "integer",
                 "description": "Number of rows to use for schema inference",
+                "default": 100000,
             },
-            "encoding": {"type": "string", "description": "Encoding of the CSV file"},
+            "encoding": {
+                "type": "string",
+                "description": "Encoding of the CSV file",
+                "default": "utf-8",
+            },
             "ignore_decode_errors": {
                 "type": "boolean",
                 "description": "Ignore errors when decoding the file",
+                "default": False,
             },
             "header": {
                 "type": "boolean",
                 "description": "First line of the CSV file is its header",
+                "default": True,
             },
             "delimiter": {
                 "type": "string",
                 "description": "Character used to separate fields in the file",
+                "default": ",",
             },
-            "quotechar": {"type": "string", "description": "Character used to quote fields"},
+            "quotechar": {
+                "type": "string",
+                "description": "Character used to quote fields",
+                "default": '"',
+            },
         },
     }
 
