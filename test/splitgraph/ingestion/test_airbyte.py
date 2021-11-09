@@ -2,7 +2,9 @@ import datetime
 import os
 import re
 from distutils.dir_util import copy_tree
+from test.splitgraph.commands.test_schema_changes import reassign_ordinals
 from test.splitgraph.conftest import INGESTION_RESOURCES
+from test.splitgraph.utils import reassign_ordinals
 from unittest import mock
 
 import pytest
@@ -298,7 +300,7 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
     image.checkout()
 
     _assert_raw_data(repo)
-    _assert_normalized_data(repo)
+    _assert_normalized_data(repo, unique_key=mode == "sync")
 
     if mode == "sync":
         _assert_state(repo)
@@ -349,7 +351,7 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         image.checkout()
 
         _assert_raw_data(repo)
-        _assert_normalized_data(repo)
+        _assert_normalized_data(repo, unique_key=False)
         _assert_state_empty(repo)
 
 
@@ -367,7 +369,7 @@ def test_airbyte_mysql_source_pk_override(local_engine_empty):
     # dedup). This is mostly to make sure it doesn't break.
     assert len(repo.images()) == 1
     repo.images["latest"].checkout()
-    _assert_normalized_data(repo)
+    _assert_normalized_data(repo, unique_key=True)
 
 
 @pytest.mark.mounting
@@ -452,40 +454,44 @@ def _assert_scd_data(repo):
         return_shape=ResultShape.MANY_ONE,
     ) == [
         {
+            "_airbyte_ab_id": mock.ANY,
+            "_airbyte_active_row": 1,
+            "_airbyte_emitted_at": mock.ANY,
+            "_airbyte_end_at": None,
+            "_airbyte_mushrooms_hashid": "e48f260f784baa48a5c4643ef36024af",
+            "_airbyte_normalized_at": mock.ANY,
+            "_airbyte_start_at": 1,
+            "_airbyte_unique_key": "c4ca4238a0b923820dcc509a6f75849b",
+            "_airbyte_unique_key_scd": mock.ANY,
+            "binary_data": "YmludHN0AA==",
             "discovery": "2012-11-11T08:06:26Z",
             "friendly": True,
-            "binary_data": "YmludHN0AA==",
-            "name": "portobello",
             "mushroom_id": 1,
+            "name": "portobello",
             "varbinary_data": "fwAAAQ==",
-            "_airbyte_start_at": 1,
-            "_airbyte_end_at": None,
-            "_airbyte_active_row": True,
-            "_airbyte_emitted_at": mock.ANY,
-            "_airbyte_mushrooms_hashid": "e48f260f784baa48a5c4643ef36024af",
         },
         {
+            "_airbyte_ab_id": mock.ANY,
+            "_airbyte_active_row": 1,
+            "_airbyte_emitted_at": mock.ANY,
+            "_airbyte_end_at": None,
+            "_airbyte_mushrooms_hashid": "5257322455a690592e14baeb4d24069c",
+            "_airbyte_normalized_at": mock.ANY,
+            "_airbyte_start_at": 2,
+            "_airbyte_unique_key": "c81e728d9d4c2f636f067f89cc14862c",
+            "_airbyte_unique_key_scd": mock.ANY,
+            "binary_data": "AAAxMjMAAA==",
             "discovery": "2018-03-17T08:06:26Z",
             "friendly": False,
-            "binary_data": "AAAxMjMAAA==",
-            "name": "deathcap",
             "mushroom_id": 2,
+            "name": "deathcap",
             "varbinary_data": "fwAAAQ==",
-            "_airbyte_start_at": 2,
-            "_airbyte_end_at": None,
-            "_airbyte_active_row": True,
-            "_airbyte_emitted_at": mock.ANY,
-            "_airbyte_mushrooms_hashid": "5257322455a690592e14baeb4d24069c",
         },
     ]
 
 
-def _assert_normalized_data(repo):
-    # Check the normalized data
-    assert repo.run_sql(
-        "SELECT row_to_json(m) FROM mushrooms m ORDER BY discovery ASC",
-        return_shape=ResultShape.MANY_ONE,
-    ) == [
+def _assert_normalized_data(repo, unique_key=False):
+    expected = [
         {
             "discovery": "2012-11-11T08:06:26Z",
             "friendly": True,
@@ -493,7 +499,9 @@ def _assert_normalized_data(repo):
             "name": "portobello",
             "mushroom_id": 1,
             "varbinary_data": "fwAAAQ==",
+            "_airbyte_ab_id": mock.ANY,
             "_airbyte_emitted_at": mock.ANY,
+            "_airbyte_normalized_at": mock.ANY,
             "_airbyte_mushrooms_hashid": "e48f260f784baa48a5c4643ef36024af",
         },
         {
@@ -503,38 +511,97 @@ def _assert_normalized_data(repo):
             "name": "deathcap",
             "mushroom_id": 2,
             "varbinary_data": "fwAAAQ==",
+            "_airbyte_ab_id": mock.ANY,
             "_airbyte_emitted_at": mock.ANY,
+            "_airbyte_normalized_at": mock.ANY,
             "_airbyte_mushrooms_hashid": "5257322455a690592e14baeb4d24069c",
         },
     ]
 
     # Airbyte's normalization doesn't seem to emit PKs, so all is_pk will be False in any case.
-    assert repo.images["latest"].get_table("mushrooms").table_schema == [
+    expected_schema = [
         TableColumn(
-            ordinal=1, name="discovery", pg_type="character varying", is_pk=False, comment=None
+            ordinal=1,
+            name="discovery",
+            pg_type="character varying",
+            is_pk=False,
+            comment=None,
         ),
         TableColumn(ordinal=2, name="friendly", pg_type="boolean", is_pk=False, comment=None),
         TableColumn(
-            ordinal=3, name="binary_data", pg_type="character varying", is_pk=False, comment=None
+            ordinal=3,
+            name="binary_data",
+            pg_type="character varying",
+            is_pk=False,
+            comment=None,
         ),
         TableColumn(ordinal=4, name="name", pg_type="character varying", is_pk=False, comment=None),
         TableColumn(
-            ordinal=5, name="mushroom_id", pg_type="double precision", is_pk=False, comment=None
+            ordinal=5,
+            name="mushroom_id",
+            pg_type="double precision",
+            is_pk=False,
+            comment=None,
         ),
         TableColumn(
-            ordinal=6, name="varbinary_data", pg_type="character varying", is_pk=False, comment=None
+            ordinal=6,
+            name="varbinary_data",
+            pg_type="character varying",
+            is_pk=False,
+            comment=None,
         ),
         TableColumn(
             ordinal=7,
+            name="_airbyte_ab_id",
+            pg_type="character varying",
+            is_pk=False,
+            comment=None,
+        ),
+        TableColumn(
+            ordinal=8,
             name="_airbyte_emitted_at",
             pg_type="timestamp with time zone",
             is_pk=False,
             comment=None,
         ),
         TableColumn(
-            ordinal=8, name="_airbyte_mushrooms_hashid", pg_type="text", is_pk=False, comment=None
+            ordinal=9,
+            name="_airbyte_normalized_at",
+            pg_type="timestamp with time zone",
+            is_pk=False,
+            comment=None,
+        ),
+        TableColumn(
+            ordinal=10,
+            name="_airbyte_mushrooms_hashid",
+            pg_type="text",
+            is_pk=False,
+            comment=None,
         ),
     ]
+
+    if unique_key:
+        expected[0]["_airbyte_unique_key"] = mock.ANY
+        expected[1]["_airbyte_unique_key"] = mock.ANY
+        expected_schema = reassign_ordinals(
+            [
+                TableColumn(
+                    ordinal=1, name="_airbyte_unique_key", pg_type="text", is_pk=False, comment=None
+                )
+            ]
+            + expected_schema
+        )
+
+    # Check the normalized data and the schema
+    assert (
+        repo.run_sql(
+            "SELECT row_to_json(m) FROM mushrooms m ORDER BY discovery ASC",
+            return_shape=ResultShape.MANY_ONE,
+        )
+        == expected
+    )
+
+    assert repo.images["latest"].get_table("mushrooms").table_schema == expected_schema
 
 
 def _assert_raw_data(repo):
