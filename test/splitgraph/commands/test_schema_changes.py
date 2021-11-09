@@ -1,5 +1,7 @@
+from test.splitgraph.utils import drop_comments, reassign_ordinals
+
 import pytest
-from splitgraph.core.types import TableColumn, TableSchema
+from splitgraph.core.types import TableColumn
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 TEST_CASES = [
@@ -44,20 +46,6 @@ OLD_SCHEMA = [
 ]
 
 
-def _reassign_ordinals(schema: TableSchema):
-    # When a table is created anew, its ordinals are made consecutive again.
-    return [
-        TableColumn(i + 1, col.name, col.pg_type, col.is_pk, col.comment)
-        for i, col in enumerate(schema)
-    ]
-
-
-def _drop_comments(schema: TableSchema) -> TableSchema:
-    # For storing object schemata in JSON in /var/lib/splitgraph/objects,
-    # we don't store the comments (they're a feature of the table, not the object).
-    return [TableColumn(*(t[:4])) for t in schema]
-
-
 @pytest.mark.parametrize("test_case", TEST_CASES)
 def test_schema_changes(pg_repo_local, test_case):
     action, expected_new_schema = test_case
@@ -79,7 +67,7 @@ def test_schema_changes(pg_repo_local, test_case):
     # Test that the new image was stored as new object with the new schema.
     assert len(new_head.get_table("fruits").objects) == 1
     new_snap = new_head.get_table("fruits").objects[0]
-    assert pg_repo_local.engine.get_object_schema(new_snap) == _drop_comments(
+    assert pg_repo_local.engine.get_object_schema(new_snap) == drop_comments(
         expected_new_schema
         + [TableColumn(expected_new_schema[-1].ordinal + 1, SG_UD_FLAG, "boolean", False)]
     )
@@ -93,7 +81,7 @@ def test_schema_changes(pg_repo_local, test_case):
     new_head.checkout()
     assert pg_repo_local.engine.get_full_table_schema(
         pg_repo_local.to_schema(), "fruits"
-    ) == _reassign_ordinals(expected_new_schema)
+    ) == reassign_ordinals(expected_new_schema)
 
 
 def test_pk_preserved_on_checkout(pg_repo_local):
