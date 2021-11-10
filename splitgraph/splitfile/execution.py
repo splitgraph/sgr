@@ -169,20 +169,28 @@ def execute_commands(
     """
     if params is None:
         params = {}
-    if output and repository_exists(output) and output_base is not None:
-        output.images.by_hash(output_base).checkout()
     # Use a random target schema if unspecified.
     output = output or Repository.from_schema("output_%0.2x" % getrandbits(16))
 
     # Don't initialize the output until a command writing to it asks us to
     # (otherwise we might have a FROM ... AS output_name change it).
     repo_created = False
+    output_base_checked_out = False
 
     def _initialize_output(output):
         if not repository_exists(output):
             nonlocal repo_created
             output.init()
             repo_created = True
+
+        nonlocal output_base_checked_out
+        if not output_base_checked_out:
+            # If we're running commands and the Splitfile doesn't start with FROM to set the base
+            # image, check out the output_base (delay it so that checking out 000... and then
+            # running FROM doesn't do redundant work).
+            if output and repository_exists(output) and output_base is not None:
+                checkout_if_changed(output, output_base)
+                output_base_checked_out = True
 
     node_list = parse_commands(commands, params=params)
 
@@ -198,6 +206,7 @@ def execute_commands(
             )
             if node.expr_name == "from":
                 output, maybe_provenance_line = _execute_from(node, output)
+                output_base_checked_out = True
                 if maybe_provenance_line:
                     provenance.append(maybe_provenance_line)
 
@@ -229,6 +238,21 @@ def execute_commands(
             output.delete()
         get_engine().rollback()
         raise
+
+
+def checkout_if_changed(repository: Repository, image_hash: str) -> None:
+    if (
+        repository.head is None
+        or (repository.head.image_hash != image_hash)
+        or repository.has_pending_changes()
+    ):
+        repository.images.by_hash(image_hash).checkout()
+    else:
+        logging.info(
+            "Skipping checkout of %s as %s has it checked out " "and there have been no changes",
+            image_hash,
+            repository,
+        )
 
 
 def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
@@ -307,7 +331,7 @@ def _execute_from(node: Node, output: Repository) -> Tuple[Repository, Optional[
         # the output has just had the base commit (000...) created in it, that commit will be the latest.
         clone(source_repo, local_repository=output, download_all=False)
         source_hash = source_repo.images[tag_or_hash].image_hash
-        output.images.by_hash(source_hash).checkout()
+        checkout_if_changed(output, source_hash)
         provenance = {
             "type": "FROM",
             "source_namespace": source_repo.namespace,

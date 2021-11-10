@@ -169,7 +169,7 @@ def test_splitfile_remote_hash(local_engine_empty, pg_repo_remote):
 
 
 def test_import_updating_splitfile_with_uploading(
-    local_engine_empty, remote_engine, pg_repo_remote
+    local_engine_empty, remote_engine, pg_repo_remote, clean_minio
 ):
     execute_commands(load_splitfile("import_and_update.splitfile"), output=OUTPUT)
     head = OUTPUT.head
