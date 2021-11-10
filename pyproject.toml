@@ -35,7 +35,7 @@ sodapy = ">=2.1"
 # Extra requirements for Pandas ingestion
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
 # Workaround for https://github.com/python-poetry/poetry/issues/4402
-sqlalchemy = { version = "^1.3,<1.4.23", extras = ["ingestion"], optional = true }
+sqlalchemy = { version = ">=1.3,<2.0", extras = ["ingestion"], optional = true }
 
 # Fork of pipelinewise-target-postgres without dep pinning so that we can use it as a library
 splitgraph-pipelinewise-target-postgres = ">=2.1.0"
