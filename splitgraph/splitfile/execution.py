@@ -175,7 +175,7 @@ def execute_commands(
     # Don't initialize the output until a command writing to it asks us to
     # (otherwise we might have a FROM ... AS output_name change it).
     repo_created = False
-    from_executed = False
+    output_base_checked_out = False
 
     def _initialize_output(output):
         if not repository_exists(output):
@@ -183,12 +183,14 @@ def execute_commands(
             output.init()
             repo_created = True
 
-        nonlocal from_executed
-        if not from_executed:
+        nonlocal output_base_checked_out
+        if not output_base_checked_out:
             # If we're running commands and the Splitfile doesn't start with FROM to set the base
-            # image, check out the output_base.
+            # image, check out the output_base (delay it so that checking out 000... and then
+            # running FROM doesn't do redundant work).
             if output and repository_exists(output) and output_base is not None:
                 checkout_if_changed(output, output_base)
+                output_base_checked_out = True
 
     node_list = parse_commands(commands, params=params)
 
@@ -204,7 +206,7 @@ def execute_commands(
             )
             if node.expr_name == "from":
                 output, maybe_provenance_line = _execute_from(node, output)
-                from_executed = True
+                output_base_checked_out = True
                 if maybe_provenance_line:
                     provenance.append(maybe_provenance_line)
 
