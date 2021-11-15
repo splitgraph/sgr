@@ -184,13 +184,17 @@ def execute_commands(
             repo_created = True
 
         nonlocal output_base_checked_out
-        if not output_base_checked_out:
+        if (
+            not output_base_checked_out
+            and output
+            and repository_exists(output)
+            and output_base is not None
+        ):
             # If we're running commands and the Splitfile doesn't start with FROM to set the base
             # image, check out the output_base (delay it so that checking out 000... and then
             # running FROM doesn't do redundant work).
-            if output and repository_exists(output) and output_base is not None:
-                checkout_if_changed(output, output_base)
-                output_base_checked_out = True
+            checkout_if_changed(output, output_base)
+            output_base_checked_out = True
 
     node_list = parse_commands(commands, params=params)
 
