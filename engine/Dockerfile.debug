@@ -23,24 +23,6 @@ RUN /build/build_cstore_fdw.sh
 RUN /build/build_multicorn.sh
 
 #####
-##### mongo_fdw
-#####
-
-FROM splitgraph/pg_debug:development AS builder_mongo_fdw
-COPY ./engine/build_scripts/fdws/mongo_fdw /build
-RUN /build/build_mongo_fdw.sh
-
-
-#####
-##### mysql_fdw
-#####
-
-FROM splitgraph/pg_debug:development AS builder_mysql_fdw
-COPY ./engine/build_scripts/fdws/mysql_fdw /build
-RUN /build/build_mysql_fdw.sh
-
-
-#####
 ##### splitgraph/engine
 #####
 
@@ -99,8 +81,10 @@ COPY --from=builder_cstore_multicorn \
     /usr/local/lib/python3.7/dist-packages/multicorn-1.4.0.dev0-py3.7-linux-x86_64.egg \
     /usr/local/lib/python3.7/dist-packages/multicorn-1.4.0.dev0-py3.7-linux-x86_64.egg
 
-COPY --from=builder_mongo_fdw /output/root /
-COPY --from=builder_mysql_fdw /output/root /
+# NB important: the plpython installation upgrades postgresql and overwrites our binaries,
+# so we have to get them back.
+COPY --from=splitgraph/pg_debug:development /usr/lib/postgresql/12/bin /usr/lib/postgresql/12/bin
+COPY --from=splitgraph/pg_debug:development /usr/lib/postgresql/12/lib /usr/lib/postgresql/12/lib
 
 RUN ldconfig
 

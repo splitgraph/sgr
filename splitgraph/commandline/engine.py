@@ -260,6 +260,7 @@ def add_engine_c(
                 # Actual config to be injected later
                 "SG_CONFIG_FILE": "/.sgconfig",
             },
+            cap_add=["SYS_PTRACE"],
         )
     except docker.errors.APIError as e:
         if "port is already allocated" in str(e):
