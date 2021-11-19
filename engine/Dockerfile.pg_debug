@@ -73,6 +73,13 @@ RUN rm -rf /usr/lib/postgresql/12/* && \
         flex \
         build-essential \
         libreadline-dev \
+        libffi6-dbg \
+        libgcc1-dbg \
+        libkrb5-dbg \
+        libstdc++6-8-dbg \
+        libxml2-dbg \
+        postgresql-$PG_MAJOR-dbgsym \
+        zlib1g-dbg \
         zlib1g \
         zlib1g-dev && \
     git clone https://github.com/postgres/postgres.git && \
