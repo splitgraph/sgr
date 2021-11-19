@@ -16,6 +16,20 @@ SHELL=/bin/bash
 with_postgis ?= ""
 
 
+build.pg_debug:
+	cd .. && docker build \
+	--build-arg BUILDKIT_INLINE_CACHE=1 \
+	--build-arg with_postgis=$(with_postgis) \
+	-t splitgraph/pg_debug:development \
+	-f engine/Dockerfile.pg_debug .
+
+build.debug:
+	cd .. && docker build \
+	--build-arg BUILDKIT_INLINE_CACHE=1 \
+	--build-arg with_postgis=$(with_postgis) \
+	-t splitgraph/engine_debug:development \
+	-f engine/Dockerfile.debug .
+
 build:
 	cd .. && docker build \
 	--build-arg BUILDKIT_INLINE_CACHE=1 \
