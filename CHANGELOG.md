@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.18 (2021-11-17)
+
+  * Splitfile speedups (https://github.com/splitgraph/splitgraph/pull/567)
+  * Various query speedups (https://github.com/splitgraph/splitgraph/pull/563, https://github.com/splitgraph/splitgraph/pull/561)
+  * More robust CSV querying (https://github.com/splitgraph/splitgraph/pull/562)
+
+Full set of changes: [`v0.2.17...v0.2.18`](https://github.com/splitgraph/splitgraph/compare/v0.2.17...v0.2.18)
+
 ## v0.2.17 (2021-10-14)
 
   * Code refactor / optimizations (https://github.com/splitgraph/splitgraph/pull/531)
