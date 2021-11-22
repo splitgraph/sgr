@@ -81,6 +81,11 @@ COPY --from=builder_cstore_multicorn \
     /usr/local/lib/python3.7/dist-packages/multicorn-1.4.0.dev0-py3.7-linux-x86_64.egg \
     /usr/local/lib/python3.7/dist-packages/multicorn-1.4.0.dev0-py3.7-linux-x86_64.egg
 
+# Also copy over the source code for GDB to be able to print it while
+# traversing through code, or e.g. executing the `list` command
+COPY --from=builder_cstore_multicorn /src/Multicorn /src/Multicorn
+COPY --from=builder_cstore_multicorn /src/cstore_fdw /src/cstore_fdw
+
 # NB important: the plpython installation upgrades postgresql and overwrites our binaries,
 # so we have to get them back.
 COPY --from=splitgraph/pg_debug:development /usr/lib/postgresql/12/bin /usr/lib/postgresql/12/bin
