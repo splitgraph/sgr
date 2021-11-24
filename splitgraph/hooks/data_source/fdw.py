@@ -679,8 +679,9 @@ This uses a fork of postgres-elasticsearch-fdw behind the scenes. You can add a 
 `query` to your table and set it as `query_column` to pass advanced ES queries and aggregations.
 For example:
 
+\b
 ```
-sgr mount elasticsearch target_schema -c elasticsearch:9200 -o@- <<EOF
+$ sgr mount elasticsearch target_schema -c elasticsearch:9200 -o@- <<EOF
     {
       "tables": {
         "table_1": {
@@ -700,6 +701,7 @@ sgr mount elasticsearch target_schema -c elasticsearch:9200 -o@- <<EOF
       }
     }
 EOF
+\b
 ```
 """
 

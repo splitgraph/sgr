@@ -195,10 +195,23 @@ def _update_bar(
     help="Set the engine as the default engine in the config regardless of its name",
     is_flag=True,
 )
+@click.option(
+    "--cap-add", help="Add kernel capabilities to the engine container", multiple=True, default=[]
+)
 @click.argument("name", default=DEFAULT_ENGINE)
 @click.password_option()
 def add_engine_c(
-    image, port, username, no_init, no_sgconfig, inject_source, no_pull, name, password, set_default
+    image,
+    port,
+    username,
+    no_init,
+    no_sgconfig,
+    inject_source,
+    no_pull,
+    name,
+    password,
+    set_default,
+    cap_add,
 ):
     """
     Create and start a Splitgraph engine.
@@ -260,6 +273,7 @@ def add_engine_c(
                 # Actual config to be injected later
                 "SG_CONFIG_FILE": "/.sgconfig",
             },
+            cap_add=cap_add,
         )
     except docker.errors.APIError as e:
         if "port is already allocated" in str(e):

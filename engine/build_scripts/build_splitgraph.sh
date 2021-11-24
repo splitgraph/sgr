@@ -8,7 +8,7 @@ export POETRY_VERSION=1.1.6
 curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python3.7
 
 # Install globally (otherwise we'll need to find a way to get Multicorn to see the venv)
-ln -s /usr/bin/python3.7 /usr/bin/python
+ln -sf /usr/bin/python3.7 /usr/bin/python
 # shellcheck disable=SC1090
 source "$HOME"/.poetry/env
 poetry config virtualenvs.create false

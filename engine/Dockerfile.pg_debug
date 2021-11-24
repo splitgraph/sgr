@@ -1,0 +1,62 @@
+# syntax = docker/dockerfile:experimental
+
+# Base PostgreSQL debug image, where we compile and install it from source with
+# full debugging capabilities. For more details see:
+# https://wiki.postgresql.org/wiki/Developer_FAQ#Compile-time
+# Note that we use the pre-built PG image from:
+# https://github.com/docker-library/postgres/blob/master/12/bullseye/Dockerfile
+# and just swap out the binaries and shared libs with the ones installed below.
+
+
+#####
+##### toolchain
+#####
+
+FROM postgres:12.3
+
+# Compile and install PG in debug mode
+RUN rm -rf /usr/lib/postgresql/12/* && \
+    apt-get update -qq && \
+    apt-get install -y --allow-downgrades \
+        build-essential \
+        wget \
+        git \
+        libssl-dev \
+        libsasl2-dev \
+        pkgconf \
+        autoconf \
+        libtool \
+        # https://github.com/docker-library/postgres/issues/678#issuecomment-586888013
+        postgresql-server-dev-$PG_MAJOR \
+        protobuf-c-compiler \
+        libprotobuf-c-dev \
+        libpython3.7-dev \
+        python3.7 \
+        python3-setuptools \
+        cmake \
+        clang-7 \
+        # Debugging tools
+        sudo \
+        gdb \
+        procps \
+        # PG source installation reqs
+        bison \
+        flex \
+        build-essential \
+        libreadline-dev \
+        libffi6-dbg \
+        libgcc1-dbg \
+        libkrb5-dbg \
+        libstdc++6-8-dbg \
+        libxml2-dbg \
+        zlib1g-dbg \
+        zlib1g \
+        zlib1g-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    git clone https://github.com/postgres/postgres.git && \
+    cd /postgres && \
+    git checkout REL_12_STABLE && \
+    mkdir -p /usr/lib/postgresql/12 && \
+    ./configure --enable-cassert --enable-debug CFLAGS="-ggdb -Og -g3 -fno-omit-frame-pointer" -prefix=/usr/lib/postgresql/12 && \
+    make && \
+    make install
