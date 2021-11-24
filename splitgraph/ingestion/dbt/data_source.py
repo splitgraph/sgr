@@ -8,7 +8,11 @@ from splitgraph.core.types import (
     TableParams,
     get_table_list,
 )
-from splitgraph.hooks.data_source.base import LoadableDataSource, TransformingDataSource
+from splitgraph.hooks.data_source.base import (
+    ImageMounter,
+    LoadableDataSource,
+    TransformingDataSource,
+)
 from splitgraph.ingestion.dbt.utils import (
     compile_dbt_manifest,
     run_dbt_transformation_from_git,
@@ -18,7 +22,7 @@ if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
 
 
-class DBTDataSource(LoadableDataSource, TransformingDataSource):
+class DBTDataSource(TransformingDataSource, LoadableDataSource):
 
     table_params_schema = {"type": "object", "properties": {}}
 
@@ -79,8 +83,15 @@ class DBTDataSource(LoadableDataSource, TransformingDataSource):
         "required": ["git_url"],
     }
 
-    def __init__(self, engine: "PostgresEngine", credentials: Credentials, params: Params):
-        super().__init__(engine, credentials, params)
+    def __init__(
+        self,
+        engine: "PostgresEngine",
+        credentials: Credentials,
+        params: Params,
+        tables: Optional[TableInfo] = None,
+        image_mounter: Optional[ImageMounter] = None,
+    ):
+        super().__init__(engine, credentials, params, tables, image_mounter)
 
         self.git_url: str = self.credentials["git_url"]
         self.git_branch: str = self.params.get("git_branch", "master")

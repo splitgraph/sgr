@@ -257,9 +257,10 @@ class TransformingDataSource(DataSource, ABC):
         engine: "PostgresEngine",
         credentials: Credentials,
         params: Params,
+        tables: Optional[TableInfo] = None,
         image_mounter: Optional[ImageMounter] = None,
     ):
-        super().__init__(engine, credentials, params)
+        super().__init__(engine, credentials, params, tables)
         self._mounter = image_mounter or DefaultImageMounter(engine)
 
     @abstractmethod
