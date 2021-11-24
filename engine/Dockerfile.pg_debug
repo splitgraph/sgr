@@ -1,11 +1,11 @@
 # syntax = docker/dockerfile:experimental
 
-# Multistage Dockerfile to build the Splitgraph engine: because of all the compilation of
-# FDWs/libraries needed, we have to download a few hundred MB of dev tooling which we don't
-# need at runtime. So, we define a single "toolchain" image, multiple images that build various
-# FDWs and other extensions from it and then the final engine image that cherry-picks required
-# binaries from the previous build stages: this is done by "make installing" them into a different
-# prefix (PGXS's feature) and then copying that over into the filesystem root in the target.
+# Base PostgreSQL debug image, where we compile and install it from source with
+# full debugging capabilities. For more details see:
+# https://wiki.postgresql.org/wiki/Developer_FAQ#Compile-time
+# Note that we use the pre-built PG image from:
+# https://github.com/docker-library/postgres/blob/master/12/bullseye/Dockerfile
+# and just swap out the binaries and shared libs with the ones installed below.
 
 
 #####
@@ -14,10 +14,11 @@
 
 FROM postgres:12.3
 
-RUN apt-get update -qq && \
+# Compile and install PG in debug mode
+RUN rm -rf /usr/lib/postgresql/12/* && \
+    apt-get update -qq && \
     apt-get install -y --allow-downgrades \
         build-essential \
-        curl \
         wget \
         git \
         libssl-dev \
@@ -27,8 +28,6 @@ RUN apt-get update -qq && \
         libtool \
         # https://github.com/docker-library/postgres/issues/678#issuecomment-586888013
         postgresql-server-dev-$PG_MAJOR \
-        libmongoc-1.0.0 \
-        libmongoc-dev \
         protobuf-c-compiler \
         libprotobuf-c-dev \
         libpython3.7-dev \
@@ -36,32 +35,10 @@ RUN apt-get update -qq && \
         python3-setuptools \
         cmake \
         clang-7 \
+        # Debugging tools
         sudo \
         gdb \
-        procps && \
-    rm -rf /var/lib/apt/lists/*
-
-# python3.8 executable required by Multicorn to install itself
-# python3-setuptools also needed by Multicorn and it pulls in python3.7 but
-# we'll get rid of all this junk in the next build stage.
-
-# Set locale to C instead of en-US, Postgres initdb breaks with default
-# locale otherwise + we get build warnings for FDWs.
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
-
-# Build scripts for subsequent FDW builder images
-RUN mkdir -p /build
-
-RUN ldconfig
-
-# Output root for the FDW builders (e.g. /output/root/usr/lib/postgresql/12/extensions...)
-RUN mkdir -p /output/root
-
-# Compile and install PG in debug mode
-RUN rm -rf /usr/lib/postgresql/12/* && \
-    apt-get update -qq && \
-    apt-get install -y --allow-downgrades \
+        procps \
         # PG source installation reqs
         bison \
         flex \
@@ -75,6 +52,7 @@ RUN rm -rf /usr/lib/postgresql/12/* && \
         zlib1g-dbg \
         zlib1g \
         zlib1g-dev && \
+    rm -rf /var/lib/apt/lists/* && \
     git clone https://github.com/postgres/postgres.git && \
     cd /postgres && \
     git checkout REL_12_STABLE && \

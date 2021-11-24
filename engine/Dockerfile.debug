@@ -1,11 +1,7 @@
 # syntax = docker/dockerfile:experimental
 
-# Multistage Dockerfile to build the Splitgraph engine: because of all the compilation of
-# FDWs/libraries needed, we have to download a few hundred MB of dev tooling which we don't
-# need at runtime. So, we define a single "toolchain" image, multiple images that build various
-# FDWs and other extensions from it and then the final engine image that cherry-picks required
-# binaries from the previous build stages: this is done by "make installing" them into a different
-# prefix (PGXS's feature) and then copying that over into the filesystem root in the target.
+# Multistage Dockerfile to build the Splitgraph engine with debugging capabilities.
+# For now does not include MySQL and Mongo FDWs
 
 
 #####
@@ -34,7 +30,6 @@ RUN apt-get update -qq && \
     apt-get install -y \
         curl \
         libprotobuf-c1 \
-        libmongoc-1.0-0 \
         libpython3.7 \
         python3.7 \
         python3-setuptools \
