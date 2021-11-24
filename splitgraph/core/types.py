@@ -76,6 +76,12 @@ def get_table_params(table_info: TableInfo, table_name: str) -> TableParams:
     return TableParams({})
 
 
+def get_table_list(table_info: TableInfo) -> List[str]:
+    if isinstance(table_info, list):
+        return table_info
+    return list(table_info.keys())
+
+
 class Comparable(metaclass=ABCMeta):
     @abstractmethod
     def __lt__(self, other: Any) -> bool:
