@@ -53,11 +53,11 @@ def test_dbt_data_source_introspection(local_engine_empty):
     source = DBTDataSource(
         local_engine_empty,
         credentials=Credentials({"git_url": _REPO_PATH}),
-        params=Params({"git_branch": "config-version"}),
+        params=Params({"git_branch": "sg-integration-test"}),
     )
 
     result = source.introspect()
-    assert len(result) == 25
+    assert len(result) == 5
     # We currently don't return a table schema (we can't know it) or params (pointless, as we
     # don't let the user remap dbt model names to other table names).
     assert result["customer_orders"] == ([], {})

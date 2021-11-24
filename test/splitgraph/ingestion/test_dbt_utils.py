@@ -47,7 +47,9 @@ def test_dbt_repo_clone_patch():
 
 
 def test_dbt_repo_build_manifest(local_engine_empty):
-    manifest = compile_dbt_manifest(local_engine_empty, _REPO_PATH, repository_ref="config-version")
+    manifest = compile_dbt_manifest(
+        local_engine_empty, _REPO_PATH, repository_ref="sg-integration-test"
+    )
     # Quickly check some entries in the manifest
 
     assert sorted(manifest.keys()) == [
@@ -66,8 +68,8 @@ def test_dbt_repo_build_manifest(local_engine_empty):
         [n["name"] for n in manifest["nodes"].values() if n["config"]["materialized"] == "table"]
     ) == [
         "accepted_values_fct_orders_status__placed__shipped__completed__return_pending__returned",
-        "accepted_values_stg_orders_status__placed__shipped__completed__return_pending__returned",
-        "accepted_values_stg_payments_payment_method__credit_card__coupon__bank_transfer__gift_card",
+        "accepted_values_stg_jaffle_shop__orders_status__placed__shipped__completed__return_pending__returned",
+        "accepted_values_stg_jaffle_shop__payments_payment_method__credit_card__coupon__bank_transfer__gift_card",
         "customer_orders",
         "customer_payments",
         "dim_customers",
@@ -80,14 +82,36 @@ def test_dbt_repo_build_manifest(local_engine_empty):
         "not_null_fct_orders_customer_id",
         "not_null_fct_orders_gift_card_amount",
         "not_null_fct_orders_order_id",
-        "not_null_stg_customers_customer_id",
-        "not_null_stg_orders_order_id",
-        "not_null_stg_payments_payment_id",
+        "not_null_stg_jaffle_shop__customers_customer_id",
+        "not_null_stg_jaffle_shop__orders_order_id",
+        "not_null_stg_jaffle_shop__payments_payment_id",
         "order_payments",
         "relationships_fct_orders_customer_id__customer_id__ref_dim_customers_",
+        "source_accepted_values_raw_jaffle_shop_orders_status__placed__shipped__completed__return_pending__returned",
+        "source_accepted_values_raw_jaffle_shop_payments_payment_method__credit_card__coupon__bank_transfer__gift_card",
+        "source_not_null_raw_jaffle_shop_customers_id",
+        "source_not_null_raw_jaffle_shop_orders_id",
+        "source_not_null_raw_jaffle_shop_payments_id",
+        "source_unique_raw_jaffle_shop_customers_id",
+        "source_unique_raw_jaffle_shop_orders_id",
+        "source_unique_raw_jaffle_shop_payments_id",
         "unique_dim_customers_customer_id",
         "unique_fct_orders_order_id",
-        "unique_stg_customers_customer_id",
-        "unique_stg_orders_order_id",
-        "unique_stg_payments_payment_id",
+        "unique_stg_jaffle_shop__customers_customer_id",
+        "unique_stg_jaffle_shop__orders_order_id",
+        "unique_stg_jaffle_shop__payments_payment_id",
+    ]
+
+    assert sorted(
+        [
+            n["name"]
+            for n in manifest["nodes"].values()
+            if n["config"]["materialized"] == "table" and n["resource_type"] == "model"
+        ]
+    ) == [
+        "customer_orders",
+        "customer_payments",
+        "dim_customers",
+        "fct_orders",
+        "order_payments",
     ]

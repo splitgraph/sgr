@@ -110,9 +110,11 @@ class DBTDataSource(LoadableDataSource, TransformingDataSource):
             engine=self.engine, repository_url=self.git_url, repository_ref=self.git_branch
         )
 
-        # Extract all models from the repository that materialize as "table"
+        # Extract all models from the repository that materialize as "table" and aren't tests
         model_names = [
-            n["name"] for n in manifest["nodes"].values() if n["config"]["materialized"] == "table"
+            n["name"]
+            for n in manifest["nodes"].values()
+            if n["config"]["materialized"] == "table" and n["resource_type"] == "model"
         ]
         return IntrospectionResult({m: ([], TableParams({})) for m in model_names})
 
