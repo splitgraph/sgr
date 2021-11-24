@@ -13,7 +13,7 @@ from splitgraph.hooks.data_source.fdw import (
 from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
 
 
 class CSVIngestionAdapter(IngestionAdapter):
@@ -25,7 +25,7 @@ class CSVIngestionAdapter(IngestionAdapter):
 
     @staticmethod
     def data_to_new_table(
-        data, engine: "PsycopgEngine", schema: str, table: str, no_header: bool = True, **kwargs
+        data, engine: "PostgresEngine", schema: str, table: str, no_header: bool = True, **kwargs
     ):
         copy_csv_buffer(data, engine, schema, table, no_header, **kwargs)
 
@@ -221,7 +221,7 @@ EOF
 
     def __init__(
         self,
-        engine: "PsycopgEngine",
+        engine: "PostgresEngine",
         credentials: Credentials,
         params: Params,
         tables: Optional[TableInfo] = None,

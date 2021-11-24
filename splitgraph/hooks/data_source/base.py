@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from random import getrandbits
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast, Generator
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 from splitgraph.config import DEFAULT_CHUNK_SIZE
+from splitgraph.core.common import get_temporary_table_id
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.types import (
@@ -18,10 +20,11 @@ from splitgraph.core.types import (
 )
 from splitgraph.engine import ResultShape
 from splitgraph.ingestion.common import add_timestamp_tags
+from splitgraph.splitfile.execution import ImageMapper
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 INGESTION_STATE_TABLE = "_sg_ingestion_state"
 INGESTION_STATE_SCHEMA = [
@@ -51,7 +54,7 @@ class DataSource(ABC):
 
     def __init__(
         self,
-        engine: "PsycopgEngine",
+        engine: "PostgresEngine",
         credentials: Credentials,
         params: Params,
         tables: Optional[TableInfo] = None,
@@ -203,6 +206,69 @@ class SyncableDataSource(LoadableDataSource, DataSource, ABC):
 
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
         self._sync(schema, tables=tables, state=None)
+
+
+# TODO: reconcile this with ImageMapper (which already expects a Repository object)
+class ImageMounter(ABC):
+    @abstractmethod
+    def mount(self, images: List[Tuple[str, str, str]]) -> Dict[Tuple[str, str, str], str]:
+        """Mount images into arbitrary schemas and return the image -> schema map"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def unmount(self) -> None:
+        """Unmount the previously mounted images"""
+        raise NotImplementedError
+
+
+class DefaultImageMounter(ImageMounter):
+    def __init__(self, engine: "PostgresEngine"):
+        self.engine = engine
+        self._image_map: Dict[Tuple[str, str, str], str] = {}
+
+    def mount(self, images: List[Tuple[str, str, str]]) -> Dict[Tuple[str, str, str], str]:
+        for image in images:
+            if image not in self._image_map:
+                ns, repo, hash_or_tag = image
+                schema = get_temporary_table_id()
+                Repository(ns, repo, engine=self.engine).images[hash_or_tag].lq_checkout(schema)
+
+        return self._image_map
+
+    def unmount(self) -> None:
+        for tmp_schema in self._image_map.values():
+            self.engine.run_sql(
+                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
+                    Identifier("%s_lq_checkout_server" % tmp_schema)
+                )
+            )
+            self.engine.run_sql(
+                SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(tmp_schema))
+            )
+
+
+class TransformingDataSource(DataSource, ABC):
+    def __init__(
+        self,
+        engine: "PostgresEngine",
+        credentials: Credentials,
+        params: Params,
+        image_mounter: Optional[ImageMounter] = None,
+    ):
+        super().__init__(engine, credentials, params)
+        self._mounter = image_mounter or DefaultImageMounter(engine)
+
+    @abstractmethod
+    def get_required_images(self) -> List[Tuple[str, str, str]]:
+        raise NotImplementedError
+
+    @contextmanager
+    def mount_required_images(self) -> Generator[Dict[Tuple[str, str, str], str], None, None]:
+        try:
+            schema_map = self._mounter.mount(self.get_required_images())
+            yield schema_map
+        finally:
+            self._mounter.unmount()
 
 
 def get_ingestion_state(repository: "Repository", image_hash: Optional[str]) -> Optional[SyncState]:

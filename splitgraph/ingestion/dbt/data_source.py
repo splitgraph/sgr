@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, List
 
 from splitgraph.core.types import (
     Credentials,
@@ -8,17 +8,17 @@ from splitgraph.core.types import (
     TableParams,
     get_table_list,
 )
-from splitgraph.hooks.data_source.base import LoadableDataSource
+from splitgraph.hooks.data_source.base import LoadableDataSource, TransformingDataSource
 from splitgraph.ingestion.dbt.utils import (
     compile_dbt_manifest,
     run_dbt_transformation_from_git,
 )
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 
-class DBTDataSource(LoadableDataSource):
+class DBTDataSource(LoadableDataSource, TransformingDataSource):
 
     table_params_schema = {"type": "object", "properties": {}}
 
@@ -79,7 +79,7 @@ class DBTDataSource(LoadableDataSource):
         "required": ["git_url"],
     }
 
-    def __init__(self, engine: "PsycopgEngine", credentials: Credentials, params: Params):
+    def __init__(self, engine: "PostgresEngine", credentials: Credentials, params: Params):
         super().__init__(engine, credentials, params)
 
         self.git_url: str = self.credentials["git_url"]
@@ -101,6 +101,9 @@ class DBTDataSource(LoadableDataSource):
     def get_description(cls) -> str:
         return "Create a Splitgraph repository from a dbt model"
 
+    def get_required_images(self) -> List[Tuple[str, str, str]]:
+        return sorted(set(self.source_map.values()))
+
     def introspect(self) -> IntrospectionResult:
         # Get the dbt manifest file
         manifest = compile_dbt_manifest(
@@ -114,23 +117,21 @@ class DBTDataSource(LoadableDataSource):
         return IntrospectionResult({m: ([], TableParams({})) for m in model_names})
 
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
-        # TODO this method needs a map of Splitgraph images to temporary schemas
-        schema_map: Dict[Tuple[str, str, str], str] = {}
+        with self.mount_required_images() as schema_map:
+            # Build a map of dbt data sources to schemas
+            dbt_source_map = {
+                source_name: schema_map[image] for source_name, image in self.source_map.items()
+            }
 
-        # Build a map of dbt data sources to schemas
-        dbt_source_map = {
-            source_name: schema_map[image] for source_name, image in self.source_map.items()
-        }
+            # Get a list of models to run, based on the tables we were passed
+            models = get_table_list(tables) if tables else None
 
-        # Get a list of models to run, based on the tables we were passed
-        models = get_table_list(tables) if tables else None
-
-        # Run dbt against our source schemas and write data out into the target schema
-        run_dbt_transformation_from_git(
-            self.engine,
-            schema,
-            self.git_url,
-            self.git_branch,
-            source_schema_map=dbt_source_map,
-            models=models,
-        )
+            # Run dbt against our source schemas and write data out into the target schema
+            run_dbt_transformation_from_git(
+                self.engine,
+                schema,
+                self.git_url,
+                self.git_branch,
+                source_schema_map=dbt_source_map,
+                models=models,
+            )
