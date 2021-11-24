@@ -391,7 +391,7 @@ def test_airbyte_mysql_source_no_normalization(local_engine_empty):
 def test_airbyte_mysql_source_custom_normalization(local_engine_empty):
     # Pass in a Git repo with a dbt project that will do custom normalization for us.
     repo = Repository.from_schema(TEST_REPO)
-    fixture_git_repo = os.path.join(INGESTION_RESOURCES, "dbt")
+    fixture_git_repo = os.path.join(INGESTION_RESOURCES, "dbt", "airbyte_normalization")
 
     source = _source(
         local_engine_empty,
