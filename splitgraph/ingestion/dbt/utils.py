@@ -151,13 +151,13 @@ def run_dbt_transformation_from_git(
     with TemporaryDirectory() as tmp_dir:
         # Prepare the target directory that we'll copy into the dbt container.
         # We can't bind mount it since we ourselves could be running inside of Docker.
-        target_path = os.path.join(tmp_dir, "dbt_project")
-        os.mkdir(target_path)
+        project_path = os.path.join(tmp_dir, "dbt_project")
+        os.mkdir(project_path)
 
         # Add a Git repo and switch all of its sources to use our staging schema
-        prepare_git_repo(repository_url, target_path, repository_ref)
+        prepare_git_repo(repository_url, project_path, repository_ref)
         patch_dbt_project_sources(
-            target_path,
+            project_path,
             source_schema_map=source_schema_map,
             default_schema=default_source_schema or target_schema,
         )
@@ -207,16 +207,21 @@ def compile_dbt_manifest(
     with TemporaryDirectory() as tmp_dir:
         # Prepare the target directory that we'll copy into the dbt container.
         # We can't bind mount it since we ourselves could be running inside of Docker.
-        target_path = os.path.join(tmp_dir, "dbt_project")
-        os.mkdir(target_path)
+        project_path = os.path.join(tmp_dir, "dbt_project")
+        os.mkdir(project_path)
 
         # Add a Git repo
-        prepare_git_repo(repository_url, target_path, repository_ref)
+        prepare_git_repo(repository_url, project_path, repository_ref)
 
         # Make a dbt profile file that points to our engine
         profile = make_dbt_profile(engine.conn_params, "splitgraph")
         with open(os.path.join(tmp_dir, "profiles.yml"), "w") as f:
             yaml.safe_dump(profile, f)
+
+        # Get the location of the target that the build outputs the manifest to
+        with open(os.path.join(project_path, "dbt_project.yml"), "r") as f:
+            project = yaml.safe_load(f)
+            build_dir = project.get("target-path", "target")
 
         entrypoint = ["/bin/bash"]
         command = [
@@ -237,11 +242,12 @@ def compile_dbt_manifest(
             copy_dir_to_container(container, tmp_dir, "/data", exclude_names=[".git"])
             container.start()
             wait_not_failed(container, mirror_logs=True)
-
             # Extract the manifest
             return cast(
                 Dict[str, Any],
                 json.load(
-                    get_file_from_container(container, "/data/dbt_project/build/manifest.json")
+                    get_file_from_container(
+                        container, os.path.join("/data/dbt_project/", build_dir, "manifest.json")
+                    )
                 ),
             )
