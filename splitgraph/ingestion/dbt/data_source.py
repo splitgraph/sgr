@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Optional, Tuple, List
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from splitgraph.core.types import (
     Credentials,

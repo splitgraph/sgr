@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from random import getrandbits
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast, Generator
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, cast
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
@@ -9,6 +9,7 @@ from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.common import get_temporary_table_id
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
+from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     Credentials,
     IntrospectionResult,
@@ -20,10 +21,8 @@ from splitgraph.core.types import (
 )
 from splitgraph.engine import ResultShape
 from splitgraph.ingestion.common import add_timestamp_tags
-from splitgraph.splitfile.execution import ImageMapper
 
 if TYPE_CHECKING:
-    from splitgraph.core.repository import Repository
     from splitgraph.engine.postgres.engine import PostgresEngine
 
 INGESTION_STATE_TABLE = "_sg_ingestion_state"
@@ -231,8 +230,11 @@ class DefaultImageMounter(ImageMounter):
             if image not in self._image_map:
                 ns, repo, hash_or_tag = image
                 schema = get_temporary_table_id()
+                self.engine.delete_schema(schema)
+                self.engine.create_schema(schema)
                 Repository(ns, repo, engine=self.engine).images[hash_or_tag].lq_checkout(schema)
-
+                self._image_map[image] = schema
+        self.engine.commit()
         return self._image_map
 
     def unmount(self) -> None:
@@ -245,6 +247,8 @@ class DefaultImageMounter(ImageMounter):
             self.engine.run_sql(
                 SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(tmp_schema))
             )
+        self._image_map = {}
+        self.engine.commit()
 
 
 class TransformingDataSource(DataSource, ABC):

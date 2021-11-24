@@ -4,9 +4,9 @@ import tempfile
 
 import yaml
 from splitgraph.ingestion.dbt.utils import (
+    compile_dbt_manifest,
     patch_dbt_project_sources,
     prepare_git_repo,
-    compile_dbt_manifest,
 )
 
 _REPO_PATH = "https://github.com/splitgraph/jaffle_shop_archive"
