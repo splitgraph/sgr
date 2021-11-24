@@ -73,9 +73,16 @@ def test_dbt_data_source_introspection(local_engine_empty):
 def test_dbt_data_source_load(local_engine_empty):
     # Make a local Splitgraph repo out of the CSV files
     basedir = os.path.join(INGESTION_RESOURCES, "dbt", "jaffle_csv")
-    repo = Repository("test", "raw-jaffle-data")
-    repo.init()
-    repo.commit_engines()
+
+    # Use two repositories to test out the source <> image remapper. In the integration test
+    # project, we use one source for the customers table and a different one for the orders/payments
+    # tables.
+    customers_repo = Repository("test", "raw-jaffle-data-customers")
+    orders_repo = Repository("test", "raw-jaffle-data-orders")
+    customers_repo.init()
+    orders_repo.init()
+    customers_repo.commit_engines()
+
     tables = ["customers", "orders", "payments"]
 
     for table in tables:
@@ -83,7 +90,7 @@ def test_dbt_data_source_load(local_engine_empty):
         result = runner.invoke(
             csv_import,
             [
-                str(repo),
+                str(customers_repo) if table == "customers" else str(orders_repo),
                 table,
                 "-f",
                 os.path.join(basedir, f"raw_{table}.csv"),
@@ -91,9 +98,10 @@ def test_dbt_data_source_load(local_engine_empty):
             catch_exceptions=False,
         )
         assert result.exit_code == 0
-    repo.commit()
-
-    assert sorted(repo.images["latest"].get_tables()) == tables
+    customers_repo.commit()
+    orders_repo.commit()
+    assert sorted(customers_repo.images["latest"].get_tables()) == ["customers"]
+    assert sorted(orders_repo.images["latest"].get_tables()) == ["orders", "payments"]
 
     # Set up the data source
 
@@ -104,9 +112,14 @@ def test_dbt_data_source_load(local_engine_empty):
             {
                 "sources": [
                     {
-                        "dbt_source_name": "raw_jaffle_shop",
-                        "namespace": repo.namespace,
-                        "repository": repo.repository,
+                        "dbt_source_name": "raw_jaffle_shop_customers",
+                        "namespace": customers_repo.namespace,
+                        "repository": customers_repo.repository,
+                    },
+                    {
+                        "dbt_source_name": "raw_jaffle_shop_orders",
+                        "namespace": orders_repo.namespace,
+                        "repository": orders_repo.repository,
                     },
                 ],
                 "git_branch": "sg-integration-test",
@@ -114,7 +127,12 @@ def test_dbt_data_source_load(local_engine_empty):
         ),
     )
 
-    assert source.get_required_images() == [(repo.namespace, repo.repository, "latest")]
+    assert sorted(source.get_required_images()) == sorted(
+        [
+            (customers_repo.namespace, customers_repo.repository, "latest"),
+            (orders_repo.namespace, orders_repo.repository, "latest"),
+        ]
+    )
     target_repo = Repository("test", "jaffle-processed")
 
     # Test build of one model (including its parents)
