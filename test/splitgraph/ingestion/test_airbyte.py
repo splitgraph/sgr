@@ -82,10 +82,10 @@ _EXPECTED_AIRBYTE_CATALOG = AirbyteCatalog(
                 "properties": {
                     "discovery": {"type": "string"},
                     "friendly": {"type": "boolean"},
-                    "binary_data": {"type": "string"},
+                    "binary_data": {"type": "string", "contentEncoding": "base64"},
                     "name": {"type": "string"},
                     "mushroom_id": {"type": "number"},
-                    "varbinary_data": {"type": "string"},
+                    "varbinary_data": {"type": "string", "contentEncoding": "base64"},
                 },
             },
             supported_sync_modes=[SyncMode.full_refresh, SyncMode.incremental],
