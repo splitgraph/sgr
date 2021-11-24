@@ -102,6 +102,9 @@ ENV POSTGRES_USER sgr
 COPY ./engine/etc /etc/
 COPY ./engine/init_scripts /docker-entrypoint-initdb.d/
 
+# We don't install Mongo/MySQL extensions in the debug image
+RUN sed -i '/\(mongo_fdw\|mysql_fdw\)/d' /docker-entrypoint-initdb.d/000_create_extensions.sql
+
 
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
