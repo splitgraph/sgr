@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
+from splitgraph.core.image_mounting import ImageMounter
 from splitgraph.core.types import (
     Credentials,
     IntrospectionResult,
@@ -8,11 +9,7 @@ from splitgraph.core.types import (
     TableParams,
     get_table_list,
 )
-from splitgraph.hooks.data_source.base import (
-    ImageMounter,
-    LoadableDataSource,
-    TransformingDataSource,
-)
+from splitgraph.hooks.data_source.base import LoadableDataSource, TransformingDataSource
 from splitgraph.ingestion.dbt.utils import (
     compile_dbt_manifest,
     run_dbt_transformation_from_git,

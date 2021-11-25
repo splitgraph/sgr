@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, c
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 from splitgraph.config import DEFAULT_CHUNK_SIZE
-from splitgraph.core.common import get_temporary_table_id, unmount_schema
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
+from splitgraph.core.image_mounting import DefaultImageMounter, ImageMounter
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     Credentials,
@@ -205,43 +205,6 @@ class SyncableDataSource(LoadableDataSource, DataSource, ABC):
 
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
         self._sync(schema, tables=tables, state=None)
-
-
-# TODO: reconcile this with ImageMapper (which already expects a Repository object)
-class ImageMounter(ABC):
-    @abstractmethod
-    def mount(self, images: List[Tuple[str, str, str]]) -> Dict[Tuple[str, str, str], str]:
-        """Mount images into arbitrary schemas and return the image -> schema map"""
-        raise NotImplementedError
-
-    @abstractmethod
-    def unmount(self) -> None:
-        """Unmount the previously mounted images"""
-        raise NotImplementedError
-
-
-class DefaultImageMounter(ImageMounter):
-    def __init__(self, engine: "PostgresEngine"):
-        self.engine = engine
-        self._image_map: Dict[Tuple[str, str, str], str] = {}
-
-    def mount(self, images: List[Tuple[str, str, str]]) -> Dict[Tuple[str, str, str], str]:
-        for image in images:
-            if image not in self._image_map:
-                ns, repo, hash_or_tag = image
-                schema = get_temporary_table_id()
-                self.engine.delete_schema(schema)
-                self.engine.create_schema(schema)
-                Repository(ns, repo, engine=self.engine).images[hash_or_tag].lq_checkout(schema)
-                self._image_map[image] = schema
-        self.engine.commit()
-        return self._image_map
-
-    def unmount(self) -> None:
-        for tmp_schema in self._image_map.values():
-            unmount_schema(self.engine, tmp_schema)
-        self._image_map = {}
-        self.engine.commit()
 
 
 class TransformingDataSource(DataSource, ABC):

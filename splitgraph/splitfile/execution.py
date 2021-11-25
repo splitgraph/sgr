@@ -17,11 +17,10 @@ from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
 from splitgraph.engine import get_engine
-from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import mount
 
-from ..core.common import unmount_schema
+from ..core.image_mounting import ImageMapper, _get_local_image_for_import
 from ..core.output import Color, conn_string_to_dict, pluralise, truncate_line
 from ..core.types import ProvenanceLine
 from ._parsing import (
@@ -57,91 +56,6 @@ def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func:
             output.images.delete([image_hash])
             raise
     logging.info(" ---> %s" % image_hash[:12])
-
-
-def _get_local_image_for_import(hash_or_tag: str, repository: Repository) -> Tuple[Image, bool]:
-    """
-    Converts a remote repository and tag into an Image object that exists on the engine,
-    optionally pulling the repository or cloning it into a temporary location.
-
-    :param hash_or_tag: Hash/tag
-    :param repository: Name of the repository (doesn't need to be local)
-    :return: Image object and a boolean flag showing whether the repository should be deleted
-    when the image is no longer needed.
-    """
-    tmp_repo = Repository(repository.namespace, repository.repository + "_tmp_clone")
-    repo_is_temporary = False
-
-    logging.info("Resolving repository %s", repository)
-    source_repo = lookup_repository(repository.to_schema(), include_local=True)
-    if source_repo.engine.name != "LOCAL":
-        clone(source_repo, local_repository=tmp_repo, download_all=False)
-        source_image = tmp_repo.images[hash_or_tag]
-        repo_is_temporary = True
-    else:
-        # For local repositories, first try to pull them to see if they are clones of a remote.
-        if source_repo.upstream:
-            source_repo.pull(single_image=hash_or_tag)
-        source_image = source_repo.images[hash_or_tag]
-
-    return source_image, repo_is_temporary
-
-
-class ImageMapper:
-    def __init__(self, object_engine: "PostgresEngine"):
-        self.object_engine = object_engine
-
-        self.image_map: Dict[Tuple[Repository, str], Tuple[str, str, Image]] = {}
-
-        self._temporary_repositories: List[Repository] = []
-
-    def _calculate_map(self, repository: Repository, hash_or_tag: str) -> Tuple[str, str, Image]:
-        source_image, repo_is_temporary = _get_local_image_for_import(hash_or_tag, repository)
-        if repo_is_temporary:
-            self._temporary_repositories.append(source_image.repository)
-
-        canonical_form = "%s/%s:%s" % (
-            repository.namespace,
-            repository.repository,
-            source_image.image_hash,
-        )
-
-        temporary_schema = sha256(canonical_form.encode("utf-8")).hexdigest()[:63]
-
-        return temporary_schema, canonical_form, source_image
-
-    def __call__(self, repository: Repository, hash_or_tag: str) -> Tuple[str, str]:
-        key = (repository, hash_or_tag)
-        if key not in self.image_map:
-            self.image_map[key] = self._calculate_map(key[0], key[1])
-
-        temporary_schema, canonical_form, _ = self.image_map[key]
-        return temporary_schema, canonical_form
-
-    def setup_lq_mounts(self) -> None:
-        for temporary_schema, _, source_image in self.image_map.values():
-            self.object_engine.delete_schema(temporary_schema)
-            self.object_engine.create_schema(temporary_schema)
-            source_image.lq_checkout(target_schema=temporary_schema)
-
-    def teardown_lq_mounts(self) -> None:
-        for temporary_schema, _, _ in self.image_map.values():
-            unmount_schema(self.object_engine, temporary_schema)
-        # Delete temporary repositories that were cloned just for the SQL execution.
-        for repo in self._temporary_repositories:
-            repo.delete()
-
-    def get_provenance_data(self) -> ProvenanceLine:
-        return {
-            "sources": [
-                {
-                    "source_namespace": source_repo.namespace,
-                    "source": source_repo.repository,
-                    "source_hash": source_image.image_hash,
-                }
-                for (source_repo, _), (_, _, source_image) in self.image_map.items()
-            ]
-        }
 
 
 def execute_commands(
