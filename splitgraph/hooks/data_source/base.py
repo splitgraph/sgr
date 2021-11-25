@@ -208,6 +208,11 @@ class SyncableDataSource(LoadableDataSource, DataSource, ABC):
 
 
 class TransformingDataSource(DataSource, ABC):
+    """
+    Data source that runs transformations between Splitgraph images. Takes in an extra
+    parameter, an ImageMounter instance to manage temporary image checkouts.
+    """
+
     def __init__(
         self,
         engine: "PostgresEngine",
@@ -221,10 +226,19 @@ class TransformingDataSource(DataSource, ABC):
 
     @abstractmethod
     def get_required_images(self) -> List[Tuple[str, str, str]]:
+        """
+        Get images required by this data source.
+        :returns List of tuples (namespace, repository, hash_or_tag)
+        """
         raise NotImplementedError
 
     @contextmanager
     def mount_required_images(self) -> Generator[Dict[Tuple[str, str, str], str], None, None]:
+        """
+        Mount all images required by this data source into temporary schemas. On exit from this
+        context manager, unmounts them.
+        :return: Map of (namespace, repository, hash_or_tag) -> schema where the image is mounted.
+        """
         try:
             schema_map = self._mounter.mount(self.get_required_images())
             yield schema_map
