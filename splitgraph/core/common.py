@@ -440,7 +440,7 @@ def get_temporary_table_id() -> str:
     return str.format("sg_tmp_{:032x}", getrandbits(128))
 
 
-def unmount_schema(engine: PsycopgEngine, schema: str) -> None:
+def unmount_schema(engine: "PsycopgEngine", schema: str) -> None:
     engine.run_sql(
         SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier("%s_lq_checkout_server" % schema))
     )
