@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, c
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 from splitgraph.config import DEFAULT_CHUNK_SIZE
-from splitgraph.core.common import get_temporary_table_id
+from splitgraph.core.common import get_temporary_table_id, unmount_schema
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
@@ -239,14 +239,7 @@ class DefaultImageMounter(ImageMounter):
 
     def unmount(self) -> None:
         for tmp_schema in self._image_map.values():
-            self.engine.run_sql(
-                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
-                    Identifier("%s_lq_checkout_server" % tmp_schema)
-                )
-            )
-            self.engine.run_sql(
-                SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(tmp_schema))
-            )
+            unmount_schema(self.engine, tmp_schema)
         self._image_map = {}
         self.engine.commit()
 

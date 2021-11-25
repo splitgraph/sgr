@@ -438,3 +438,11 @@ class CallbackList(list):
 def get_temporary_table_id() -> str:
     """Generate a random ID for temporary/staging objects that haven't had their ID calculated yet."""
     return str.format("sg_tmp_{:032x}", getrandbits(128))
+
+
+def unmount_schema(engine: PsycopgEngine, schema: str) -> None:
+    engine.run_sql(
+        SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier("%s_lq_checkout_server" % schema))
+    )
+    engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(schema + "_server")))
+    engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(schema)))

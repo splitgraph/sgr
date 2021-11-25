@@ -10,7 +10,6 @@ from random import getrandbits
 from typing import Callable, Dict, List, Optional, Tuple, cast
 
 from parsimonious.nodes import Node
-from psycopg2.sql import SQL, Identifier
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section, get_singleton
 from splitgraph.core.engine import lookup_repository, repository_exists
@@ -22,6 +21,7 @@ from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import mount
 
+from ..core.common import unmount_schema
 from ..core.output import Color, conn_string_to_dict, pluralise, truncate_line
 from ..core.types import ProvenanceLine
 from ._parsing import (
@@ -126,14 +126,7 @@ class ImageMapper:
 
     def teardown_lq_mounts(self) -> None:
         for temporary_schema, _, _ in self.image_map.values():
-            self.object_engine.run_sql(
-                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
-                    Identifier("%s_lq_checkout_server" % temporary_schema)
-                )
-            )
-            self.object_engine.run_sql(
-                SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(temporary_schema))
-            )
+            unmount_schema(self.object_engine, temporary_schema)
         # Delete temporary repositories that were cloned just for the SQL execution.
         for repo in self._temporary_repositories:
             repo.delete()

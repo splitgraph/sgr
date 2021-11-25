@@ -3,6 +3,7 @@ Extra wrapper code for mount handlers
 """
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from splitgraph.core.common import unmount_schema
 from splitgraph.exceptions import DataSourceError
 
 if TYPE_CHECKING:
@@ -47,7 +48,6 @@ def mount(
     :param tables: List of tables to mount or their schemas
     """
     # Workaround for circular imports
-    from psycopg2.sql import SQL, Identifier
     from splitgraph.engine import get_engine
     from splitgraph.hooks.data_source import get_data_source
     from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
@@ -60,10 +60,7 @@ def mount(
 
     assert issubclass(data_source, ForeignDataWrapperDataSource)
 
-    engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
-    engine.run_sql(
-        SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + "_server"))
-    )
+    unmount_schema(engine, mountpoint)
 
     source = data_source.from_commandline(engine, handler_kwargs)
     source.mount(schema=mountpoint, overwrite=overwrite, tables=tables)
