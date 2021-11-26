@@ -9,7 +9,7 @@ from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
 from splitgraph.ingestion.common import build_commandline_help
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 
 def _encode_private_key(privkey: str):
@@ -152,7 +152,7 @@ EOF
 
     def __init__(
         self,
-        engine: "PsycopgEngine",
+        engine: "PostgresEngine",
         credentials: Credentials,
         params: Params,
         tables: Optional[TableInfo] = None,

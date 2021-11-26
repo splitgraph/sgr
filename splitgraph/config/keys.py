@@ -65,6 +65,7 @@ DEFAULTS: ConfigDict = {
         "elasticsearch": "splitgraph.hooks.data_source.ElasticSearchDataSource",
         "csv": "splitgraph.ingestion.csv.CSVDataSource",
         "snowflake": "splitgraph.ingestion.snowflake.SnowflakeDataSource",
+        "dbt": "splitgraph.ingestion.dbt.data_source.DBTDataSource",
     },
 }
 

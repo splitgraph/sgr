@@ -116,7 +116,8 @@ def test_mount_docstring_generation():
     result = runner.invoke(mount_c, ["--help"])
     assert result.exit_code == 0
     for handler_name in get_data_sources():
-        assert handler_name in result.output
+        if get_data_source(handler_name).supports_mount:
+            assert handler_name in result.output
 
     # Test the reserved params (that we parse separately) don't make it into the help text
     # and that other function args from the docstring do.
