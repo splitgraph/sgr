@@ -174,7 +174,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
 
     def _run_discovery(self, config: Optional[AirbyteConfig] = None) -> AirbyteCatalog:
         client = get_docker_client()
-        network_mode = detect_network_mode(client)
+        network_mode = detect_network_mode()
 
         with self._source_container(
             client,
@@ -246,7 +246,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         staging_schema = "sg_tmp_" + repository.to_schema().replace("/", "_").replace("-", "_")
         dst_config = self._make_postgres_config(repository.object_engine, staging_schema)
         client = get_docker_client()
-        network_mode = detect_network_mode(client)
+        network_mode = detect_network_mode()
 
         with delete_schema_at_end(repository.object_engine, staging_schema):
             repository.object_engine.delete_schema(staging_schema)

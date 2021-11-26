@@ -147,7 +147,7 @@ def run_dbt_transformation_from_git(
 
     # Clone the repo into a temporary location and patch it to point to our staging schema
     client = get_docker_client()
-    network_mode = detect_network_mode(client)
+    network_mode = detect_network_mode()
     with TemporaryDirectory() as tmp_dir:
         # Prepare the target directory that we'll copy into the dbt container.
         # We can't bind mount it since we ourselves could be running inside of Docker.
@@ -203,7 +203,7 @@ def compile_dbt_manifest(
 
     # Clone the repo into a temporary location and patch it to point to our staging schema
     client = get_docker_client()
-    network_mode = detect_network_mode(client)
+    network_mode = detect_network_mode()
     with TemporaryDirectory() as tmp_dir:
         # Prepare the target directory that we'll copy into the dbt container.
         # We can't bind mount it since we ourselves could be running inside of Docker.
