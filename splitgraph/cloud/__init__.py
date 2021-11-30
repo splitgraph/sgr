@@ -248,6 +248,11 @@ _GET_REPO_SOURCE_QUERY = """query GetRepositoryDataSource%s {
           }
         }
       }
+      ingestionScheduleByNamespaceAndRepository {
+        schema
+        schedule
+        enabled
+      }
     }
   }
 }"""

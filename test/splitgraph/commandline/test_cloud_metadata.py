@@ -287,6 +287,7 @@ def test_commandline_dump():
                     "external": {
                         "credential_id": "abcdef-123456",
                         "plugin": "plugin",
+                        "schedule": None,
                         "params": {"plugin": "specific", "params": "here"},
                         "tables": {
                             "table_1": {
@@ -306,6 +307,34 @@ def test_commandline_dump():
                             },
                         },
                     },
+                },
+                {
+                    "external": {
+                        "credential_id": "abcdef-123456",
+                        "params": {"params": "here", "plugin": "specific"},
+                        "plugin": "plugin",
+                        "schedule": {"enabled": True, "schedule": "0 * * * *"},
+                        "tables": {
+                            "table_1": {
+                                "options": {"param_1": "val_1"},
+                                "schema": [
+                                    {"name": "id", "type": "text"},
+                                    {"name": "val", "type": "text"},
+                                ],
+                            },
+                            "table_2": {"options": {"param_1": "val_2"}, "schema": []},
+                            "table_3": {
+                                "options": {},
+                                "schema": [
+                                    {"name": "id", "type": "text"},
+                                    {"name": "val", "type": "text"},
+                                ],
+                            },
+                        },
+                    },
+                    "metadata": None,
+                    "namespace": "otheruser",
+                    "repository": "somerepo_3",
                 },
                 _somerepo_1_dump,
             ]

@@ -2,6 +2,7 @@
 Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
 with repositories and their metadata.
 """
+import logging
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
@@ -138,13 +139,19 @@ class ExternalResponse(BaseModel):
 
         imageByNamespaceAndRepositoryAndImageHash: ImageResponse
 
+    class IngestionScheduleResponse(BaseModel):
+        schedule: str
+        enabled = True
+        schema_: Dict[str, TableSchema] = Field(alias="schema")
+
     namespace: str
     repository: str
     credentialId: Optional[str]
     dataSource: str
     params: Dict[str, Any]
     tableParams: Dict[str, Any]
-    externalImageByNamespaceAndRepository: ExternalImageResponse
+    externalImageByNamespaceAndRepository: Optional[ExternalImageResponse]
+    ingestionScheduleByNamespaceAndRepository: Optional[IngestionScheduleResponse]
 
     @classmethod
     def from_response(cls, response) -> List["ExternalResponse"]:
@@ -152,10 +159,28 @@ class ExternalResponse(BaseModel):
         return [cls.parse_obj(obj) for obj in nodes]
 
     def to_external(self) -> External:
-        schemas = {
-            t.tableName: t.tableSchema
-            for t in self.externalImageByNamespaceAndRepository.imageByNamespaceAndRepositoryAndImageHash.tablesByNamespaceAndRepositoryAndImageHash.nodes
-        }
+        schemas: Dict[str, TableSchema] = {}
+        ingestion_schedule: Optional[IngestionSchedule] = None
+
+        if self.ingestionScheduleByNamespaceAndRepository:
+            schemas = {
+                tn: ts for tn, ts in self.ingestionScheduleByNamespaceAndRepository.schema_.items()
+            }
+            ingestion_schedule = IngestionSchedule(
+                schedule=self.ingestionScheduleByNamespaceAndRepository.schedule,
+                enabled=self.ingestionScheduleByNamespaceAndRepository.enabled,
+            )
+
+        if self.externalImageByNamespaceAndRepository:
+            schemas = {
+                t.tableName: t.tableSchema
+                for t in self.externalImageByNamespaceAndRepository.imageByNamespaceAndRepositoryAndImageHash.tablesByNamespaceAndRepositoryAndImageHash.nodes
+            }
+
+        if not schemas:
+            logging.warning(
+                "No table schemas found for repository %s/%s", self.namespace, self.repository
+            )
 
         all_tables = list(self.tableParams.keys())
         all_tables.extend(schemas.keys())
@@ -173,6 +198,7 @@ class ExternalResponse(BaseModel):
             plugin=self.dataSource,
             params=self.params,
             tables=tables,
+            schedule=ingestion_schedule,
         )
 
 

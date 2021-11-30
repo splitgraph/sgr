@@ -264,6 +264,57 @@ def gql_metadata_get():
                                         }
                                     }
                                 },
+                                "ingestionScheduleByNamespaceAndRepository": None,
+                            },
+                            {
+                                "namespace": "otheruser",
+                                "repository": "somerepo_3",
+                                "credentialId": "abcdef-123456",
+                                "dataSource": "plugin",
+                                "params": {"plugin": "specific", "params": "here"},
+                                "tableParams": {
+                                    "table_1": {"param_1": "val_1"},
+                                    "table_2": {"param_1": "val_2"},
+                                },
+                                "externalImageByNamespaceAndRepository": None,
+                                "ingestionScheduleByNamespaceAndRepository": {
+                                    "schedule": "0 * * * *",
+                                    "enabled": True,
+                                    "schema": {
+                                        "table_1": [
+                                            [
+                                                0,
+                                                "id",
+                                                "text",
+                                                False,
+                                                "Column ID",
+                                            ],
+                                            [
+                                                1,
+                                                "val",
+                                                "text",
+                                                False,
+                                                "Some value",
+                                            ],
+                                        ],
+                                        "table_3": [
+                                            [
+                                                0,
+                                                "id",
+                                                "text",
+                                                False,
+                                                "Column ID",
+                                            ],
+                                            [
+                                                1,
+                                                "val",
+                                                "text",
+                                                False,
+                                                "Some value",
+                                            ],
+                                        ],
+                                    },
+                                },
                             },
                         ]
                         if body.get("variables", {}).get("repository") != "somerepo_1"
