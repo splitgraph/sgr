@@ -1,10 +1,10 @@
 import json
 
 from splitgraph.cloud import (
-    _BULK_UPDATE_REPO_SOURCES_QUERY,
-    _BULK_UPSERT_REPO_PROFILES_QUERY,
-    _BULK_UPSERT_REPO_TOPICS_QUERY,
-    _PROFILE_UPSERT_QUERY,
+    BULK_UPDATE_REPO_SOURCES,
+    BULK_UPSERT_REPO_PROFILES,
+    BULK_UPSERT_REPO_TOPICS,
+    PROFILE_UPSERT,
 )
 
 REMOTE = "remote_engine"
@@ -61,7 +61,7 @@ def gql_metadata_operation(expect_variables):
         body = json.loads(request.body)
         assert body["variables"] == expect_variables
         if body["operationName"] == "UpsertRepoProfile":
-            assert body["query"] == _PROFILE_UPSERT_QUERY
+            assert body["query"] == PROFILE_UPSERT
         elif body["operationName"] == "FindRepositories":
             response = {
                 "data": {
@@ -441,7 +441,7 @@ def add_external_repo(request, uri, response_headers):
 def assert_repository_profiles(request):
     data = json.loads(request.body)
     assert data["operationName"] == "BulkUpsertRepoProfilesMutation"
-    assert data["query"] == _BULK_UPSERT_REPO_PROFILES_QUERY
+    assert data["query"] == BULK_UPSERT_REPO_PROFILES
 
     variables = data["variables"]
     assert variables["namespaces"] == ["otheruser", "someuser", "someuser"]
@@ -459,7 +459,7 @@ def assert_repository_profiles(request):
 def assert_repository_sources(request):
     data = json.loads(request.body)
     assert data["operationName"] == "BulkUpdateRepoSourcesMutation"
-    assert data["query"] == _BULK_UPDATE_REPO_SOURCES_QUERY
+    assert data["query"] == BULK_UPDATE_REPO_SOURCES
 
     variables = data["variables"]
     assert variables["namespaces"] == ["otheruser", "someuser"]
@@ -478,7 +478,7 @@ def assert_repository_sources(request):
 def assert_repository_topics(request):
     data = json.loads(request.body)
     assert data["operationName"] == "BulkUpsertRepoTopicsMutation"
-    assert data["query"] == _BULK_UPSERT_REPO_TOPICS_QUERY
+    assert data["query"] == BULK_UPSERT_REPO_TOPICS
 
     variables = data["variables"]
     assert variables["namespaces"] == ["otheruser", "otheruser"]

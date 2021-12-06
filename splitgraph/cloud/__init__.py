@@ -39,6 +39,21 @@ from splitgraph.cloud.models import (
     UpdateExternalCredentialResponse,
     make_repositories,
 )
+from splitgraph.cloud.queries import (
+    BULK_UPDATE_REPO_SOURCES,
+    BULK_UPSERT_REPO_PROFILES,
+    BULK_UPSERT_REPO_TOPICS,
+    FIND_REPO,
+    GET_REPO_METADATA,
+    GET_REPO_SOURCE,
+    INGESTION_JOB_STATUS,
+    JOB_LOGS,
+    PROFILE_UPSERT,
+    REPO_CONDITIONS,
+    REPO_PARAMS,
+    CSV_URL,
+    START_LOAD,
+)
 from splitgraph.config import CONFIG, create_config_dict, get_singleton
 from splitgraph.config.config import (
     get_all_in_subsection,
@@ -71,191 +86,6 @@ DEFAULT_REMOTES = {
         "SG_GQL_API": "https://api.splitgraph.com/gql/cloud/graphql",
     }
 }
-
-_BULK_UPSERT_REPO_PROFILES_QUERY = """mutation BulkUpsertRepoProfilesMutation(
-  $namespaces: [String!]
-  $repositories: [String!]
-  $descriptions: [String]
-  $readmes: [String]
-  $licenses: [String]
-  $metadata: [JSON]
-) {
-  __typename
-  bulkUpsertRepoProfiles(
-  input: {
-      namespaces: $namespaces
-      repositories: $repositories
-      descriptions: $descriptions
-      readmes: $readmes
-      licenses: $licenses
-      metadata: $metadata
-  }
-  ) {
-    clientMutationId
-    __typename
-  }
-}
-"""
-
-_BULK_UPDATE_REPO_SOURCES_QUERY = """mutation BulkUpdateRepoSourcesMutation(
-  $namespaces: [String!]
-  $repositories: [String!]
-  $sources: [DatasetSourceInput]
-) {
-  __typename
-  bulkUpdateRepoSources(
-  input: {
-      namespaces: $namespaces
-      repositories: $repositories
-      sources: $sources
-  }
-  ) {
-    clientMutationId
-    __typename
-  }
-}
-"""
-
-_BULK_UPSERT_REPO_TOPICS_QUERY = """mutation BulkUpsertRepoTopicsMutation(
-  $namespaces: [String!]
-  $repositories: [String!]
-  $topics: [String]
-) {
-  __typename
-  bulkUpsertRepoTopics(
-  input: {
-      namespaces: $namespaces
-      repositories: $repositories
-      topics: $topics
-  }
-  ) {
-    clientMutationId
-    __typename
-  }
-}
-"""
-
-_PROFILE_UPSERT_QUERY = """mutation UpsertRepoProfile(
-  $namespace: String!
-  $repository: String!
-  $description: String
-  $readme: String
-  $topics: [String]
-  $sources: [DatasetSourceInput]
-  $license: String
-  $metadata: JSON
-) {
-  __typename
-  upsertRepoProfileByNamespaceAndRepository(
-    input: {
-      repoProfile: {
-        namespace: $namespace
-        repository: $repository
-        description: $description
-        readme: $readme
-        sources: $sources
-        license: $license
-        metadata: $metadata
-      }
-      patch: {
-        namespace: $namespace
-        repository: $repository
-        description: $description
-        readme: $readme
-        sources: $sources
-        license: $license
-        metadata: $metadata
-      }
-    }
-  ) {
-    clientMutationId
-    __typename
-  }
-  __typename
-  createRepoTopicsAgg(
-  input: {
-    repoTopicsAgg: {
-      namespace: $namespace
-      repository: $repository
-      topics: $topics
-    }
-  }
-  ) {
-    clientMutationId
-    __typename
-  }
-}
-"""
-
-_FIND_REPO_QUERY = """query FindRepositories($query: String!, $limit: Int!) {
-  findRepository(query: $query, first: $limit) {
-    edges {
-      node {
-        namespace
-        repository
-        highlight
-      }
-    }
-    totalCount
-  }
-}"""
-
-_REPO_PARAMS = "($namespace: String!, $repository: String!)"
-_REPO_CONDITIONS = ", condition: {namespace: $namespace, repository: $repository}"
-
-_GET_REPO_METADATA_QUERY = """query GetRepositoryMetadata%s {
-  repositories(first: 1000%s) {
-    nodes {
-      namespace
-      repository
-      repoTopicsByNamespaceAndRepository {
-        nodes {
-          topic
-        }
-      }
-      repoProfileByNamespaceAndRepository {
-        description
-        license
-        metadata
-        readme
-        sources {
-          anchor
-          href
-          isCreator
-          isSameAs
-        }
-      }
-    }
-  }
-}"""
-
-_GET_REPO_SOURCE_QUERY = """query GetRepositoryDataSource%s {
-  repositoryDataSources(first: 1000%s) {
-    nodes {
-      namespace
-      repository
-      credentialId
-      dataSource
-      params
-      tableParams
-      externalImageByNamespaceAndRepository {
-        imageByNamespaceAndRepositoryAndImageHash {
-          tablesByNamespaceAndRepositoryAndImageHash {
-            nodes {
-              tableName
-              tableSchema
-            }
-          }
-        }
-      }
-      ingestionScheduleByNamespaceAndRepository {
-        schema
-        schedule
-        enabled
-      }
-    }
-  }
-}"""
 
 
 def get_remote_param(remote: str, key: str) -> str:
@@ -747,19 +577,13 @@ class GQLAPIClient:
         return variables
 
     @staticmethod
-    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata, v1=False):
+    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata):
         variables = GQLAPIClient._validate_metadata(namespace, repository, metadata)
-
-        gql_query = _PROFILE_UPSERT_QUERY
-        if v1:
-            gql_query = gql_query.replace("createRepoTopicsAgg", "createRepoTopic").replace(
-                "repoTopicsAgg", "repoTopic"
-            )
 
         query = {
             "operationName": "UpsertRepoProfile",
             "variables": variables,
-            "query": gql_query,
+            "query": PROFILE_UPSERT,
         }
 
         logging.debug("Prepared GraphQL query: %s", json.dumps(query))
@@ -822,7 +646,7 @@ class GQLAPIClient:
         repo_profiles_query = {
             "operationName": "BulkUpsertRepoProfilesMutation",
             "variables": repo_profiles,
-            "query": _BULK_UPSERT_REPO_PROFILES_QUERY,
+            "query": BULK_UPSERT_REPO_PROFILES,
         }
         response = self._gql(repo_profiles_query)
         return response
@@ -832,7 +656,7 @@ class GQLAPIClient:
         repo_sources_query = {
             "operationName": "BulkUpdateRepoSourcesMutation",
             "variables": repo_sources,
-            "query": _BULK_UPDATE_REPO_SOURCES_QUERY,
+            "query": BULK_UPDATE_REPO_SOURCES,
         }
         response = self._gql(repo_sources_query)
         return response
@@ -842,7 +666,7 @@ class GQLAPIClient:
         repo_topics_query = {
             "operationName": "BulkUpsertRepoTopicsMutation",
             "variables": repo_topics,
-            "query": _BULK_UPSERT_REPO_TOPICS_QUERY,
+            "query": BULK_UPSERT_REPO_TOPICS,
         }
         response = self._gql(repo_topics_query)
         return response
@@ -865,7 +689,7 @@ class GQLAPIClient:
             {
                 "operationName": "FindRepositories",
                 "variables": {"query": query, "limit": limit},
-                "query": _FIND_REPO_QUERY,
+                "query": FIND_REPO,
             }
         )
 
@@ -885,7 +709,7 @@ class GQLAPIClient:
     def get_metadata(self, namespace: str, repository: str) -> Optional[MetadataResponse]:
         response = self._gql(
             {
-                "query": _GET_REPO_METADATA_QUERY % (_REPO_PARAMS, _REPO_CONDITIONS),
+                "query": GET_REPO_METADATA % (REPO_PARAMS, REPO_CONDITIONS),
                 "operationName": "GetRepositoryMetadata",
                 "variables": {"namespace": namespace, "repository": repository},
             },
@@ -901,7 +725,7 @@ class GQLAPIClient:
     def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:
         response = self._gql(
             {
-                "query": _GET_REPO_SOURCE_QUERY % (_REPO_PARAMS, _REPO_CONDITIONS),
+                "query": GET_REPO_SOURCE % (REPO_PARAMS, REPO_CONDITIONS),
                 "operationName": "GetRepositoryDataSource",
                 "variables": {"namespace": namespace, "repository": repository},
             },
@@ -935,7 +759,7 @@ class GQLAPIClient:
         else:
             metadata_r = self._gql(
                 {
-                    "query": _GET_REPO_METADATA_QUERY % ("", ""),
+                    "query": GET_REPO_METADATA % ("", ""),
                     "operationName": "GetRepositoryMetadata",
                 },
                 handle_errors=True,
@@ -943,7 +767,7 @@ class GQLAPIClient:
 
             external_r = self._gql(
                 {
-                    "query": _GET_REPO_SOURCE_QUERY % ("", ""),
+                    "query": GET_REPO_SOURCE % ("", ""),
                     "operationName": "GetRepositoryDataSource",
                 },
                 endpoint=self.registry_endpoint,
