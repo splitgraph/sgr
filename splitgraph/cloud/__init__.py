@@ -35,6 +35,7 @@ from splitgraph.cloud.models import (
     Metadata,
     MetadataResponse,
     Repository,
+    RepositoryIngestionJobStatusResponse,
     UpdateExternalCredentialRequest,
     UpdateExternalCredentialResponse,
     make_repositories,
@@ -515,6 +516,7 @@ class GQLAPIClient:
             self._access_token = access_token
 
         self.registry_endpoint = self.endpoint.replace("/cloud/", "/registry/")  # :eyes:
+        self.externals_endpoint = self.endpoint.replace("/cloud/", "/external/v1/")  # :eyes:
 
     @property
     def access_token(self) -> Optional[str]:
@@ -721,6 +723,21 @@ class GQLAPIClient:
             assert len(parsed_responses) == 1
             return parsed_responses[0]
         return None
+
+    def get_latest_ingestion_job_status(
+        self, namespace: str, repository: str
+    ) -> RepositoryIngestionJobStatusResponse:
+        response = self._gql(
+            {
+                "query": INGESTION_JOB_STATUS,
+                "operationName": "RepositoryIngestionJobStatus",
+                "variables": {"namespace": namespace, "repository": repository},
+            },
+            handle_errors=True,
+            endpoint=self.registry_endpoint,
+        )
+
+        return RepositoryIngestionJobStatusResponse.from_response(response.json())
 
     def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:
         response = self._gql(

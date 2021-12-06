@@ -7,7 +7,7 @@ import string
 import subprocess
 from copy import copy
 from glob import glob
-from typing import Dict, Optional, Tuple, cast
+from typing import Dict, List, Optional, Tuple, cast, TYPE_CHECKING
 from urllib.parse import quote, urlparse
 
 import click
@@ -819,6 +819,65 @@ def add_c(remote, skip_inject, domain_name):
     )
 
 
+@click.command("status")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option(
+    "--repositories-file", "-f", default="repositories.yml", type=click.File("r", lazy=True)
+)
+@click.argument("repositories", type=str, nargs=-1)
+def status_c(remote, repositories_file, repositories):
+    """
+    Get ingestion job statuses.
+    """
+    import yaml
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.core.repository import Repository
+    from tabulate import tabulate
+
+    repo_list: List[Tuple[str, str]] = []
+    client = GQLAPIClient(remote)
+
+    if repositories:
+        for repo_name in repositories:
+            repo_obj = Repository.from_schema(repo_name)
+            repo_list.append((repo_obj.namespace, repo_obj.repository))
+    else:
+        repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(repositories_file))
+        repo_list = [(r.namespace, r.repository) for r in repo_yaml.repositories]
+
+    table = []
+    for namespace, repository in repo_list:
+        job_status = client.get_latest_ingestion_job_status(namespace, repository)
+        if job_status.repositoryIngestionJobStatus.nodes:
+            n = job_status.repositoryIngestionJobStatus.nodes[0]
+            table.append(
+                (
+                    namespace + "/" + repository,
+                    n.taskId,
+                    n.started,
+                    n.finished,
+                    n.isManual,
+                    n.status,
+                )
+            )
+        else:
+            table.append((namespace + "/" + repository, None, None, None, None, None))
+
+    click.echo(
+        tabulate(
+            table,
+            headers=[
+                "Repository",
+                "Task ID",
+                "Started",
+                "Finished",
+                "Manual",
+                "Status",
+            ],
+        )
+    )
+
+
 @click.group("cloud")
 def cloud_c():
     """Manage connections to Splitgraph Cloud."""
@@ -837,3 +896,4 @@ cloud_c.add_command(dump_c)
 cloud_c.add_command(load_c)
 cloud_c.add_command(token_c)
 cloud_c.add_command(add_c)
+cloud_c.add_command(status_c)
