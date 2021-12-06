@@ -14,7 +14,9 @@ from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.common import generate_column_names
 from splitgraph.ingestion.csv.common import (
     CSVOptions,
+    dump_options,
     get_s3_params,
+    load_options,
     make_csv_reader,
     pad_csv_row,
 )
@@ -72,7 +74,7 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
         table_name=table_name,
         schema=None,
         columns=[ColumnDefinition(column_name=c.name, type_name=c.pg_type) for c in sg_schema],
-        options=new_table_options,
+        options=dump_options(new_table_options),
     )
 
 
@@ -115,23 +117,23 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
         )
 
         # Dict of connection parameters
-        self.fdw_options = fdw_options
+        self.fdw_options = load_options(fdw_options)
 
         # The foreign datawrapper columns (name -> ColumnDefinition).
         self.fdw_columns = fdw_columns
         self._num_cols = len(fdw_columns)
 
-        self.csv_options = CSVOptions.from_fdw_options(fdw_options)
+        self.csv_options = CSVOptions.from_fdw_options(self.fdw_options)
 
         # For HTTP: use full URL
-        if fdw_options.get("url"):
+        if self.fdw_options.get("url"):
             self.mode = "http"
-            self.url = fdw_options["url"]
+            self.url = self.fdw_options["url"]
         else:
             self.mode = "s3"
-            self.s3_client, self.s3_bucket, self.s3_object_prefix = get_s3_params(fdw_options)
+            self.s3_client, self.s3_bucket, self.s3_object_prefix = get_s3_params(self.fdw_options)
 
-            self.s3_object = fdw_options["s3_object"]
+            self.s3_object = self.fdw_options["s3_object"]
 
     def can_sort(self, sortkeys):
         # Currently, can't sort on anything. In the future, we can infer which
@@ -220,6 +222,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             table_options = json.loads(options["table_options"])
         else:
             table_options = None
+        srv_options = load_options(srv_options)
 
         if not table_options:
             # Do a full scan of the file at URL / S3 bucket w. prefix
