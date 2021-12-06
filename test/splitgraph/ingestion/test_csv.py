@@ -10,29 +10,34 @@ from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO
 from splitgraph.ingestion.common import generate_column_names
 from splitgraph.ingestion.csv import CSVDataSource
-from splitgraph.ingestion.csv.common import CSVOptions, make_csv_reader
+from splitgraph.ingestion.csv.common import (
+    CSVOptions,
+    dump_options,
+    load_options,
+    make_csv_reader,
+)
 from splitgraph.ingestion.csv.fdw import CSVForeignDataWrapper
 from splitgraph.ingestion.inference import infer_sg_schema
 
 _s3_win_1252_opts = {
     "s3_object": "some_prefix/encoding-win-1252.csv",
-    "autodetect_dialect": "false",
-    "autodetect_encoding": "false",
-    "autodetect_header": "false",
+    "autodetect_dialect": False,
+    "autodetect_encoding": False,
+    "autodetect_header": False,
     "delimiter": ";",
     "encoding": "Windows-1252",
-    "header": "true",
+    "header": True,
     "quotechar": '"',
 }
 
 _s3_fruits_opts = {
     "s3_object": "some_prefix/fruits.csv",
-    "autodetect_dialect": "false",
-    "autodetect_encoding": "false",
-    "autodetect_header": "false",
+    "autodetect_dialect": False,
+    "autodetect_encoding": False,
+    "autodetect_header": False,
     "delimiter": ",",
     "encoding": "utf-8",
-    "header": "true",
+    "header": True,
     "quotechar": '"',
 }
 
@@ -67,7 +72,7 @@ def test_csv_param_migration():
 def test_csv_introspection_s3():
     fdw_options = {
         "s3_endpoint": "objectstorage:9000",
-        "s3_secure": "false",
+        "s3_secure": False,
         "s3_access_key": "minioclient",
         "s3_secret_key": "supersecure",
         "s3_bucket": "test_csv",
@@ -75,7 +80,11 @@ def test_csv_introspection_s3():
     }
 
     schema = CSVForeignDataWrapper.import_schema(
-        schema=None, srv_options=fdw_options, options={}, restriction_type=None, restricts=[]
+        schema=None,
+        srv_options=dump_options(fdw_options),
+        options={},
+        restriction_type=None,
+        restricts=[],
     )
 
     assert len(schema) == 3
@@ -87,10 +96,11 @@ def test_csv_introspection_s3():
             {"column_name": "DATE", "type_name": "character varying"},
             {"column_name": "TEXT", "type_name": "character varying"},
         ],
-        "options": _s3_win_1252_opts,
+        "options": mock.ANY,
         "schema": None,
         "table_name": "encoding-win-1252.csv",
     }
+    assert load_options(schema[0]["options"]) == _s3_win_1252_opts
     assert schema[1] == {
         "table_name": "fruits.csv",
         "schema": None,
@@ -102,8 +112,9 @@ def test_csv_introspection_s3():
             {"column_name": "bignumber", "type_name": "bigint"},
             {"column_name": "vbignumber", "type_name": "numeric"},
         ],
-        "options": _s3_fruits_opts,
+        "options": mock.ANY,
     }
+    assert load_options(schema[1]["options"]) == _s3_fruits_opts
     assert schema[2]["table_name"] == "rdu-weather-history.csv"
     assert schema[2]["columns"][0] == {"column_name": "date", "type_name": "date"}
 
@@ -112,7 +123,9 @@ def test_csv_introspection_http():
     # Pre-sign the S3 URL for an easy HTTP URL to test this
     schema = CSVForeignDataWrapper.import_schema(
         schema=None,
-        srv_options={"url": MINIO.presigned_get_object("test_csv", "some_prefix/fruits.csv")},
+        srv_options=dump_options(
+            {"url": MINIO.presigned_get_object("test_csv", "some_prefix/fruits.csv")}
+        ),
         options={},
         restriction_type=None,
         restricts=[],
@@ -130,15 +143,17 @@ def test_csv_introspection_http():
             {"column_name": "bignumber", "type_name": "bigint"},
             {"column_name": "vbignumber", "type_name": "numeric"},
         ],
-        "options": {
-            "autodetect_dialect": "false",
-            "autodetect_encoding": "false",
-            "autodetect_header": "false",
-            "delimiter": ",",
-            "encoding": "utf-8",
-            "header": "true",
-            "quotechar": '"',
-        },
+        "options": mock.ANY,
+    }
+
+    assert load_options(schema[0]["options"]) == {
+        "autodetect_dialect": False,
+        "autodetect_encoding": False,
+        "autodetect_header": False,
+        "delimiter": ",",
+        "encoding": "utf-8",
+        "header": True,
+        "quotechar": '"',
     }
 
 
@@ -149,7 +164,7 @@ def test_csv_introspection_multiple():
 
     fdw_options = {
         "s3_endpoint": "objectstorage:9000",
-        "s3_secure": "false",
+        "s3_secure": False,
         "s3_access_key": "minioclient",
         "s3_secret_key": "supersecure",
         "s3_bucket": "test_csv",
@@ -159,7 +174,7 @@ def test_csv_introspection_multiple():
     url = MINIO.presigned_get_object("test_csv", "some_prefix/rdu-weather-history.csv")
     schema = CSVForeignDataWrapper.import_schema(
         schema=None,
-        srv_options=fdw_options,
+        srv_options=dump_options(fdw_options),
         options={
             "table_options": json.dumps(
                 {
@@ -180,37 +195,41 @@ def test_csv_introspection_multiple():
         "table_name": "from_s3_encoding",
         "schema": None,
         "columns": mock.ANY,
-        "options": _s3_win_1252_opts,
+        "options": mock.ANY,
     }
+    assert load_options(schema[0]["options"]) == _s3_win_1252_opts
     assert schema[1] == {
         "table_name": "from_s3_rdu",
         "schema": None,
         "columns": mock.ANY,
-        "options": {
-            "autodetect_dialect": "false",
-            "autodetect_encoding": "false",
-            "autodetect_header": "false",
-            "delimiter": ";",
-            "encoding": "utf-8",
-            "header": "true",
-            "quotechar": '"',
-            "s3_object": "some_prefix/rdu-weather-history.csv",
-        },
+        "options": mock.ANY,
     }
+    assert load_options(schema[1]["options"]) == {
+        "autodetect_dialect": False,
+        "autodetect_encoding": False,
+        "autodetect_header": False,
+        "delimiter": ";",
+        "encoding": "utf-8",
+        "header": True,
+        "quotechar": '"',
+        "s3_object": "some_prefix/rdu-weather-history.csv",
+    }
+
     assert schema[2] == {
         "table_name": "from_url",
         "schema": None,
         "columns": mock.ANY,
-        "options": {
-            "autodetect_dialect": "false",
-            "autodetect_encoding": "false",
-            "autodetect_header": "false",
-            "delimiter": ";",
-            "encoding": "utf-8",
-            "header": "true",
-            "quotechar": '"',
-            "url": url,
-        },
+        "options": mock.ANY,
+    }
+    assert load_options(schema[2]["options"]) == {
+        "autodetect_dialect": False,
+        "autodetect_encoding": False,
+        "autodetect_header": False,
+        "delimiter": ";",
+        "encoding": "utf-8",
+        "header": True,
+        "quotechar": '"',
+        "url": url,
     }
 
 
@@ -454,6 +473,9 @@ def test_csv_data_source_multiple(local_engine_empty):
             "delimiter": ",",
             "autodetect_header": False,
             "autodetect_encoding": False,
+            # Override this to make sure that we can roundtrip numerical parameters through
+            # this introspection flow.
+            "schema_inference_rows": 10,
         },
     )
 
@@ -472,6 +494,8 @@ def test_csv_data_source_multiple(local_engine_empty):
             ordinal=1, name=";DATE;TEXT", pg_type="character varying", is_pk=False, comment=None
         )
     ]
+
+    assert new_schema["from_s3_encoding"][1]["schema_inference_rows"] == 10
 
     try:
         source.mount("temp_data", tables=new_schema)

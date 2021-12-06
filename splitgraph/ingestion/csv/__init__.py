@@ -2,15 +2,23 @@ import contextlib
 import json
 from copy import deepcopy
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 from psycopg2.sql import SQL, Identifier
-from splitgraph.core.types import Credentials, MountError, Params, TableInfo
+from splitgraph.core.types import (
+    Credentials,
+    MountError,
+    Params,
+    TableInfo,
+    TableParams,
+    TableSchema,
+)
 from splitgraph.hooks.data_source.fdw import (
     ForeignDataWrapperDataSource,
     import_foreign_schema,
 )
 from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
+from splitgraph.ingestion.csv.common import dump_options, load_options
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
@@ -279,14 +287,24 @@ EOF
     def get_table_options(
         self, table_name: str, tables: Optional[TableInfo] = None
     ) -> Dict[str, str]:
-        result = super().get_table_options(table_name, tables)
+        tables = tables or self.tables
+
+        if not isinstance(tables, dict):
+            return {}
+
+        result = {
+            k: v
+            for k, v in tables.get(table_name, cast(Tuple[TableSchema, TableParams], ({}, {})))[
+                1
+            ].items()
+        }
 
         # Set a default s3_object if we're using S3 and not HTTP
         if "url" not in result:
             result["s3_object"] = result.get(
                 "s3_object", self.params.get("s3_object_prefix", "") + table_name
             )
-        return result
+        return dump_options(result)
 
     def _create_foreign_tables(
         self, schema: str, server_id: str, tables: TableInfo
@@ -334,29 +352,25 @@ EOF
 
         # Deserialize things like booleans from the foreign table options that the FDW inferred
         # for us.
-        def _destring_table_options(table_options):
-            for k in ["autodetect_header", "autodetect_encoding", "autodetect_dialect", "header"]:
-                if k in table_options:
-                    table_options[k] = table_options[k].lower() == "true"
-            return table_options
-
-        return [(t, _destring_table_options(d)) for t, d in options]
+        return [(t, load_options(d)) for t, d in options]
 
     def get_server_options(self):
-        options: Dict[str, Optional[str]] = {
-            "wrapper": "splitgraph.ingestion.csv.fdw.CSVForeignDataWrapper"
-        }
+        options: Dict[str, Any] = {}
         for k in self.params_schema["properties"].keys():
             # Flatten the options and extract connection parameters
             if k in self.params:
                 if k != "connection":
-                    options[k] = str(self.params[k])
+                    options[k] = self.params[k]
                 else:
                     options.update(self.params[k])
 
         for k in self.credentials_schema["properties"].keys():
             if k in self.credentials:
-                options[k] = str(self.credentials[k])
+                options[k] = self.credentials[k]
+        # Serialize all options to JSON so that we can be sure they're all strings.
+        options = dump_options(options)
+        options["wrapper"] = "splitgraph.ingestion.csv.fdw.CSVForeignDataWrapper"
+
         return options
 
     def get_remote_schema_name(self) -> str:
@@ -399,8 +413,9 @@ EOF
         # for each table.
         server_options = self.get_server_options()
         for table in tables:
-            table_options = super().get_table_options(table, tables)
+            table_options = self.get_table_options(table, tables)
             full_options = {**server_options, **table_options}
-            result[table] = self._get_url(full_options)
+            del full_options["wrapper"]
+            result[table] = self._get_url(load_options(full_options))
 
         return result

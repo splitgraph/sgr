@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Tuple
 
@@ -19,6 +20,14 @@ except ImportError:
         print(*args)
 
 
+def dump_options(options: Dict[str, Any]) -> Dict[str, str]:
+    return {k: json.dumps(v) for k, v in options.items()}
+
+
+def load_options(options: Dict[str, str]) -> Dict[str, Any]:
+    return {k: json.loads(v) for k, v in options.items()}
+
+
 class CSVOptions(NamedTuple):
     autodetect_header: bool = True
     autodetect_dialect: bool = True
@@ -34,16 +43,16 @@ class CSVOptions(NamedTuple):
     @classmethod
     def from_fdw_options(cls, fdw_options):
         return cls(
-            autodetect_header=get_bool(fdw_options, "autodetect_header"),
-            autodetect_dialect=get_bool(fdw_options, "autodetect_dialect"),
-            autodetect_encoding=get_bool(fdw_options, "autodetect_encoding"),
+            autodetect_header=fdw_options.get("autodetect_header", True),
+            autodetect_dialect=fdw_options.get("autodetect_dialect", True),
+            autodetect_encoding=fdw_options.get("autodetect_encoding", True),
             autodetect_sample_size=int(fdw_options.get("autodetect_sample_size", 65536)),
             schema_inference_rows=int(fdw_options.get("schema_inference_rows", 100000)),
-            header=get_bool(fdw_options, "header"),
+            header=fdw_options.get("header", True),
             delimiter=fdw_options.get("delimiter", ","),
             quotechar=fdw_options.get("quotechar", '"'),
             encoding=fdw_options.get("encoding", "utf-8"),
-            ignore_decode_errors=get_bool(fdw_options, "ignore_decode_errors", default=False),
+            ignore_decode_errors=fdw_options.get("ignore_decode_errors", False),
         )
 
     def to_csv_kwargs(self):
@@ -61,10 +70,10 @@ class CSVOptions(NamedTuple):
         # We flip the autodetect flags to False here so that if we merge the new params with
         # the old params again, it won't rerun CSV dialect detection.
         return {
-            "autodetect_header": "false",
-            "autodetect_dialect": "false",
-            "autodetect_encoding": "false",
-            "header": bool_to_str(self.header),
+            "autodetect_header": False,
+            "autodetect_dialect": False,
+            "autodetect_encoding": False,
+            "header": self.header,
             "delimiter": self.delimiter,
             "quotechar": self.quotechar,
             "encoding": self.encoding,
@@ -115,18 +124,6 @@ def autodetect_csv(stream: io.RawIOBase, csv_options: CSVOptions) -> CSVOptions:
     return csv_options
 
 
-def get_bool(params: Dict[str, Any], key: str, default: bool = True) -> bool:
-    if key not in params:
-        return default
-    if isinstance(params[key], bool):
-        return bool(params[key])
-    return bool(params[key].lower() == "true")
-
-
-def bool_to_str(boolean: bool) -> str:
-    return "true" if boolean else "false"
-
-
 def make_csv_reader(
     response: io.IOBase, csv_options: CSVOptions
 ) -> Tuple[CSVOptions, "_csv._reader"]:
@@ -152,7 +149,7 @@ def get_s3_params(fdw_options: Dict[str, Any]) -> Tuple[Minio, str, str]:
         endpoint=fdw_options["s3_endpoint"],
         access_key=fdw_options.get("s3_access_key"),
         secret_key=fdw_options.get("s3_secret_key"),
-        secure=get_bool(fdw_options, "s3_secure"),
+        secure=fdw_options.get("s3_secure", True),
         region=fdw_options.get("s3_region"),
     )
 
