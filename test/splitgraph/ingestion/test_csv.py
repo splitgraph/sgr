@@ -473,6 +473,9 @@ def test_csv_data_source_multiple(local_engine_empty):
             "delimiter": ",",
             "autodetect_header": False,
             "autodetect_encoding": False,
+            # Override this to make sure that we can roundtrip numerical parameters through
+            # this introspection flow.
+            "schema_inference_rows": 10,
         },
     )
 
@@ -491,6 +494,8 @@ def test_csv_data_source_multiple(local_engine_empty):
             ordinal=1, name=";DATE;TEXT", pg_type="character varying", is_pk=False, comment=None
         )
     ]
+
+    assert new_schema["from_s3_encoding"][1]["schema_inference_rows"] == 10
 
     try:
         source.mount("temp_data", tables=new_schema)
