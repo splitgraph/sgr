@@ -761,6 +761,47 @@ class GQLAPIClient:
         response.raise_for_status()
         return response.text
 
+    def get_csv_upload_download_urls(self) -> Tuple[str, str]:
+        response = self._gql(
+            {
+                "query": CSV_URL,
+                "operationName": "CSVURLs",
+            },
+            handle_errors=True,
+            endpoint=self.externals_endpoint,
+        )
+        urls = response.json()["data"]["csvUploadDownloadUrls"]
+        return urls["upload"], urls["download"]
+
+    def start_csv_load(
+        self, namespace: str, repository: str, download_urls: List[str], table_names: List[str]
+    ) -> str:
+        variables = {
+            "namespace": namespace,
+            "repository": repository,
+            "pluginName": "csv",
+            "params": json.dumps({"connection": {"connection_type": "http", "url": ""}}),
+            "tableParams": [
+                {
+                    "name": n,
+                    "options": json.dumps({"url": u}),
+                    "schema": [],
+                }
+                for n, u in zip(table_names, download_urls)
+            ],
+        }
+
+        response = self._gql(
+            {
+                "query": START_LOAD,
+                "operationName": "StartExternalRepositoryLoad",
+                "variables": variables,
+            },
+            endpoint=self.externals_endpoint,
+            handle_errors=True,
+        )
+        return response.json()["data"]["startExternalRepositoryLoad"]["taskId"]
+
     def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:
         response = self._gql(
             {

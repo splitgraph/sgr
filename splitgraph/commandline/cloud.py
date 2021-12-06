@@ -1,10 +1,13 @@
 """Command line routines related to registering/setting up connections to the Splitgraph registry."""
 import hashlib
+import itertools
 import logging
 import os
 import shutil
 import string
 import subprocess
+import sys
+import time
 from copy import copy
 from glob import glob
 from typing import Dict, List, Optional, Tuple, cast, TYPE_CHECKING
@@ -20,11 +23,14 @@ from splitgraph.cloud.models import (
 from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
 from splitgraph.commandline.engine import inject_config_into_engines
 
-# Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.core.output import Color, pluralise
 
+if TYPE_CHECKING:
+    from splitgraph.cloud import GQLAPIClient
+
+# Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 _DDN_DBNAME = "ddn"
 
 VALID_FILENAME_CHARACTERS = string.ascii_letters + string.digits + "-_."
@@ -898,6 +904,100 @@ def logs_c(remote, repository, task_id):
     click.echo(logs)
 
 
+@click.command("upload")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--file-format", default="csv", type=click.Choice(["csv"]))
+@click.argument("repository", type=str)
+@click.argument("files", type=click.File("rb"), nargs=-1)
+def upload_c(remote, file_format, repository, files):
+    """
+    Upload files to Splitgraph
+    """
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.core.repository import Repository
+    from tqdm import tqdm
+    from tqdm.utils import CallbackIOWrapper
+    import requests
+
+    client = GQLAPIClient(remote)
+
+    repo_obj = Repository.from_schema(repository)
+
+    click.echo("Uploading the files...")
+
+    table_names = [os.path.splitext(os.path.basename(f.name))[0].lower() for f in files]
+
+    # Dedupe table names
+    table_names_deduped = []
+    for position, table_name in enumerate(table_names):
+        # if table_name in table_names:
+        #     table_names_deduped.append(f"{table_name}_{position:03d}")
+        # else:
+        table_names_deduped.append(table_name)
+
+    download_urls = []
+    for file in files:
+        upload, download = client.get_csv_upload_download_urls()
+        download_urls.append(download)
+        size = os.fstat(file.fileno()).st_size
+
+        with tqdm(total=size, unit="B", unit_scale=True, unit_divisor=1024) as t:
+            wrapped_file = CallbackIOWrapper(t.update, file, "read")
+            t.set_description(os.path.basename(file.name))
+            requests.put(upload, data=wrapped_file)
+
+    task_id = client.start_csv_load(
+        repo_obj.namespace, repo_obj.repository, download_urls, table_names
+    )
+
+    wait_for_load(client, repo_obj.namespace, repo_obj.repository, task_id)
+
+    web_url = (
+        _construct_repo_url(gql_endpoint=client.externals_endpoint, full_repo=repository)
+        + "/-/tables"
+    )
+    click.echo()
+    click.echo(
+        "Success. See the repository at " + Color.BLUE + web_url + Color.END + " or query it with:"
+    )
+    click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names_deduped[0]}"\'')
+
+
+def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
+    chars = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+    spinner = itertools.cycle(chars)
+
+    interval = 0
+    status = "STARTED"
+    while True:
+        if interval % 50 == 0:
+            status = client.get_latest_ingestion_job_status(namespace, repository)
+            nodes = status.repositoryIngestionJobStatus.nodes
+            if not nodes:
+                raise AssertionError("Unknown repository")
+            node = nodes[0]
+            if node.taskId != task_id:
+                raise AssertionError("Unexpected task ID")
+            status = nodes[0].status
+
+        click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
+        click.echo(f" ({status}) Loading {namespace}/{repository}, task ID {task_id}", nl=False)
+        sys.stdout.flush()
+        time.sleep(0.1)
+        interval += 1
+
+        if status == "SUCCESS":
+            click.echo()
+            return
+        if status == "FAILURE":
+            click.echo()
+            logs = client.get_ingestion_job_logs(
+                namespace=namespace, repository=repository, task_id=task_id
+            )
+            click.echo(logs)
+            raise ValueError("Error loading data")
+
+
 @click.group("cloud")
 def cloud_c():
     """Manage connections to Splitgraph Cloud."""
@@ -918,3 +1018,5 @@ cloud_c.add_command(token_c)
 cloud_c.add_command(add_c)
 cloud_c.add_command(status_c)
 cloud_c.add_command(logs_c)
+cloud_c.add_command(upload_c)
+# cloud_c.add_command(download_c)
