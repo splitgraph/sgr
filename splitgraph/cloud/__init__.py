@@ -739,6 +739,28 @@ class GQLAPIClient:
 
         return RepositoryIngestionJobStatusResponse.from_response(response.json())
 
+    def get_ingestion_job_logs(self, namespace: str, repository: str, task_id: str) -> str:
+        response = self._gql(
+            {
+                "query": JOB_LOGS,
+                "operationName": "JobLogs",
+                "variables": {"namespace": namespace, "repository": repository, "taskId": task_id},
+            },
+            handle_errors=True,
+            endpoint=self.externals_endpoint,
+        )
+
+        url = response.json()["data"]["jobLogs"]["url"]
+
+        if not url:
+            raise ValueError(
+                "Task ID %s not found for repository %s/%s!" % (task_id, namespace, repository)
+            )
+
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.text
+
     def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:
         response = self._gql(
             {

@@ -878,6 +878,26 @@ def status_c(remote, repositories_file, repositories):
     )
 
 
+@click.command("logs")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("repository", type=str)
+@click.argument("task_id", type=str)
+def logs_c(remote, repository, task_id):
+    """
+    Get ingestion job logs.
+    """
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.core.repository import Repository
+
+    client = GQLAPIClient(remote)
+
+    repo_obj = Repository.from_schema(repository)
+    logs = client.get_ingestion_job_logs(
+        namespace=repo_obj.namespace, repository=repo_obj.repository, task_id=task_id
+    )
+    click.echo(logs)
+
+
 @click.group("cloud")
 def cloud_c():
     """Manage connections to Splitgraph Cloud."""
@@ -897,3 +917,4 @@ cloud_c.add_command(load_c)
 cloud_c.add_command(token_c)
 cloud_c.add_command(add_c)
 cloud_c.add_command(status_c)
+cloud_c.add_command(logs_c)
