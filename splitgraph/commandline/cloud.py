@@ -905,6 +905,26 @@ def logs_c(remote, repository, task_id):
     click.echo(logs)
 
 
+def _deduplicate_items(items: List[str]) -> List[str]:
+    """
+    Deduplicate items in a list by adding a numerical suffix to duplicates.
+    """
+    counts: Dict[str, int] = {}
+    positions: List[Tuple[str, int]] = []
+    for item in items:
+        count = counts.get(item, 0)
+        positions.append((item, count))
+        counts[item] = count + 1
+
+    result: List[str] = []
+    for (item, position) in positions:
+        if counts[item] > 1:
+            result.append(f"{item}_{position:03d}")
+        else:
+            result.append(item)
+    return result
+
+
 @click.command("upload")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option("--file-format", default="csv", type=click.Choice(["csv"]))
@@ -926,15 +946,9 @@ def upload_c(remote, file_format, repository, files):
 
     click.echo("Uploading the files...")
 
-    table_names = [os.path.splitext(os.path.basename(f.name))[0].lower() for f in files]
-
-    # Dedupe table names
-    table_names_deduped = []
-    for position, table_name in enumerate(table_names):
-        # if table_name in table_names:
-        #     table_names_deduped.append(f"{table_name}_{position:03d}")
-        # else:
-        table_names_deduped.append(table_name)
+    table_names = _deduplicate_items(
+        [os.path.splitext(os.path.basename(f.name))[0].lower() for f in files]
+    )
 
     download_urls = []
     for file in files:
@@ -961,7 +975,7 @@ def upload_c(remote, file_format, repository, files):
     click.echo(
         "Success. See the repository at " + Color.BLUE + web_url + Color.END + " or query it with:"
     )
-    click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names_deduped[0]}"\'')
+    click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names[0]}"\'')
 
 
 def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
