@@ -22,6 +22,9 @@ from splitgraph.commandline.cloud import (
     dump_c,
     add_c,
     token_c,
+    status_c,
+    logs_c,
+    upload_c,
 )
 from splitgraph.commandline.engine import (
     add_engine_c,
@@ -77,6 +80,9 @@ STRUCTURE = [
             "cloud dump",
             "cloud load",
             "cloud token",
+            "cloud status",
+            "cloud logs",
+            "cloud upload",
         ],
     ),
 ]
@@ -108,6 +114,9 @@ STRUCTURE_CMD_OVERRIDE = {
     "cloud dump": dump_c,
     "cloud load": load_c,
     "cloud token": token_c,
+    "cloud status": status_c,
+    "cloud logs": logs_c,
+    "cloud upload": upload_c,
 }
 
 

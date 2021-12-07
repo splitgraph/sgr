@@ -892,6 +892,9 @@ def status_c(remote, repositories_file, repositories):
 def logs_c(remote, repository, task_id):
     """
     Get ingestion job logs.
+
+    Output the logs for an ingestion job into a repository on Splitgraph Cloud.
+    Use `sgr cloud status` to get a list of ingestion jobs and their recent task IDs.
     """
     from splitgraph.cloud import GQLAPIClient
     from splitgraph.core.repository import Repository
@@ -932,7 +935,10 @@ def _deduplicate_items(items: List[str]) -> List[str]:
 @click.argument("files", type=click.File("rb"), nargs=-1)
 def upload_c(remote, file_format, repository, files):
     """
-    Upload files to Splitgraph
+    Upload files to Splitgraph.
+
+    This uses the upload API to add data like CSV files to a remote Splitgraph instance,
+    trigger a load and wait for the data to load into a repository.
     """
     import requests
     from splitgraph.cloud import GQLAPIClient
@@ -1017,7 +1023,7 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
 
 @click.group("cloud")
 def cloud_c():
-    """Manage connections to Splitgraph Cloud."""
+    """Run actions on Splitgraph Cloud."""
 
 
 cloud_c.add_command(login_c)
