@@ -1,9 +1,11 @@
 import json
+from datetime import datetime
 
 from splitgraph.cloud import (
     BULK_UPDATE_REPO_SOURCES,
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
+    INGESTION_JOB_STATUS,
     PROFILE_UPSERT,
 )
 
@@ -543,3 +545,45 @@ def tos(request, uri, response_headers):
         response_headers,
         json.dumps({"tos": "Sample ToS message"}),
     ]
+
+
+def gql_job_status():
+    def _gql_callback(request, uri, response_headers):
+        body = json.loads(request.body)
+
+        if body["query"] == INGESTION_JOB_STATUS:
+            namespace, repository = body["variables"]["namespace"], body["variables"]["repository"]
+
+            if namespace == "someuser" and repository == "somerepo_1":
+                nodes = [
+                    {
+                        "taskId": "somerepo1_task",
+                        "started": str(datetime(2020, 1, 1, 0, 0, 0)),
+                        "finished": None,
+                        "isManual": False,
+                        "status": "STARTED",
+                    }
+                ]
+            elif namespace == "someuser" and repository == "somerepo_2":
+                nodes = [
+                    {
+                        "taskId": "somerepo2_task",
+                        "started": str(datetime(2021, 1, 1, 0, 0, 0)),
+                        "finished": str(datetime(2021, 1, 1, 1, 0, 0)),
+                        "isManual": False,
+                        "status": "SUCCESS",
+                    }
+                ]
+            else:
+                nodes = []
+
+            response = {"data": {"repositoryIngestionJobStatus": {"nodes": nodes}}}
+            return [
+                200,
+                response_headers,
+                json.dumps(response),
+            ]
+        else:
+            raise AssertionError()
+
+    return _gql_callback

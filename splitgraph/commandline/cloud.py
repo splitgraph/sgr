@@ -826,13 +826,15 @@ def add_c(remote, skip_inject, domain_name):
 
 @click.command("status")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.option(
-    "--repositories-file", "-f", default="repositories.yml", type=click.File("r", lazy=True)
-)
+@click.option("--repositories-file", "-f", default="repositories.yml", type=click.Path())
 @click.argument("repositories", type=str, nargs=-1)
 def status_c(remote, repositories_file, repositories):
     """
-    Get ingestion job statuses.
+    Get job statuses for given repositories.
+
+    If this command is passed a list of repositories, it will get the latest job
+    statuses just for those repositories. Otherwise, it will use an existing repositories.yml
+    file and get job statuses for all repositories in this file.
     """
     import yaml
     from splitgraph.cloud import GQLAPIClient
@@ -847,7 +849,8 @@ def status_c(remote, repositories_file, repositories):
             repo_obj = Repository.from_schema(repo_name)
             repo_list.append((repo_obj.namespace, repo_obj.repository))
     else:
-        repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(repositories_file))
+        with open(repositories_file, "r") as f:
+            repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(f))
         repo_list = [(r.namespace, r.repository) for r in repo_yaml.repositories]
 
     table: List[Tuple] = []
