@@ -980,7 +980,9 @@ SPINNER_FREQUENCY = 10
 
 
 def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
-    chars = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+    from splitgraph.config import SG_CMD_ASCII
+
+    chars = ["|", "/", "-", "\\"] if SG_CMD_ASCII else ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
     spinner = itertools.cycle(chars)
 
     interval = 0
