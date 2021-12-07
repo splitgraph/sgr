@@ -513,7 +513,8 @@ class GQLAPIClient:
                 self.endpoint = self.endpoint.replace("/cloud/graphql", "/cloud/unified/graphql")
                 logging.warning(
                     "The unified Splitgraph API is now at /api/cloud/unified/graphql. "
-                    "Using %s automatically. Replace SG_GQL_API to make this message go away. "
+                    "Using %s automatically. Replace SG_GQL_API to make this message go away. ",
+                    self.endpoint,
                 )
             self._auth_client: Optional[RESTAPIClient] = RESTAPIClient(remote)
             self._access_token: Optional[str] = access_token
@@ -786,6 +787,17 @@ class GQLAPIClient:
         urls = response.json()["data"]["csvUploadDownloadUrls"]
         return urls["upload"], urls["download"]
 
+    def _run_start_load_gql_with(self, variables: Dict[str, Any]) -> str:
+        response = self._gql(
+            {
+                "query": START_LOAD,
+                "operationName": "StartExternalRepositoryLoad",
+                "variables": variables,
+            },
+            handle_errors=True,
+        )
+        return str(response.json()["data"]["startExternalRepositoryLoad"]["taskId"])
+
     def start_csv_load(
         self, namespace: str, repository: str, download_urls: List[str], table_names: List[str]
     ) -> str:
@@ -804,15 +816,12 @@ class GQLAPIClient:
             ],
         }
 
-        response = self._gql(
-            {
-                "query": START_LOAD,
-                "operationName": "StartExternalRepositoryLoad",
-                "variables": variables,
-            },
-            handle_errors=True,
-        )
-        return str(response.json()["data"]["startExternalRepositoryLoad"]["taskId"])
+        return self._run_start_load_gql_with(variables)
+
+    def start_load_existing(self, namespace: str, repository: str, sync: bool = True) -> str:
+        variables = {"namespace": namespace, "repository": repository, "sync": sync}
+
+        return self._run_start_load_gql_with(variables)
 
     def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:
         response = self._gql(

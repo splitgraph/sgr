@@ -1021,6 +1021,43 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
             raise ValueError("Error loading data")
 
 
+@click.command("sync")
+@click.option(
+    "-r",
+    "--full-refresh",
+    help="Trigger a full reload instead of an incremental load",
+    is_flag=True,
+)
+@click.option("-w", "--wait", help="Attach to the job and wait for it to finish", is_flag=True)
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("repository", type=str)
+def sync_c(remote, full_refresh, wait, repository):
+    """
+    Trigger an ingestion job for a repository.
+
+    This starts off a load job for an existing/new repository, optionally using a
+    repositories.yml file and waiting for the job to complete before exiting.
+
+    If the repositories.yml file is specified, it will use the settings for that repository
+    from there to override the existing parameters for a repository or to create a new repository.
+    Otherwise, it will use the existing parameters.
+    """
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.core.repository import Repository
+
+    client = GQLAPIClient(remote)
+    repo_obj = Repository.from_schema(repository)
+
+    # TODO: use data in existing repositories.yml for a one-off load; credentials can be tricky.
+    task_id = client.start_load_existing(
+        namespace=repo_obj.namespace, repository=repo_obj.repository, sync=not full_refresh
+    )
+    if not wait:
+        click.echo("Started task %s" % task_id)
+    else:
+        wait_for_load(client, repo_obj.namespace, repo_obj.repository, task_id)
+
+
 @click.group("cloud")
 def cloud_c():
     """Run actions on Splitgraph Cloud."""
@@ -1042,4 +1079,4 @@ cloud_c.add_command(add_c)
 cloud_c.add_command(status_c)
 cloud_c.add_command(logs_c)
 cloud_c.add_command(upload_c)
-# cloud_c.add_command(download_c)
+cloud_c.add_command(sync_c)

@@ -224,6 +224,7 @@ START_LOAD = """mutation StartExternalRepositoryLoad(
   $tableParams: [ExternalTableInput!]
   $credentialData: JSON
   $credentialId: String
+  $sync: Boolean! = true
   $initialVisibility: RepositoryVisibility! = PUBLIC
 ) {
   __typename
@@ -235,6 +236,7 @@ START_LOAD = """mutation StartExternalRepositoryLoad(
     tables: $tableParams
     credentialData: $credentialData
     credentialId: $credentialId
+    sync: $sync
     initialPermissions: { visibility: $initialVisibility }
   ) {
     taskId
