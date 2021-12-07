@@ -557,7 +557,7 @@ def test_commandline_cloud_add(fs_fast):
         "SG_ENGINE_DB_NAME": "sgregistry",
         "SG_ENGINE_HOST": "data.democompany.splitgraph.io",
         "SG_ENGINE_PORT": "5432",
-        "SG_GQL_API": "https://api.democompany.splitgraph.io/gql/cloud/graphql",
+        "SG_GQL_API": "https://api.democompany.splitgraph.io/gql/cloud/unified/graphql",
         "SG_IS_REGISTRY": "true",
         "SG_QUERY_API": "https://data.democompany.splitgraph.io",
     }

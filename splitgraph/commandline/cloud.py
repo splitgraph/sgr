@@ -801,7 +801,7 @@ def add_c(remote, skip_inject, domain_name):
         "SG_ENGINE_DB_NAME": "sgregistry",
         "SG_AUTH_API": f"https://api.{domain_name}/auth",
         "SG_QUERY_API": f"https://data.{domain_name}",
-        "SG_GQL_API": f"https://api.{domain_name}/gql/cloud/graphql",
+        "SG_GQL_API": f"https://api.{domain_name}/gql/cloud/unified/graphql",
     }
 
     click.echo("Adding remote %s to the config. Parameters: %s" % (remote, remote_params_patch))
@@ -967,10 +967,7 @@ def upload_c(remote, file_format, repository, files):
 
     wait_for_load(client, repo_obj.namespace, repo_obj.repository, task_id)
 
-    web_url = (
-        _construct_repo_url(gql_endpoint=client.externals_endpoint, full_repo=repository)
-        + "/-/tables"
-    )
+    web_url = _construct_repo_url(gql_endpoint=client.endpoint, full_repo=repository) + "/-/tables"
     click.echo()
     click.echo(
         "Success. See the repository at " + Color.BLUE + web_url + Color.END + " or query it with:"

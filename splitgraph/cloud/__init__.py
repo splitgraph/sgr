@@ -85,7 +85,7 @@ DEFAULT_REMOTES = {
         "SG_ENGINE_DB_NAME": "sgregistry",
         "SG_AUTH_API": "https://api.splitgraph.com/auth",
         "SG_QUERY_API": "https://data.splitgraph.com",
-        "SG_GQL_API": "https://api.splitgraph.com/gql/cloud/graphql",
+        "SG_GQL_API": "https://api.splitgraph.com/gql/cloud/unified/graphql",
     }
 }
 
@@ -509,15 +509,18 @@ class GQLAPIClient:
 
         if remote:
             self.endpoint = get_remote_param(remote, "SG_GQL_API")
+            if "/cloud/graphql" in self.endpoint:
+                self.endpoint = self.endpoint.replace("/cloud/graphql", "/cloud/unified/graphql")
+                logging.warning(
+                    "The unified Splitgraph API is now at /api/cloud/unified/graphql. "
+                    "Using %s automatically. Replace SG_GQL_API to make this message go away. "
+                )
             self._auth_client: Optional[RESTAPIClient] = RESTAPIClient(remote)
             self._access_token: Optional[str] = access_token
         elif endpoint:
             self.endpoint = endpoint
             self._auth_client = None
             self._access_token = access_token
-
-        self.registry_endpoint = self.endpoint.replace("/cloud/", "/registry/")  # :eyes:
-        self.externals_endpoint = self.endpoint.replace("/cloud/", "/external/v1/")  # :eyes:
 
     @property
     def access_token(self) -> Optional[str]:
@@ -735,7 +738,6 @@ class GQLAPIClient:
                 "variables": {"namespace": namespace, "repository": repository},
             },
             handle_errors=True,
-            endpoint=self.registry_endpoint,
         )
         parsed_response = RepositoryIngestionJobStatusResponse.from_response(response.json())
         nodes = parsed_response.repositoryIngestionJobStatus.nodes
@@ -760,7 +762,6 @@ class GQLAPIClient:
                 "variables": {"namespace": namespace, "repository": repository, "taskId": task_id},
             },
             handle_errors=True,
-            endpoint=self.externals_endpoint,
         )
 
         url = response.json()["data"]["jobLogs"]["url"]
@@ -781,7 +782,6 @@ class GQLAPIClient:
                 "operationName": "CSVURLs",
             },
             handle_errors=True,
-            endpoint=self.externals_endpoint,
         )
         urls = response.json()["data"]["csvUploadDownloadUrls"]
         return urls["upload"], urls["download"]
@@ -810,7 +810,6 @@ class GQLAPIClient:
                 "operationName": "StartExternalRepositoryLoad",
                 "variables": variables,
             },
-            endpoint=self.externals_endpoint,
             handle_errors=True,
         )
         return str(response.json()["data"]["startExternalRepositoryLoad"]["taskId"])
@@ -822,7 +821,6 @@ class GQLAPIClient:
                 "operationName": "GetRepositoryDataSource",
                 "variables": {"namespace": namespace, "repository": repository},
             },
-            endpoint=self.registry_endpoint,
             handle_errors=True,
         )
 
@@ -863,7 +861,6 @@ class GQLAPIClient:
                     "query": GET_REPO_SOURCE % ("", ""),
                     "operationName": "GetRepositoryDataSource",
                 },
-                endpoint=self.registry_endpoint,
                 handle_errors=True,
             )
             parsed_metadata = MetadataResponse.from_response(metadata_r.json())
