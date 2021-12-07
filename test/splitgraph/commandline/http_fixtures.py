@@ -1,11 +1,13 @@
 import json
 from datetime import datetime
+from urllib.parse import urlparse
 
 from splitgraph.cloud import (
     BULK_UPDATE_REPO_SOURCES,
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
     INGESTION_JOB_STATUS,
+    JOB_LOGS,
     PROFILE_UPSERT,
 )
 
@@ -13,6 +15,7 @@ REMOTE = "remote_engine"
 AUTH_ENDPOINT = "http://some-auth-service.example.com"
 GQL_ENDPOINT = "http://some-gql-service.example.com"
 QUERY_ENDPOINT = "http://some-query-service.example.com"
+LOGS_ENDPOINT = "http://some-logs-service.example.com"
 
 ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1ODA1OTQyMzQsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImV4cCI6MTU4MDU5NzgzNCwidXNlcl9pZCI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjY1NTQ0MDAwMCIsImdyYW50IjoiYWNjZXNzIiwidXNlcm5hbWUiOiJzb21ldXNlciIsImlhdCI6MTU4MDU5NDIzNH0.YEuNhqKfFoxHloohfxInSEV9rnivXcF9SvFP72Vv1mDDsaqlRqCjKYM4S7tdSMap5__e3_UTwE_CpH8eI7DdePjMu8AOFXwFHPl34AAxZgavP4Mly0a0vrMsxNJ4KbtmL5-7ih3uneTEuZLt9zQLUh-Bi_UYlEYwGl8xgz5dDZ1YlwTEMsqSrDnXdjl69CTk3vVHIQdxtki4Ng7dZhbOnEdJIRsZi9_VdMlsg2TIU-0FsU2bYYBWktms5hyAAH0RkHYfvjGwIRirSEjxTpO9vci-eAsF8C4ohTUg6tajOcyWz8d7JSaJv_NjLFMZI9mC09hchbQZkw-37CdbS_8Yvw"
 REFRESH_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NzYzMTk5MTYsImlhdCI6MTU3NjMxOTkxNiwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwicmVmcmVzaF90b2tlbl9zZWNyZXQiOiJzb21lc2VjcmV0IiwiZXhwIjoxNTc4OTExOTE2LCJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjU1NDQwMDAwIiwidXNlcm5hbWUiOiJzb21ldXNlciIsInJlZnJlc2hfdG9rZW5fa2V5Ijoic29tZWtleSIsImdyYW50IjoicmVmcmVzaCJ9.lO3nN3Tmu3twwUjrWsVpBq7nHHEvLnOGXeMkXXv4PRBADUAHyhmmaIPzgccq9XlwpLIexBAxTKJ4GaxSQufKUVLbzAKIMHqxiGTzELY6JMyUvMDHKeKNsq6FdhHxXoKa96fHaDDa65eGcSRSKS3Yr-9sBiANMBJGRbwypYw41gf61pewMA8TXqBmA-mvsBzMUaQNz1DfjkkpHs4SCERPK0GhYSJwDAwK8U3wG47S9k-CQqpq2B99yRRrdSVRzA_lcKe7GlF-Pw6hbRR7xBPBtX61pPME5hFUCPcwYWYXa_KhqEx9IF9edt9UahZuBudaVLmTdKKWgE9M53jQofxNzg"
@@ -587,3 +590,33 @@ def gql_job_status():
             raise AssertionError()
 
     return _gql_callback
+
+
+def gql_job_logs():
+    def _gql_callback(request, uri, response_headers):
+        body = json.loads(request.body)
+
+        if body["query"] == JOB_LOGS:
+            namespace, repository, task_id = (
+                body["variables"]["namespace"],
+                body["variables"]["repository"],
+                body["variables"]["taskId"],
+            )
+            url = f"{LOGS_ENDPOINT}/{namespace}/{repository}/{task_id}"
+            response = {"data": {"jobLogs": {"url": url}}}
+            return [
+                200,
+                response_headers,
+                json.dumps(response),
+            ]
+        else:
+            raise AssertionError()
+
+    return _gql_callback
+
+
+def job_log_callback(request, uri, response_headers):
+    parsed = urlparse(uri)
+    if parsed.path.split("/")[-1] == "notfound":
+        return [404, response_headers, f"Logs for {parsed.path} not found!"]
+    return [200, response_headers, f"Logs for {parsed.path}"]
