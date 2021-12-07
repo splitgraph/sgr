@@ -30,6 +30,7 @@ from splitgraph.cloud.models import (
     AddExternalCredentialRequest,
     AddExternalRepositoriesRequest,
     AddExternalRepositoryRequest,
+    External,
     ExternalResponse,
     IngestionJobStatus,
     ListExternalCredentialsResponse,
@@ -821,6 +822,36 @@ class GQLAPIClient:
     def start_load_existing(self, namespace: str, repository: str, sync: bool = True) -> str:
         variables = {"namespace": namespace, "repository": repository, "sync": sync}
 
+        return self._run_start_load_gql_with(variables)
+
+    def start_load_params(
+        self,
+        namespace: str,
+        repository: str,
+        external: External,
+        sync: bool = True,
+        credential_data: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        variables = {
+            "namespace": namespace,
+            "repository": repository,
+            "pluginName": external.plugin,
+            "params": json.dumps(external.params),
+            "tableParams": [
+                {
+                    "name": tn,
+                    "options": json.dumps(to.options),
+                    "schema": [{"name": tc.name, "type": tc.pg_type} for tc in to.schema_],
+                }
+                for tn, to in external.tables.items()
+            ],
+            "sync": sync,
+        }
+
+        if credential_data:
+            variables["credentialData"] = json.dumps(credential_data)
+        elif external.credential_id:
+            variables["credentialId"] = external.credential_id
         return self._run_start_load_gql_with(variables)
 
     def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:

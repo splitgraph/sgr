@@ -10,7 +10,8 @@ import sys
 import time
 from copy import copy
 from glob import glob
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote, urlparse
 
 import click
@@ -28,6 +29,8 @@ from splitgraph.core.output import Color, pluralise
 
 if TYPE_CHECKING:
     from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.models import External
+    from splitgraph.core.repository import Repository as CoreRepository
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 _DDN_DBNAME = "ddn"
@@ -1022,6 +1025,7 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
 
 
 @click.command("sync")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option(
     "-r",
     "--full-refresh",
@@ -1029,9 +1033,10 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
     is_flag=True,
 )
 @click.option("-w", "--wait", help="Attach to the job and wait for it to finish", is_flag=True)
-@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("-u", "--use-file", is_flag=True, help="Use a YAML file with repository settings")
+@click.option("-f", "--repositories-file", default="repositories.yml", type=click.Path())
 @click.argument("repository", type=str)
-def sync_c(remote, full_refresh, wait, repository):
+def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     """
     Trigger an ingestion job for a repository.
 
@@ -1048,14 +1053,66 @@ def sync_c(remote, full_refresh, wait, repository):
     client = GQLAPIClient(remote)
     repo_obj = Repository.from_schema(repository)
 
-    # TODO: use data in existing repositories.yml for a one-off load; credentials can be tricky.
-    task_id = client.start_load_existing(
-        namespace=repo_obj.namespace, repository=repo_obj.repository, sync=not full_refresh
-    )
+    # TODO:
+    #   * tests for both branches
+    #     * consider splitting commands for better UX? (flags kinda weird)
+    #   * _get_external_from_yaml: load credential IDs like in sgr cloud load?
+    #   * think through the use cases and how to set up credentials
+    #   * single GQLAPIClient function to call START_LOAD sufficient?
+    if not use_file:
+        task_id = client.start_load_existing(
+            namespace=repo_obj.namespace, repository=repo_obj.repository, sync=not full_refresh
+        )
+    else:
+        external, credential_data = _get_external_from_yaml(repositories_file, repo_obj)
+
+        task_id = client.start_load_params(
+            namespace=repo_obj.namespace,
+            repository=repo_obj.repository,
+            external=external,
+            sync=not full_refresh,
+            credential_data=credential_data,
+        )
+
     if not wait:
         click.echo("Started task %s" % task_id)
     else:
         wait_for_load(client, repo_obj.namespace, repo_obj.repository, task_id)
+
+
+def _get_external_from_yaml(
+    repositories_file: Path, repo_obj: "CoreRepository"
+) -> Tuple["External", Optional[Dict[str, Any]]]:
+    import yaml
+
+    with open(repositories_file) as f:
+        repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(f))
+
+    for repo_settings in repo_yaml.repositories:
+        if (
+            repo_settings.namespace == repo_obj.namespace
+            and repo_settings.repository == repo_obj.repository
+        ):
+            break
+    else:
+        raise click.UsageError(
+            "Repository %s not found in the repositories.yml file" % repo_obj.to_schema()
+        )
+    if not repo_settings.external:
+        raise click.UsageError(
+            "Repository %s doesn't have external settings" % repo_obj.to_schema()
+        )
+    credential_data = None
+    if repo_settings.external.credential:
+        if (
+            not repo_yaml.credentials
+            or repo_settings.external.credential not in repo_yaml.credentials
+        ):
+            raise click.UsageError(
+                "Credential %s not defined in repositories.yml" % repo_settings.external.credential
+            )
+        credential_data = repo_yaml.credentials[repo_settings.external.credential].data
+    return repo_settings.external, credential_data
 
 
 @click.group("cloud")
