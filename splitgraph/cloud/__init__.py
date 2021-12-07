@@ -31,6 +31,7 @@ from splitgraph.cloud.models import (
     AddExternalRepositoriesRequest,
     AddExternalRepositoryRequest,
     ExternalResponse,
+    IngestionJobStatus,
     ListExternalCredentialsResponse,
     Metadata,
     MetadataResponse,
@@ -44,6 +45,7 @@ from splitgraph.cloud.queries import (
     BULK_UPDATE_REPO_SOURCES,
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
+    CSV_URL,
     FIND_REPO,
     GET_REPO_METADATA,
     GET_REPO_SOURCE,
@@ -52,7 +54,6 @@ from splitgraph.cloud.queries import (
     PROFILE_UPSERT,
     REPO_CONDITIONS,
     REPO_PARAMS,
-    CSV_URL,
     START_LOAD,
 )
 from splitgraph.config import CONFIG, create_config_dict, get_singleton
@@ -726,7 +727,7 @@ class GQLAPIClient:
 
     def get_latest_ingestion_job_status(
         self, namespace: str, repository: str
-    ) -> RepositoryIngestionJobStatusResponse:
+    ) -> Optional[IngestionJobStatus]:
         response = self._gql(
             {
                 "query": INGESTION_JOB_STATUS,
@@ -736,8 +737,20 @@ class GQLAPIClient:
             handle_errors=True,
             endpoint=self.registry_endpoint,
         )
-
-        return RepositoryIngestionJobStatusResponse.from_response(response.json())
+        parsed_response = RepositoryIngestionJobStatusResponse.from_response(response.json())
+        nodes = parsed_response.repositoryIngestionJobStatus.nodes
+        if not nodes:
+            return None
+        else:
+            assert len(nodes) == 1
+            node = nodes[0]
+            return IngestionJobStatus(
+                task_id=node.taskId,
+                started=node.started,
+                finished=node.finished,
+                is_manual=node.isManual,
+                status=node.status,
+            )
 
     def get_ingestion_job_logs(self, namespace: str, repository: str, task_id: str) -> str:
         response = self._gql(
@@ -800,7 +813,7 @@ class GQLAPIClient:
             endpoint=self.externals_endpoint,
             handle_errors=True,
         )
-        return response.json()["data"]["startExternalRepositoryLoad"]["taskId"]
+        return str(response.json()["data"]["startExternalRepositoryLoad"]["taskId"])
 
     def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:
         response = self._gql(

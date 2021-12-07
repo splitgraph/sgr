@@ -2,8 +2,8 @@
 Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
 with repositories and their metadata.
 """
-from datetime import datetime
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
@@ -201,6 +201,14 @@ class ExternalResponse(BaseModel):
             tables=tables,
             schedule=ingestion_schedule,
         )
+
+
+class IngestionJobStatus(BaseModel):
+    task_id: str
+    started: datetime
+    finished: Optional[datetime]
+    is_manual: bool
+    status: Optional[str]
 
 
 class RepositoryIngestionJobStatusResponse(BaseModel):

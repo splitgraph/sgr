@@ -10,7 +10,7 @@ import sys
 import time
 from copy import copy
 from glob import glob
-from typing import Dict, List, Optional, Tuple, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote, urlparse
 
 import click
@@ -22,7 +22,6 @@ from splitgraph.cloud.models import (
 )
 from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
 from splitgraph.commandline.engine import inject_config_into_engines
-
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.core.output import Color, pluralise
@@ -851,19 +850,18 @@ def status_c(remote, repositories_file, repositories):
         repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(repositories_file))
         repo_list = [(r.namespace, r.repository) for r in repo_yaml.repositories]
 
-    table = []
+    table: List[Tuple] = []
     for namespace, repository in repo_list:
         job_status = client.get_latest_ingestion_job_status(namespace, repository)
-        if job_status.repositoryIngestionJobStatus.nodes:
-            n = job_status.repositoryIngestionJobStatus.nodes[0]
+        if job_status:
             table.append(
                 (
                     namespace + "/" + repository,
-                    n.taskId,
-                    n.started,
-                    n.finished,
-                    n.isManual,
-                    n.status,
+                    job_status.task_id,
+                    job_status.started,
+                    job_status.finished,
+                    job_status.is_manual,
+                    job_status.status,
                 )
             )
         else:
@@ -913,11 +911,11 @@ def upload_c(remote, file_format, repository, files):
     """
     Upload files to Splitgraph
     """
+    import requests
     from splitgraph.cloud import GQLAPIClient
     from splitgraph.core.repository import Repository
     from tqdm import tqdm
     from tqdm.utils import CallbackIOWrapper
-    import requests
 
     client = GQLAPIClient(remote)
 
@@ -968,28 +966,26 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
     spinner = itertools.cycle(chars)
 
     interval = 0
-    status = "STARTED"
+    status_str: Optional[str] = "STARTED"
     while True:
         if interval % 50 == 0:
             status = client.get_latest_ingestion_job_status(namespace, repository)
-            nodes = status.repositoryIngestionJobStatus.nodes
-            if not nodes:
-                raise AssertionError("Unknown repository")
-            node = nodes[0]
-            if node.taskId != task_id:
+            if not status:
+                raise AssertionError("Ingestion job not found")
+            if status.task_id != task_id:
                 raise AssertionError("Unexpected task ID")
-            status = nodes[0].status
+            status_str = status.status
 
         click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
-        click.echo(f" ({status}) Loading {namespace}/{repository}, task ID {task_id}", nl=False)
+        click.echo(f" ({status_str}) Loading {namespace}/{repository}, task ID {task_id}", nl=False)
         sys.stdout.flush()
         time.sleep(0.1)
         interval += 1
 
-        if status == "SUCCESS":
+        if status_str == "SUCCESS":
             click.echo()
             return
-        if status == "FAILURE":
+        if status_str == "FAILURE":
             click.echo()
             logs = client.get_ingestion_job_logs(
                 namespace=namespace, repository=repository, task_id=task_id
