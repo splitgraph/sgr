@@ -1,4 +1,5 @@
 import json
+import random
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -6,16 +7,18 @@ from splitgraph.cloud import (
     BULK_UPDATE_REPO_SOURCES,
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
+    CSV_URL,
     INGESTION_JOB_STATUS,
     JOB_LOGS,
     PROFILE_UPSERT,
+    START_LOAD,
 )
 
 REMOTE = "remote_engine"
 AUTH_ENDPOINT = "http://some-auth-service.example.com"
 GQL_ENDPOINT = "http://some-gql-service.example.com"
 QUERY_ENDPOINT = "http://some-query-service.example.com"
-LOGS_ENDPOINT = "http://some-logs-service.example.com"
+STORAGE_ENDPOINT = "http://some-storage-service.example.com"
 
 ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1ODA1OTQyMzQsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImV4cCI6MTU4MDU5NzgzNCwidXNlcl9pZCI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjY1NTQ0MDAwMCIsImdyYW50IjoiYWNjZXNzIiwidXNlcm5hbWUiOiJzb21ldXNlciIsImlhdCI6MTU4MDU5NDIzNH0.YEuNhqKfFoxHloohfxInSEV9rnivXcF9SvFP72Vv1mDDsaqlRqCjKYM4S7tdSMap5__e3_UTwE_CpH8eI7DdePjMu8AOFXwFHPl34AAxZgavP4Mly0a0vrMsxNJ4KbtmL5-7ih3uneTEuZLt9zQLUh-Bi_UYlEYwGl8xgz5dDZ1YlwTEMsqSrDnXdjl69CTk3vVHIQdxtki4Ng7dZhbOnEdJIRsZi9_VdMlsg2TIU-0FsU2bYYBWktms5hyAAH0RkHYfvjGwIRirSEjxTpO9vci-eAsF8C4ohTUg6tajOcyWz8d7JSaJv_NjLFMZI9mC09hchbQZkw-37CdbS_8Yvw"
 REFRESH_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NzYzMTk5MTYsImlhdCI6MTU3NjMxOTkxNiwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwicmVmcmVzaF90b2tlbl9zZWNyZXQiOiJzb21lc2VjcmV0IiwiZXhwIjoxNTc4OTExOTE2LCJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjU1NDQwMDAwIiwidXNlcm5hbWUiOiJzb21ldXNlciIsInJlZnJlc2hfdG9rZW5fa2V5Ijoic29tZWtleSIsImdyYW50IjoicmVmcmVzaCJ9.lO3nN3Tmu3twwUjrWsVpBq7nHHEvLnOGXeMkXXv4PRBADUAHyhmmaIPzgccq9XlwpLIexBAxTKJ4GaxSQufKUVLbzAKIMHqxiGTzELY6JMyUvMDHKeKNsq6FdhHxXoKa96fHaDDa65eGcSRSKS3Yr-9sBiANMBJGRbwypYw41gf61pewMA8TXqBmA-mvsBzMUaQNz1DfjkkpHs4SCERPK0GhYSJwDAwK8U3wG47S9k-CQqpq2B99yRRrdSVRzA_lcKe7GlF-Pw6hbRR7xBPBtX61pPME5hFUCPcwYWYXa_KhqEx9IF9edt9UahZuBudaVLmTdKKWgE9M53jQofxNzg"
@@ -597,22 +600,26 @@ def gql_job_logs():
         body = json.loads(request.body)
 
         if body["query"] == JOB_LOGS:
-            namespace, repository, task_id = (
-                body["variables"]["namespace"],
-                body["variables"]["repository"],
-                body["variables"]["taskId"],
-            )
-            url = f"{LOGS_ENDPOINT}/{namespace}/{repository}/{task_id}"
-            response = {"data": {"jobLogs": {"url": url}}}
-            return [
-                200,
-                response_headers,
-                json.dumps(response),
-            ]
+            return mock_gql_job_logs(body, response_headers)
         else:
             raise AssertionError()
 
     return _gql_callback
+
+
+def mock_gql_job_logs(body, response_headers):
+    namespace, repository, task_id = (
+        body["variables"]["namespace"],
+        body["variables"]["repository"],
+        body["variables"]["taskId"],
+    )
+    url = f"{STORAGE_ENDPOINT}/{namespace}/{repository}/{task_id}"
+    response = {"data": {"jobLogs": {"url": url}}}
+    return [
+        200,
+        response_headers,
+        json.dumps(response),
+    ]
 
 
 def job_log_callback(request, uri, response_headers):
@@ -620,3 +627,92 @@ def job_log_callback(request, uri, response_headers):
     if parsed.path.split("/")[-1] == "notfound":
         return [404, response_headers, f"Logs for {parsed.path} not found!"]
     return [200, response_headers, f"Logs for {parsed.path}"]
+
+
+def gql_upload(namespace, repository, final_status="SUCCESS"):
+    status_call_count = 0
+    upload_links = []
+    download_links = []
+
+    def _gql_callback(request, uri, response_headers):
+        nonlocal download_links
+        nonlocal upload_links
+        body = json.loads(request.body)
+
+        if body["query"] == JOB_LOGS:
+            return mock_gql_job_logs(body, response_headers)
+        elif body["query"] == CSV_URL:
+            upload_id = "{0:016x}".format(random.getrandbits(64))
+            download_links.append(f"{STORAGE_ENDPOINT}/download/{upload_id}")
+            upload_links.append(f"{STORAGE_ENDPOINT}/upload/{upload_id}")
+
+            return [
+                200,
+                response_headers,
+                json.dumps(
+                    {
+                        "data": {
+                            "csvUploadDownloadUrls": {
+                                "upload": upload_links[-1],
+                                "download": download_links[-1],
+                            }
+                        }
+                    }
+                ),
+            ]
+        elif body["query"] == START_LOAD:
+            assert body["variables"] == {
+                "namespace": "someuser",
+                "repository": "somerepo_1",
+                "pluginName": "csv",
+                "params": '{"connection": {"connection_type": "http", "url": ""}}',
+                "tableParams": [
+                    {
+                        "name": "base_df",
+                        "options": f'{{"url": "{download_links[0]}"}}',
+                        "schema": [],
+                    },
+                    {
+                        "name": "patch_df",
+                        "options": f'{{"url": "{download_links[1]}"}}',
+                        "schema": [],
+                    },
+                ],
+            }
+            return [
+                200,
+                response_headers,
+                json.dumps({"data": {"startExternalRepositoryLoad": {"taskId": "ingest_task"}}}),
+            ]
+        elif body["query"] == INGESTION_JOB_STATUS:
+            nonlocal status_call_count
+            if status_call_count == 0:
+                status = {
+                    "taskId": "ingest_task",
+                    "started": str(datetime(2021, 1, 1, 0, 0, 0)),
+                    "finished": None,
+                    "isManual": False,
+                    "status": "STARTED",
+                }
+                status_call_count = 1
+            else:
+                status = {
+                    "taskId": "ingest_task",
+                    "started": str(datetime(2021, 1, 1, 0, 0, 0)),
+                    "finished": str(datetime(2021, 1, 1, 1, 0, 0)),
+                    "isManual": False,
+                    "status": final_status,
+                }
+            return [
+                200,
+                response_headers,
+                json.dumps({"data": {"repositoryIngestionJobStatus": {"nodes": [status]}}}),
+            ]
+        raise AssertionError()
+
+    def _file_upload_callback(request, uri, response_headers):
+        assert uri in upload_links
+        assert b"fruit_id,timestamp,name" in request.body
+        return [200, response_headers, ""]
+
+    return _gql_callback, _file_upload_callback

@@ -3,9 +3,10 @@ import re
 from test.splitgraph.commandline.http_fixtures import (
     ACCESS_TOKEN,
     GQL_ENDPOINT,
-    LOGS_ENDPOINT,
+    STORAGE_ENDPOINT,
     gql_job_logs,
     gql_job_status,
+    gql_upload,
     job_log_callback,
 )
 from test.splitgraph.conftest import RESOURCES
@@ -15,7 +16,7 @@ import httpretty
 import pytest
 import requests
 from click.testing import CliRunner
-from splitgraph.commandline.cloud import logs_c, status_c
+from splitgraph.commandline.cloud import _deduplicate_items, logs_c, status_c, upload_c
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -95,7 +96,7 @@ def test_job_logs():
 
     httpretty.register_uri(
         httpretty.HTTPretty.GET,
-        re.compile(re.escape(LOGS_ENDPOINT + "/") + ".*"),
+        re.compile(re.escape(STORAGE_ENDPOINT + "/") + ".*"),
         body=job_log_callback,
     )
 
@@ -113,6 +114,74 @@ def test_job_logs():
         assert result.stdout == "Logs for /someuser/somerepo_1/sometask\n"
 
         with pytest.raises(requests.exceptions.HTTPError, match="404 Client Error: Not Found"):
-            result = runner.invoke(
-                logs_c, ["someuser/somerepo_1", "notfound"], catch_exceptions=False
+            runner.invoke(logs_c, ["someuser/somerepo_1", "notfound"], catch_exceptions=False)
+
+
+def test_deduplicate_items():
+    assert _deduplicate_items(["item", "otheritem", "otheritem"]) == [
+        "item",
+        "otheritem_000",
+        "otheritem_001",
+    ]
+    assert _deduplicate_items(["otheritem", "item"]) == ["otheritem", "item"]
+
+
+@httpretty.activate(allow_net_connect=False)
+@pytest.mark.parametrize("success", (True, False))
+def test_csv_upload(success):
+    gql_upload_cb, file_upload_cb = gql_upload(
+        namespace="someuser",
+        repository="somerepo_1",
+        final_status="SUCCESS" if success else "FAILURE",
+    )
+
+    runner = CliRunner(mix_stderr=False)
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        GQL_ENDPOINT + "/",
+        body=gql_upload_cb,
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.PUT,
+        re.compile(re.escape(STORAGE_ENDPOINT + "/") + ".*"),
+        body=file_upload_cb,
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.GET,
+        re.compile(re.escape(STORAGE_ENDPOINT + "/") + ".*"),
+        body=job_log_callback,
+    )
+
+    with patch(
+        "splitgraph.cloud.RESTAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=ACCESS_TOKEN,
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT), patch(
+        "splitgraph.commandline.cloud.GQL_POLL_TIME", 0
+    ):
+        # Also patch out the poll frequency so that we don't wait between calls to the job
+        # status endpoint.
+        result = runner.invoke(
+            upload_c,
+            [
+                "someuser/somerepo_1",
+                os.path.join(RESOURCES, "ingestion", "csv", "base_df.csv"),
+                os.path.join(RESOURCES, "ingestion", "csv", "patch_df.csv"),
+            ],
+        )
+
+        if success:
+            assert result.exit_code == 0
+            assert "(STARTED) Loading someuser/somerepo_1, task ID ingest_task" in result.stdout
+            assert "(SUCCESS) Loading someuser/somerepo_1, task ID ingest_task" in result.stdout
+            assert (
+                "See the repository at http://www.example.com/someuser/somerepo_1/-/tables"
+                in result.stdout
             )
+        else:
+            assert result.exit_code == 1
+            assert "(FAILURE) Loading someuser/somerepo_1, task ID ingest_task" in result.stdout
+            # Check we got the job logs
+            assert "Logs for /someuser/somerepo_1/ingest_task" in result.stdout

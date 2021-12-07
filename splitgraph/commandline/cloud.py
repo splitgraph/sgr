@@ -978,14 +978,19 @@ def upload_c(remote, file_format, repository, files):
     click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names[0]}"\'')
 
 
+GQL_POLL_TIME = 5
+SPINNER_FREQUENCY = 10
+
+
 def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
     chars = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
     spinner = itertools.cycle(chars)
 
     interval = 0
+    poll_interval = max(int(SPINNER_FREQUENCY * GQL_POLL_TIME), 1)
     status_str: Optional[str] = "STARTED"
     while True:
-        if interval % 50 == 0:
+        if interval % poll_interval == 0:
             status = client.get_latest_ingestion_job_status(namespace, repository)
             if not status:
                 raise AssertionError("Ingestion job not found")
@@ -996,7 +1001,7 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
         click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
         click.echo(f" ({status_str}) Loading {namespace}/{repository}, task ID {task_id}", nl=False)
         sys.stdout.flush()
-        time.sleep(0.1)
+        time.sleep(1.0 / SPINNER_FREQUENCY)
         interval += 1
 
         if status_str == "SUCCESS":
