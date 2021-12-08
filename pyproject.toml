@@ -27,6 +27,9 @@ jsonschema = ">=3.1.0"
 cryptography = ">=3.4.0"
 pydantic = ">=1.8.1"
 chardet = "^4.0.0"
+# Manipulating repositories.yaml with comments roundtripping
+# TODO use this everywhere instead of pyyaml
+"ruamel.yaml" = "^0.17.17"
 
 # Socrata dataset mounting.
 # This could be optional but it's very lightweight (only requires requests).
