@@ -29,7 +29,7 @@ from splitgraph.core.output import Color, pluralise
 
 if TYPE_CHECKING:
     from splitgraph.cloud import GQLAPIClient
-    from splitgraph.cloud.models import External
+    from splitgraph.cloud.models import External, Repository
     from splitgraph.core.repository import Repository as CoreRepository
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
@@ -730,7 +730,7 @@ def _build_credential_map(auth_client, credentials=None):
     return credential_map
 
 
-def _dump_readmes_to_dir(repositories, readme_dir):
+def _dump_readmes_to_dir(repositories: List["Repository"], readme_dir: str) -> None:
     """
     READMEs aren't rendering very nicely in YAML so we instead write them out to
     individual files and replace the README contents with their file paths.
@@ -830,7 +830,7 @@ def add_c(remote, skip_inject, domain_name):
 @click.command("status")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option("--repositories-file", "-f", default="repositories.yml", type=click.Path())
-@click.argument("repositories", type=str, nargs=-1)
+@click.argument("repositories", type=RepositoryType(exists=False), nargs=-1)
 def status_c(remote, repositories_file, repositories):
     """
     Get job statuses for given repositories.
@@ -841,16 +841,12 @@ def status_c(remote, repositories_file, repositories):
     """
     import yaml
     from splitgraph.cloud import GQLAPIClient
-    from splitgraph.core.repository import Repository
     from tabulate import tabulate
 
-    repo_list: List[Tuple[str, str]] = []
     client = GQLAPIClient(remote)
 
     if repositories:
-        for repo_name in repositories:
-            repo_obj = Repository.from_schema(repo_name)
-            repo_list.append((repo_obj.namespace, repo_obj.repository))
+        repo_list = [(r.namespace, r.repository) for r in repositories]
     else:
         with open(repositories_file, "r") as f:
             repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(f))
@@ -890,7 +886,7 @@ def status_c(remote, repositories_file, repositories):
 
 @click.command("logs")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.argument("repository", type=str)
+@click.argument("repository", type=RepositoryType(exists=False))
 @click.argument("task_id", type=str)
 def logs_c(remote, repository, task_id):
     """
@@ -900,13 +896,11 @@ def logs_c(remote, repository, task_id):
     Use `sgr cloud status` to get a list of ingestion jobs and their recent task IDs.
     """
     from splitgraph.cloud import GQLAPIClient
-    from splitgraph.core.repository import Repository
 
     client = GQLAPIClient(remote)
 
-    repo_obj = Repository.from_schema(repository)
     logs = client.get_ingestion_job_logs(
-        namespace=repo_obj.namespace, repository=repo_obj.repository, task_id=task_id
+        namespace=repository.namespace, repository=repository.repository, task_id=task_id
     )
     click.echo(logs)
 
@@ -934,7 +928,7 @@ def _deduplicate_items(items: List[str]) -> List[str]:
 @click.command("upload")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option("--file-format", default="csv", type=click.Choice(["csv"]))
-@click.argument("repository", type=str)
+@click.argument("repository", type=RepositoryType(exists=False))
 @click.argument("files", type=click.File("rb"), nargs=-1)
 def upload_c(remote, file_format, repository, files):
     """
@@ -945,13 +939,10 @@ def upload_c(remote, file_format, repository, files):
     """
     import requests
     from splitgraph.cloud import GQLAPIClient
-    from splitgraph.core.repository import Repository
     from tqdm import tqdm
     from tqdm.utils import CallbackIOWrapper
 
     client = GQLAPIClient(remote)
-
-    repo_obj = Repository.from_schema(repository)
 
     click.echo("Uploading the files...")
 
@@ -971,10 +962,10 @@ def upload_c(remote, file_format, repository, files):
             requests.put(upload, data=wrapped_file)
 
     task_id = client.start_csv_load(
-        repo_obj.namespace, repo_obj.repository, download_urls, table_names
+        repository.namespace, repository.repository, download_urls, table_names
     )
 
-    wait_for_load(client, repo_obj.namespace, repo_obj.repository, task_id)
+    wait_for_load(client, repository.namespace, repository.repository, task_id)
 
     web_url = _construct_repo_url(gql_endpoint=client.endpoint, full_repo=repository) + "/-/tables"
     click.echo()
@@ -1035,7 +1026,7 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
 @click.option("-w", "--wait", help="Attach to the job and wait for it to finish", is_flag=True)
 @click.option("-u", "--use-file", is_flag=True, help="Use a YAML file with repository settings")
 @click.option("-f", "--repositories-file", default="repositories.yml", type=click.Path())
-@click.argument("repository", type=str)
+@click.argument("repository", type=RepositoryType(exists=False))
 def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     """
     Trigger an ingestion job for a repository.
@@ -1048,10 +1039,8 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     Otherwise, it will use the existing parameters.
     """
     from splitgraph.cloud import GQLAPIClient
-    from splitgraph.core.repository import Repository
 
     client = GQLAPIClient(remote)
-    repo_obj = Repository.from_schema(repository)
 
     # TODO:
     #   * tests for both branches
@@ -1061,14 +1050,14 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     #   * single GQLAPIClient function to call START_LOAD sufficient?
     if not use_file:
         task_id = client.start_load_existing(
-            namespace=repo_obj.namespace, repository=repo_obj.repository, sync=not full_refresh
+            namespace=repository.namespace, repository=repository.repository, sync=not full_refresh
         )
     else:
-        external, credential_data = _get_external_from_yaml(repositories_file, repo_obj)
+        external, credential_data = _get_external_from_yaml(repositories_file, repository)
 
         task_id = client.start_load_params(
-            namespace=repo_obj.namespace,
-            repository=repo_obj.repository,
+            namespace=repository.namespace,
+            repository=repository.repository,
             external=external,
             sync=not full_refresh,
             credential_data=credential_data,
@@ -1077,7 +1066,7 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     if not wait:
         click.echo("Started task %s" % task_id)
     else:
-        wait_for_load(client, repo_obj.namespace, repo_obj.repository, task_id)
+        wait_for_load(client, repository.namespace, repository.repository, task_id)
 
 
 def _get_external_from_yaml(
