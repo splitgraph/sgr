@@ -1135,6 +1135,30 @@ def plugins_c(remote, filter_plugins):
     )
 
 
+@click.command("stub")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("plugin_name", type=str)
+@click.argument("repository", type=RepositoryType(exists=False))
+@click.argument("output_file", type=click.File("w"), default="-")
+def stub_c(remote, plugin_name, repository, output_file):
+    """Generate a repositories.yml stub file for a given plugin"""
+    import ruamel.yaml
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.project.generation import stub_plugin
+
+    client = GQLAPIClient(remote)
+
+    # TODO: get one plugin using the GQL API
+    plugins = [p for p in client.get_all_plugins() if p.plugin_name == plugin_name]
+    if not plugins:
+        raise click.UsageError("Plugin %s not found on remote %s" % (plugin_name, remote))
+    plugin = plugins[0]
+
+    yml = ruamel.yaml.YAML()
+    output = stub_plugin(plugin, repository.namespace, repository.repository)
+    yml.dump(output, output_file)
+
+
 @click.group("cloud")
 def cloud_c():
     """Run actions on Splitgraph Cloud."""
@@ -1158,3 +1182,4 @@ cloud_c.add_command(logs_c)
 cloud_c.add_command(upload_c)
 cloud_c.add_command(sync_c)
 cloud_c.add_command(plugins_c)
+cloud_c.add_command(stub_c)
