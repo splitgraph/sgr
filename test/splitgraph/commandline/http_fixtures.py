@@ -716,3 +716,52 @@ def gql_upload(namespace, repository, final_status="SUCCESS"):
         return [200, response_headers, ""]
 
     return _gql_callback, _file_upload_callback
+
+
+def gql_sync(namespace, repository, is_existing=True, is_sync=True):
+    def _gql_callback(request, uri, response_headers):
+        body = json.loads(request.body)
+
+        if body["query"] == START_LOAD:
+            if is_existing:
+                assert body["variables"] == {
+                    "namespace": namespace,
+                    "repository": repository,
+                    "sync": is_sync,
+                }
+            else:
+                assert body["variables"] == {
+                    "namespace": "otheruser",
+                    "repository": "somerepo_2",
+                    "pluginName": "plugin",
+                    "params": '{"plugin": "specific", "params": "here"}',
+                    "tableParams": [
+                        {
+                            "name": "table_1",
+                            "options": '{"param_1": "val_1"}',
+                            "schema": [
+                                {"name": "id", "pgType": "text"},
+                                {"name": "val", "pgType": "text"},
+                            ],
+                        },
+                        {"name": "table_2", "options": '{"param_1": "val_2"}', "schema": []},
+                        {
+                            "name": "table_3",
+                            "options": "{}",
+                            "schema": [
+                                {"name": "id", "pgType": "text"},
+                                {"name": "val", "pgType": "text"},
+                            ],
+                        },
+                    ],
+                    "sync": True,
+                    "credentialData": '{"username": "my_username", "password": "secret"}',
+                }
+            return [
+                200,
+                response_headers,
+                json.dumps({"data": {"startExternalRepositoryLoad": {"taskId": "ingest_task"}}}),
+            ]
+        raise AssertionError()
+
+    return _gql_callback

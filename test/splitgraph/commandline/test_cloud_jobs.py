@@ -1,22 +1,34 @@
 import os
 import re
+from pathlib import Path
 from test.splitgraph.commandline.http_fixtures import (
     ACCESS_TOKEN,
     GQL_ENDPOINT,
     STORAGE_ENDPOINT,
     gql_job_logs,
     gql_job_status,
+    gql_sync,
     gql_upload,
     job_log_callback,
 )
 from test.splitgraph.conftest import RESOURCES
-from unittest.mock import PropertyMock, patch
+from unittest import mock
+from unittest.mock import PropertyMock, call, patch
 
+import click
 import httpretty
 import pytest
 import requests
 from click.testing import CliRunner
-from splitgraph.commandline.cloud import _deduplicate_items, logs_c, status_c, upload_c
+from splitgraph.commandline.cloud import (
+    _deduplicate_items,
+    _get_external_from_yaml,
+    logs_c,
+    status_c,
+    sync_c,
+    upload_c,
+)
+from splitgraph.core.repository import Repository
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -185,3 +197,92 @@ def test_csv_upload(success):
             assert "(FAILURE) Loading someuser/somerepo_1, task ID ingest_task" in result.stdout
             # Check we got the job logs
             assert "Logs for /someuser/somerepo_1/ingest_task" in result.stdout
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_sync_existing():
+    gql_sync_cb = gql_sync("someuser", "somerepo_1")
+    runner = CliRunner(mix_stderr=False)
+    httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/", body=gql_sync_cb)
+
+    with patch(
+        "splitgraph.cloud.RESTAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=ACCESS_TOKEN,
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
+        result = runner.invoke(
+            sync_c,
+            [
+                "someuser/somerepo_1",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Started task ingest_task" in result.stdout
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_sync_yaml_file():
+    gql_sync_cb = gql_sync("otheruser", "somerepo_2", is_existing=False)
+    runner = CliRunner(mix_stderr=False)
+    httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/", body=gql_sync_cb)
+
+    with patch(
+        "splitgraph.cloud.RESTAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=ACCESS_TOKEN,
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
+        result = runner.invoke(
+            sync_c,
+            [
+                "--use-file",
+                "--repositories-file",
+                os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
+                "otheruser/somerepo_2",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        assert "Started task ingest_task" in result.stdout
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_sync_wait():
+    gql_sync_cb = gql_sync("someuser", "somerepo_1")
+    runner = CliRunner(mix_stderr=False)
+    httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/", body=gql_sync_cb)
+
+    with patch(
+        "splitgraph.cloud.RESTAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=ACCESS_TOKEN,
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT), patch(
+        "splitgraph.commandline.cloud.wait_for_load"
+    ) as wfl:
+        result = runner.invoke(
+            sync_c,
+            [
+                "--wait",
+                "someuser/somerepo_1",
+            ],
+        )
+        assert result.exit_code == 0
+
+        assert wfl.mock_calls == [call(mock.ANY, "someuser", "somerepo_1", "ingest_task")]
+
+
+def test_get_external_from_yaml():
+    path = Path(os.path.join(RESOURCES, "repositories_yml", "repositories.yml"))
+
+    with pytest.raises(click.UsageError, match="Repository doesnt/exist not found"):
+        _get_external_from_yaml(path, Repository("doesnt", "exist"))
+
+    with pytest.raises(click.UsageError, match="Credential my_other_credential not defined"):
+        _get_external_from_yaml(path, Repository("someuser", "somerepo_1"))
+
+    external, credentials = _get_external_from_yaml(path, Repository("someuser", "somerepo_2"))
+    assert external.plugin == "plugin_3"
+    assert credentials is None
+
+    external, credentials = _get_external_from_yaml(path, Repository("otheruser", "somerepo_2"))
+    assert external.plugin == "plugin"
+    assert credentials == {"username": "my_username", "password": "secret"}

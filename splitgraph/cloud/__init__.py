@@ -513,7 +513,7 @@ class GQLAPIClient:
             if "/cloud/graphql" in self.endpoint:
                 self.endpoint = self.endpoint.replace("/cloud/graphql", "/cloud/unified/graphql")
                 logging.warning(
-                    "The unified Splitgraph API is now at /api/cloud/unified/graphql. "
+                    "The unified Splitgraph API is now at /gql/cloud/unified/graphql. "
                     "Using %s automatically. Replace SG_GQL_API to make this message go away. ",
                     self.endpoint,
                 )
@@ -841,7 +841,7 @@ class GQLAPIClient:
                 {
                     "name": tn,
                     "options": json.dumps(to.options),
-                    "schema": [{"name": tc.name, "type": tc.pg_type} for tc in to.schema_],
+                    "schema": [{"name": tc.name, "pgType": tc.pg_type} for tc in to.schema_],
                 }
                 for tn, to in external.tables.items()
             ],

@@ -1043,8 +1043,7 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     client = GQLAPIClient(remote)
 
     # TODO:
-    #   * tests for both branches
-    #     * consider splitting commands for better UX? (flags kinda weird)
+    #   * consider splitting commands for better UX? (flags kinda weird)
     #   * _get_external_from_yaml: load credential IDs like in sgr cloud load?
     #   * think through the use cases and how to set up credentials
     #   * single GQLAPIClient function to call START_LOAD sufficient?
@@ -1070,7 +1069,7 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
 
 
 def _get_external_from_yaml(
-    repositories_file: Path, repo_obj: "CoreRepository"
+    repositories_file: Path, repository: "CoreRepository"
 ) -> Tuple["External", Optional[Dict[str, Any]]]:
     import yaml
 
@@ -1079,17 +1078,17 @@ def _get_external_from_yaml(
 
     for repo_settings in repo_yaml.repositories:
         if (
-            repo_settings.namespace == repo_obj.namespace
-            and repo_settings.repository == repo_obj.repository
+            repo_settings.namespace == repository.namespace
+            and repo_settings.repository == repository.repository
         ):
             break
     else:
         raise click.UsageError(
-            "Repository %s not found in the repositories.yml file" % repo_obj.to_schema()
+            "Repository %s not found in the repositories.yml file" % repository.to_schema()
         )
     if not repo_settings.external:
         raise click.UsageError(
-            "Repository %s doesn't have external settings" % repo_obj.to_schema()
+            "Repository %s doesn't have external settings" % repository.to_schema()
         )
     credential_data = None
     if repo_settings.external.credential:
