@@ -36,6 +36,7 @@ from splitgraph.cloud.models import (
     ListExternalCredentialsResponse,
     Metadata,
     MetadataResponse,
+    Plugin,
     Repository,
     RepositoryIngestionJobStatusResponse,
     UpdateExternalCredentialRequest,
@@ -48,6 +49,7 @@ from splitgraph.cloud.queries import (
     BULK_UPSERT_REPO_TOPICS,
     CSV_URL,
     FIND_REPO,
+    GET_PLUGINS,
     GET_REPO_METADATA,
     GET_REPO_SOURCE,
     INGESTION_JOB_STATUS,
@@ -818,6 +820,24 @@ class GQLAPIClient:
         }
 
         return self._run_start_load_gql_with(variables)
+
+    def get_all_plugins(self) -> List[Plugin]:
+        response = self._gql({"query": GET_PLUGINS, "operationName": "ExternalPlugins"})
+        return [
+            Plugin(
+                plugin_name=d["pluginName"],
+                credentials_schema=d["credentialsSchema"],
+                params_schema=d["paramsSchema"],
+                table_params_schema=d["tableParamsSchema"],
+                name=d["name"],
+                description=d["description"],
+                icon_url=d["iconUrl"],
+                supports_load=d["supportsLoad"],
+                supports_sync=d["supportsSync"],
+                supports_mount=d["supportsMount"],
+            )
+            for d in response.json()["data"]["externalPlugins"]
+        ]
 
     def start_load_existing(self, namespace: str, repository: str, sync: bool = True) -> str:
         variables = {"namespace": namespace, "repository": repository, "sync": sync}

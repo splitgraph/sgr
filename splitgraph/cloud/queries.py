@@ -243,3 +243,19 @@ START_LOAD = """mutation StartExternalRepositoryLoad(
   }
 }
 """
+
+GET_PLUGINS = """query ExternalPlugins {
+  externalPlugins {
+    pluginName
+    name
+    description
+    paramsSchema
+    credentialsSchema
+    tableParamsSchema
+    iconUrl
+    supportsSync
+    supportsMount
+    supportsLoad
+  }
+}
+"""

@@ -42,6 +42,19 @@ class External(BaseModel):
     schedule: Optional[IngestionSchedule]
 
 
+class Plugin(BaseModel):
+    plugin_name: str
+    credentials_schema: Dict[str, Any]
+    params_schema: Dict[str, Any]
+    table_params_schema: Dict[str, Any]
+    name: str
+    description: str
+    icon_url: str
+    supports_mount: bool
+    supports_load: bool
+    supports_sync: bool
+
+
 # Models for the catalog metadata (description, README, topics etc)
 
 

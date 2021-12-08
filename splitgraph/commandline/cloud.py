@@ -1103,6 +1103,38 @@ def _get_external_from_yaml(
     return repo_settings.external, credential_data
 
 
+@click.command("plugins")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option(
+    "-f",
+    "--filter",
+    "filter_plugins",
+    help="Filter for plugins with this string in name/description",
+    type=str,
+)
+def plugins_c(remote, filter_plugins):
+    import tabulate
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+
+    plugins = client.get_all_plugins()
+    if filter_plugins:
+        plugins = [
+            p
+            for p in plugins
+            if filter_plugins.lower() in " ".join([p.name, p.plugin_name, p.description]).lower()
+        ]
+
+    plugins = sorted(plugins, key=lambda p: p.name)
+    click.echo(
+        tabulate.tabulate(
+            [(p.plugin_name, p.name, p.description) for p in plugins],
+            headers=["ID", "Name", "Description"],
+        )
+    )
+
+
 @click.group("cloud")
 def cloud_c():
     """Run actions on Splitgraph Cloud."""
@@ -1125,3 +1157,4 @@ cloud_c.add_command(status_c)
 cloud_c.add_command(logs_c)
 cloud_c.add_command(upload_c)
 cloud_c.add_command(sync_c)
+cloud_c.add_command(plugins_c)
