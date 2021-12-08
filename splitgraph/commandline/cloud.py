@@ -972,7 +972,7 @@ def upload_c(remote, file_format, repository, files):
     click.echo(
         "Success. See the repository at " + Color.BLUE + web_url + Color.END + " or query it with:"
     )
-    click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names[0]}"\'')
+    click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names[0]}"\'')  # nosec
 
 
 GQL_POLL_TIME = 5

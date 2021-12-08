@@ -139,7 +139,7 @@ def test_deduplicate_items():
 
 
 @httpretty.activate(allow_net_connect=False)
-@pytest.mark.parametrize("success", (True, False))
+@pytest.mark.parametrize("success", [True, False])
 def test_csv_upload(success):
     gql_upload_cb, file_upload_cb = gql_upload(
         namespace="someuser",
