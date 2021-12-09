@@ -819,6 +819,17 @@ python-versions = "*"
 pytest = ">=2.6.0"
 
 [[package]]
+name = "pytest-snapshot"
+version = "0.8.0"
+description = "A plugin for snapshot testing with pytest."
+category = "dev"
+optional = false
+python-versions = ">=3.5"
+
+[package.dependencies]
+pytest = ">=3.0.0"
+
+[[package]]
 name = "python-dateutil"
 version = "2.8.2"
 description = "Extensions to the standard Python datetime module"
@@ -1249,7 +1260,7 @@ pandas = ["pandas", "sqlalchemy"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7,<4.0"
-content-hash = "280b94816b78245d0644015264df36fe6df766ae41e2fb9d745615ef048fca03"
+content-hash = "23366d4cf7fcaf8b0f3ea6fe2156445bc4cccc6b0152bb3ba5a77077f4066b56"
 
 [metadata.files]
 alabaster = [
@@ -1950,6 +1961,10 @@ pytest-cov = [
 ]
 pytest-env = [
     {file = "pytest-env-0.6.2.tar.gz", hash = "sha256:7e94956aef7f2764f3c147d216ce066bf6c42948bb9e293169b1b1c880a580c2"},
+]
+pytest-snapshot = [
+    {file = "pytest-snapshot-0.8.0.tar.gz", hash = "sha256:cf84c88c3e0b4ae08ae797d9ccdc32715b64dd68b2da40f575db56956ed23326"},
+    {file = "pytest_snapshot-0.8.0-py3-none-any.whl", hash = "sha256:cc75e1a89a394ff790a7032e4eec7cc64aee0fef4c6c11eab038c991532619e6"},
 ]
 python-dateutil = [
     {file = "python-dateutil-2.8.2.tar.gz", hash = "sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86"},

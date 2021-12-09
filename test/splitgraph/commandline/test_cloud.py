@@ -34,6 +34,7 @@ from splitgraph.commandline.cloud import (
     plugins_c,
     register_c,
     sql_c,
+    stub_c,
 )
 from splitgraph.config import create_config_dict
 from splitgraph.config.config import patch_config
@@ -608,3 +609,30 @@ airbyte-postgres  Postgres (Airbyte)  Airbyte connector for Postgres. For more i
 postgres_fdw  PostgreSQL  Data source for PostgreSQL databases that supports live querying, based on postgres_fdw
 """
         )
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_stub(snapshot):
+    runner = CliRunner(mix_stderr=False)
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        GQL_ENDPOINT + "/",
+        body=gql_plugins_callback,
+    )
+
+    with patch(
+        "splitgraph.cloud.RESTAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=ACCESS_TOKEN,
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
+        result = runner.invoke(
+            stub_c,
+            [
+                "airbyte-postgres",
+                "test/repo",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+
+        snapshot.assert_match(result.stdout, "sgr_cloud_stub.yml")
