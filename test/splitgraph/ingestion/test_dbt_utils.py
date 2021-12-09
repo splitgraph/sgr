@@ -2,12 +2,12 @@ import os
 import subprocess
 import tempfile
 
-import yaml
 from splitgraph.ingestion.dbt.utils import (
     compile_dbt_manifest,
     patch_dbt_project_sources,
     prepare_git_repo,
 )
+from splitgraph.utils.yaml import safe_load
 
 _REPO_PATH = "https://github.com/splitgraph/jaffle_shop_archive"
 
@@ -31,7 +31,7 @@ def test_dbt_repo_clone_patch():
         )
 
         with open(os.path.join(tmp_dir, "models/staging/jaffle_shop/jaffle_shop.yml"), "r") as f:
-            assert yaml.safe_load(f)["sources"][0]["schema"] == "new_patched_schema"
+            assert safe_load(f)["sources"][0]["schema"] == "new_patched_schema"
 
         patch_dbt_project_sources(
             tmp_dir,
@@ -43,7 +43,7 @@ def test_dbt_repo_clone_patch():
         )
 
         with open(os.path.join(tmp_dir, "models/staging/jaffle_shop/jaffle_shop.yml"), "r") as f:
-            assert yaml.safe_load(f)["sources"][0]["schema"] == "jaffle_shop_schema"
+            assert safe_load(f)["sources"][0]["schema"] == "jaffle_shop_schema"
 
 
 def test_dbt_repo_build_manifest(local_engine_empty):

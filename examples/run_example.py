@@ -14,9 +14,9 @@ import termios
 import time
 
 import click
-import yaml
 
 from splitgraph.core.output import Color
+from splitgraph.utils.yaml import safe_load
 
 _ANSI_CONTROL = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~])")
 _SPLIT = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~]|\s+|.)")
@@ -217,7 +217,7 @@ class RecorderOutput:
 def example(skip, no_pause, dump_asciinema, dump_screens, asciinema_width, asciinema_height, file):
     """Run commands in an example YAML file."""
     with open(file, "r") as f:
-        commands = yaml.safe_load(f)
+        commands = safe_load(f)
     current_prompt = ""
 
     output = RecorderOutput(

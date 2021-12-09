@@ -485,10 +485,10 @@ def metadata_c(ctx, remote, repository, metadata_file):
         key_2_2: value_2_2
     ```
     """
-    import yaml
     from splitgraph.cloud import GQLAPIClient
+    from splitgraph.utils.yaml import safe_load
 
-    metadata = Metadata.parse_obj(yaml.safe_load(metadata_file))
+    metadata = Metadata.parse_obj(safe_load(metadata_file))
     metadata = _prepare_metadata(metadata)
 
     client = GQLAPIClient(remote)
@@ -581,7 +581,7 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     with all the repository readmes. This file can be used to recreate all catalog metadata
     and all external data source settings for a repository using `sgr cloud load`.
     """
-    import yaml
+    import ruamel.yaml as yaml
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
@@ -592,7 +592,6 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     yaml.dump(
         {"repositories": [r.dict(by_alias=True, exclude_unset=True) for r in repositories]},
         repositories_file,
-        sort_keys=False,
     )
 
 
@@ -663,10 +662,10 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
               s3_object: some/s3_key.csv
     ```
     """
-    import yaml
     from splitgraph.cloud import GQLAPIClient, RESTAPIClient
+    from splitgraph.utils.yaml import safe_load
 
-    repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(repositories_file))
+    repo_yaml = RepositoriesYAML.parse_obj(safe_load(repositories_file))
 
     # Set up and load credential IDs from the remote to allow users to refer to them by ID
     # or by a name.
@@ -839,8 +838,8 @@ def status_c(remote, repositories_file, repositories):
     statuses just for those repositories. Otherwise, it will use an existing repositories.yml
     file and get job statuses for all repositories in this file.
     """
-    import yaml
     from splitgraph.cloud import GQLAPIClient
+    from splitgraph.utils.yaml import safe_load
     from tabulate import tabulate
 
     client = GQLAPIClient(remote)
@@ -849,7 +848,7 @@ def status_c(remote, repositories_file, repositories):
         repo_list = [(r.namespace, r.repository) for r in repositories]
     else:
         with open(repositories_file, "r") as f:
-            repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(f))
+            repo_yaml = RepositoriesYAML.parse_obj(safe_load(f))
         repo_list = [(r.namespace, r.repository) for r in repo_yaml.repositories]
 
     table: List[Tuple] = []
@@ -1071,10 +1070,10 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
 def _get_external_from_yaml(
     repositories_file: Path, repository: "CoreRepository"
 ) -> Tuple["External", Optional[Dict[str, Any]]]:
-    import yaml
+    from splitgraph.utils.yaml import safe_load
 
     with open(repositories_file) as f:
-        repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(f))
+        repo_yaml = RepositoriesYAML.parse_obj(safe_load(f))
 
     for repo_settings in repo_yaml.repositories:
         if (
