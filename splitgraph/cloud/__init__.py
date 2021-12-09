@@ -24,7 +24,9 @@ from typing import (
 import requests
 from pydantic import BaseModel
 from requests import HTTPError
+from requests.adapters import HTTPAdapter
 from requests.models import Response
+from requests.packages.urllib3.util import Retry
 from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
     AddExternalCredentialRequest,
@@ -543,7 +545,21 @@ class GQLAPIClient:
         if access_token:
             headers.update({"Authorization": "Bearer " + access_token})
 
-        result = requests.post(
+        # Add a retry strategy (difference from standard allowed_methods is that we also retry
+        # on POST, since that's how we communicate with GQL endpoints).
+        adapter = HTTPAdapter(
+            max_retries=Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"],
+            )
+        )
+        session = requests.session()
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+
+        result = session.post(
             endpoint, headers=headers, json=query, verify=os.environ.get("SSL_CERT_FILE", True)
         )
         if handle_errors:
