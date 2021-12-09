@@ -986,7 +986,7 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
 
     interval = 0
     poll_interval = max(int(SPINNER_FREQUENCY * GQL_POLL_TIME), 1)
-    status_str: Optional[str] = "STARTED"
+    status_str: Optional[str] = None
     while True:
         if interval % poll_interval == 0:
             status = client.get_latest_ingestion_job_status(namespace, repository)
@@ -994,11 +994,20 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
                 raise AssertionError("Ingestion job not found")
             if status.task_id != task_id:
                 raise AssertionError("Unexpected task ID")
+
+            if not sys.stdout.isatty() and status_str != status.status:
+                click.echo(
+                    f" ({status.status}) Loading {namespace}/{repository}, task ID {task_id}",
+                )
+
             status_str = status.status
 
-        click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
-        click.echo(f" ({status_str}) Loading {namespace}/{repository}, task ID {task_id}", nl=False)
-        sys.stdout.flush()
+        if sys.stdout.isatty():
+            click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
+            click.echo(
+                f" ({status_str}) Loading {namespace}/{repository}, task ID {task_id}", nl=False
+            )
+            sys.stdout.flush()
         time.sleep(1.0 / SPINNER_FREQUENCY)
         interval += 1
 

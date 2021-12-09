@@ -38,7 +38,6 @@ from splitgraph.exceptions import (
     GQLUnauthenticatedError,
     GQLUnauthorizedError,
 )
-from splitgraph.utils.yaml import safe_load
 
 
 @httpretty.activate(allow_net_connect=False)
