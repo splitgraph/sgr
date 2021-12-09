@@ -1,0 +1,3 @@
+ID            Name        Description
+------------  ----------  ---------------------------------------------------------------------------------------
+postgres_fdw  PostgreSQL  Data source for PostgreSQL databases that supports live querying, based on postgres_fdw

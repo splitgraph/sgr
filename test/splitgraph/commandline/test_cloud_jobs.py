@@ -32,7 +32,7 @@ from splitgraph.core.repository import Repository
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_job_status_yaml():
+def test_job_status_yaml(snapshot):
     runner = CliRunner(mix_stderr=False)
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
@@ -54,20 +54,11 @@ def test_job_status_yaml():
             catch_exceptions=False,
         )
         assert result.exit_code == 0
-
-        assert (
-            result.stdout
-            == """Repository            Task ID         Started              Finished             Manual    Status
---------------------  --------------  -------------------  -------------------  --------  --------
-otheruser/somerepo_2
-someuser/somerepo_1   somerepo1_task  2020-01-01 00:00:00                       False     STARTED
-someuser/somerepo_2   somerepo2_task  2021-01-01 00:00:00  2021-01-01 01:00:00  False     SUCCESS
-"""
-        )
+        snapshot.assert_match(result.stdout, "sgr_cloud_status_yml.txt")
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_job_status_explicit_repos():
+def test_job_status_explicit_repos(snapshot):
     runner = CliRunner(mix_stderr=False)
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
@@ -86,15 +77,7 @@ def test_job_status_explicit_repos():
             catch_exceptions=False,
         )
         assert result.exit_code == 0
-
-        assert (
-            result.stdout
-            == """Repository            Task ID         Started              Finished    Manual    Status
---------------------  --------------  -------------------  ----------  --------  --------
-someuser/somerepo_1   somerepo1_task  2020-01-01 00:00:00              False     STARTED
-otheruser/somerepo_2
-"""
-        )
+        snapshot.assert_match(result.stdout, "sgr_cloud_status_explicit.txt")
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -140,7 +123,7 @@ def test_deduplicate_items():
 
 @httpretty.activate(allow_net_connect=False)
 @pytest.mark.parametrize("success", [True, False])
-def test_csv_upload(success):
+def test_csv_upload(success, snapshot):
     gql_upload_cb, file_upload_cb = gql_upload(
         namespace="someuser",
         repository="somerepo_1",
@@ -186,17 +169,10 @@ def test_csv_upload(success):
 
         if success:
             assert result.exit_code == 0
-            assert "(STARTED) Loading someuser/somerepo_1, task ID ingest_task" in result.stdout
-            assert "(SUCCESS) Loading someuser/somerepo_1, task ID ingest_task" in result.stdout
-            assert (
-                "See the repository at http://www.example.com/someuser/somerepo_1/-/tables"
-                in result.stdout
-            )
+            snapshot.assert_match(result.stdout, "sgr_cloud_upload_success.txt")
         else:
             assert result.exit_code == 1
-            assert "(FAILURE) Loading someuser/somerepo_1, task ID ingest_task" in result.stdout
-            # Check we got the job logs
-            assert "Logs for /someuser/somerepo_1/ingest_task" in result.stdout
+            snapshot.assert_match(result.stdout, "sgr_cloud_upload_failure.txt")
 
 
 @httpretty.activate(allow_net_connect=False)

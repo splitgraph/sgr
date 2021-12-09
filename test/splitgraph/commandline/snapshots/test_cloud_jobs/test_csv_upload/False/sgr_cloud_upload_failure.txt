@@ -1,0 +1,3 @@
+Uploading the files...
+⣾ (STARTED) Loading someuser/somerepo_1, task ID ingest_task⣽ (FAILURE) Loading someuser/somerepo_1, task ID ingest_task
+Logs for /someuser/somerepo_1/ingest_task

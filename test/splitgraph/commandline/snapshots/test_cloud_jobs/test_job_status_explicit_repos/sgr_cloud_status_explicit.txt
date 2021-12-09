@@ -1,0 +1,4 @@
+Repository            Task ID         Started              Finished    Manual    Status
+--------------------  --------------  -------------------  ----------  --------  --------
+someuser/somerepo_1   somerepo1_task  2020-01-01 00:00:00              False     STARTED
+otheruser/somerepo_2

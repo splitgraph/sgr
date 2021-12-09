@@ -568,7 +568,7 @@ def test_commandline_cloud_add(fs_fast):
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_commandline_plugins():
+def test_commandline_plugins(snapshot):
     runner = CliRunner(mix_stderr=False)
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
@@ -586,15 +586,7 @@ def test_commandline_plugins():
             catch_exceptions=False,
         )
         assert result.exit_code == 0
-
-        assert (
-            result.stdout
-            == """ID                Name                Description
-----------------  ------------------  ---------------------------------------------------------------------------------------------------------------
-postgres_fdw      PostgreSQL          Data source for PostgreSQL databases that supports live querying, based on postgres_fdw
-airbyte-postgres  Postgres (Airbyte)  Airbyte connector for Postgres. For more information, see https://docs.airbyte.io/integrations/sources/postgres
-"""
-        )
+        snapshot.assert_match(result.stdout, "sgr_cloud_plugins.txt")
 
         result = runner.invoke(
             plugins_c,
@@ -602,13 +594,7 @@ airbyte-postgres  Postgres (Airbyte)  Airbyte connector for Postgres. For more i
             catch_exceptions=False,
         )
         assert result.exit_code == 0
-        assert (
-            result.stdout
-            == """ID            Name        Description
-------------  ----------  ---------------------------------------------------------------------------------------
-postgres_fdw  PostgreSQL  Data source for PostgreSQL databases that supports live querying, based on postgres_fdw
-"""
-        )
+        snapshot.assert_match(result.stdout, "sgr_cloud_plugins_filter.txt")
 
 
 @httpretty.activate(allow_net_connect=False)

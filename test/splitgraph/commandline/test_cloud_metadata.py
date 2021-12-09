@@ -204,7 +204,7 @@ def test_commandline_search():
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_commandline_dump():
+def test_commandline_dump(snapshot):
     runner = CliRunner()
     httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/", body=gql_metadata_get())
 
