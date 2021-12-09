@@ -26,6 +26,7 @@ from splitgraph.commandline.engine import inject_config_into_engines
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.core.output import Color, pluralise
+from splitgraph.utils.yaml import safe_dump
 
 if TYPE_CHECKING:
     from splitgraph.cloud import GQLAPIClient
@@ -581,7 +582,6 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     with all the repository readmes. This file can be used to recreate all catalog metadata
     and all external data source settings for a repository using `sgr cloud load`.
     """
-    import ruamel.yaml as yaml
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
@@ -589,7 +589,7 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
 
     _dump_readmes_to_dir(repositories, readme_dir)
 
-    yaml.dump(
+    safe_dump(
         {"repositories": [r.dict(by_alias=True, exclude_unset=True) for r in repositories]},
         repositories_file,
     )
