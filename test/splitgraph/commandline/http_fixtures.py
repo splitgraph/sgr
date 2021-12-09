@@ -8,6 +8,7 @@ from splitgraph.cloud import (
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
     CSV_URL,
+    GET_PLUGINS,
     INGESTION_JOB_STATUS,
     JOB_LOGS,
     PROFILE_UPSERT,
@@ -765,3 +766,201 @@ def gql_sync(namespace, repository, is_existing=True, is_sync=True):
         raise AssertionError()
 
     return _gql_callback
+
+
+_PG_FDW_DEF = {
+    "pluginName": "postgres_fdw",
+    "name": "PostgreSQL",
+    "description": "Data source for PostgreSQL databases that supports live querying, based on postgres_fdw",
+    "paramsSchema": {
+        "type": "object",
+        "properties": {
+            "host": {"type": "string", "description": "Remote hostname"},
+            "port": {"type": "integer", "description": "Port"},
+            "dbname": {"type": "string", "description": "Database name"},
+            "remote_schema": {
+                "type": "string",
+                "description": "Remote schema name",
+            },
+        },
+        "required": ["host", "port", "dbname", "remote_schema"],
+    },
+    "credentialsSchema": {
+        "type": "object",
+        "properties": {
+            "username": {"type": "string"},
+            "password": {"type": "string"},
+        },
+        "required": ["username", "password"],
+    },
+    "tableParamsSchema": {"type": "object"},
+    "iconUrl": "https://example.com/icon.png",
+    "supportsSync": False,
+    "supportsMount": True,
+    "supportsLoad": True,
+}
+
+_PG_AB_DEF = {
+    "pluginName": "airbyte-postgres",
+    "name": "Postgres (Airbyte)",
+    "description": "Airbyte connector for Postgres. For more information, see https://docs.airbyte.io/integrations/sources/postgres",
+    "paramsSchema": {
+        "type": "object",
+        "properties": {
+            "normalization_mode": {
+                "type": "string",
+                "title": "Post-ingestion normalization",
+                "description": "Whether to normalize raw Airbyte tables. `none` is no normalization, `basic` is Airbyte's basic normalization, `custom` is a custom dbt transformation on the data.",
+                "enum": ["none", "basic", "custom"],
+                "default": ["basic"],
+            },
+            "normalization_git_branch": {
+                "type": "string",
+                "title": "dbt model Git branch",
+                "description": "Branch or commit hash to use for the normalization dbt project.",
+                "default": "master",
+            },
+            "host": {
+                "title": "Host",
+                "description": "Hostname of the database.",
+                "type": "string",
+                "order": 0,
+            },
+            "port": {
+                "title": "Port",
+                "description": "Port of the database.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65536,
+                "default": 5432,
+                "examples": ["5432"],
+                "order": 1,
+            },
+            "database": {
+                "title": "DB Name",
+                "description": "Name of the database.",
+                "type": "string",
+                "order": 2,
+            },
+            "username": {
+                "title": "User",
+                "description": "Username to use to access the database.",
+                "type": "string",
+                "order": 3,
+            },
+            "ssl": {
+                "title": "Connect using SSL",
+                "description": "Encrypt client/server communications for increased security.",
+                "type": "boolean",
+                "default": False,
+                "order": 5,
+            },
+            "replication_method": {
+                "type": "object",
+                "title": "Replication Method",
+                "description": "Replication method to use for extracting data from the database.",
+                "order": 6,
+                "oneOf": [
+                    {
+                        "title": "Standard",
+                        "additionalProperties": False,
+                        "description": "Standard replication requires no setup on the DB side but will not be able to represent deletions incrementally.",
+                        "required": ["method"],
+                        "properties": {
+                            "method": {
+                                "type": "string",
+                                "const": "Standard",
+                                "enum": ["Standard"],
+                                "default": "Standard",
+                                "order": 0,
+                            }
+                        },
+                    },
+                    {
+                        "title": "Logical Replication (CDC)",
+                        "additionalProperties": False,
+                        "description": 'Logical replication uses the Postgres write-ahead log (WAL) to detect inserts, updates, and deletes. This needs to be configured on the source database itself. Only available on Postgres 10 and above. Read the <a href="https://docs.airbyte.io/integrations/sources/postgres">Postgres Source</a> docs for more information.',
+                        "required": [
+                            "method",
+                            "replication_slot",
+                            "publication",
+                        ],
+                        "properties": {
+                            "method": {
+                                "type": "string",
+                                "const": "CDC",
+                                "enum": ["CDC"],
+                                "default": "CDC",
+                                "order": 0,
+                            },
+                            "plugin": {
+                                "type": "string",
+                                "description": 'A logical decoding plug-in installed on the PostgreSQL server. `pgoutput` plug-in is used by default.\nIf replication table contains a lot of big jsonb values it is recommended to use `wal2json` plug-in. For more information about `wal2json` plug-in read <a href="https://docs.airbyte.io/integrations/sources/postgres">Postgres Source</a> docs.',
+                                "enum": ["pgoutput", "wal2json"],
+                                "default": "pgoutput",
+                                "order": 1,
+                            },
+                            "replication_slot": {
+                                "type": "string",
+                                "description": "A plug-in logical replication slot.",
+                                "order": 2,
+                            },
+                            "publication": {
+                                "type": "string",
+                                "description": "A Postgres publication used for consuming changes.",
+                                "order": 3,
+                            },
+                        },
+                    },
+                ],
+            },
+        },
+    },
+    "credentialsSchema": {
+        "type": "object",
+        "properties": {
+            "normalization_git_url": {
+                "type": "string",
+                "title": "dbt model Git URL",
+                "description": "For `custom` normalization, a URL to the Git repo with the dbt project, for example,`https://uname:pass_or_token@github.com/organisation/repository.git`.",
+            },
+            "password": {
+                "title": "Password",
+                "description": "Password associated with the username.",
+                "type": "string",
+                "order": 4,
+            },
+        },
+    },
+    "tableParamsSchema": {
+        "type": "object",
+        "properties": {
+            "airbyte_cursor_fields": {
+                "type": "array",
+                "title": "Cursor field(s)",
+                "description": "Fields in this stream to be used as a cursor for incremental replication (overrides Airbyte configuration's cursor_field)",
+                "items": {"type": "string"},
+            },
+            "airbyte_primary_key_fields": {
+                "type": "array",
+                "title": "Primary key field(s)",
+                "description": "Fields in this stream to be used as a primary key for deduplication (overrides Airbyte configuration's primary_key)",
+                "items": {"type": "string"},
+            },
+        },
+    },
+    "iconUrl": "https://example.com/icon.png",
+    "supportsSync": True,
+    "supportsMount": False,
+    "supportsLoad": True,
+}
+
+
+def gql_plugins_callback(request, uri, response_headers):
+    body = json.loads(request.body)
+    assert body["query"] == GET_PLUGINS
+    return [
+        200,
+        response_headers,
+        json.dumps({"data": {"externalPlugins": [_PG_FDW_DEF, _PG_AB_DEF]}}),
+    ]

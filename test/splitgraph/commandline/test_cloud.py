@@ -6,11 +6,13 @@ from test.splitgraph.commandline.http_fixtures import (
     API_KEY,
     API_SECRET,
     AUTH_ENDPOINT,
+    GQL_ENDPOINT,
     REFRESH_TOKEN,
     REMOTE,
     REMOTE_CONFIG,
     access_token,
     create_credentials,
+    gql_plugins_callback,
     refresh_token,
     register_user,
     tos,
@@ -29,6 +31,7 @@ from splitgraph.commandline.cloud import (
     curl_c,
     login_api_c,
     login_c,
+    plugins_c,
     register_c,
     sql_c,
 )
@@ -561,3 +564,47 @@ def test_commandline_cloud_add(fs_fast):
         "SG_IS_REGISTRY": "true",
         "SG_QUERY_API": "https://data.democompany.splitgraph.io",
     }
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_plugins():
+    runner = CliRunner(mix_stderr=False)
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        GQL_ENDPOINT + "/",
+        body=gql_plugins_callback,
+    )
+
+    with patch(
+        "splitgraph.cloud.RESTAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=ACCESS_TOKEN,
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
+        result = runner.invoke(
+            plugins_c,
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+
+        assert (
+            result.stdout
+            == """ID                Name                Description
+----------------  ------------------  ---------------------------------------------------------------------------------------------------------------
+postgres_fdw      PostgreSQL          Data source for PostgreSQL databases that supports live querying, based on postgres_fdw
+airbyte-postgres  Postgres (Airbyte)  Airbyte connector for Postgres. For more information, see https://docs.airbyte.io/integrations/sources/postgres
+"""
+        )
+
+        result = runner.invoke(
+            plugins_c,
+            ["--filter", "fdw"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        assert (
+            result.stdout
+            == """ID            Name        Description
+------------  ----------  ---------------------------------------------------------------------------------------
+postgres_fdw  PostgreSQL  Data source for PostgreSQL databases that supports live querying, based on postgres_fdw
+"""
+        )
