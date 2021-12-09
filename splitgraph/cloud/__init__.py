@@ -151,8 +151,8 @@ def expect_result(
 
 def _handle_gql_errors(response):
     logging.debug("GQL API status: %d, response: %s", response.status_code, response.text)
-    # GQL itself doesn't seem to return non-200 codes, so this catches HTTP-level errors.
-    response.raise_for_status()
+    if response.status_code not in (200, 400):
+        response.raise_for_status()
     response_j = response.json()
     if "errors" in response_j:
         message = response_j["errors"][0]["message"]
@@ -164,6 +164,8 @@ def _handle_gql_errors(response):
             raise GQLRepoDoesntExistError("Unknown repository!")
         else:
             raise GQLAPIError(message)
+    # Catch other HTTP-level errors
+    response.raise_for_status()
 
 
 def handle_gql_errors(func: Callable[..., Response]) -> Callable[..., Response]:
