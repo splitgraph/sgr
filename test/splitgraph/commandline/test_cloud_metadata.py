@@ -227,121 +227,23 @@ def test_commandline_dump(snapshot):
         )
         assert result.exit_code == 0
 
-        contents = list(os.walk(tmpdir))
-        # Check the dump root
-        assert contents[0] == (tmpdir, ["readmes"], ["repositories.yml"])
-
-        # Check the readmes subdirectory: no directories
-        assert contents[1][:2] == (
-            os.path.join(tmpdir, "readmes"),
-            [],
-        )
-
-        # ... and two files
-        assert sorted(contents[1][2]) == [
-            "otheruser-somerepo_2.fe37.md",
-            "someuser-somerepo_1.b7f3.md",
-        ]
-
-        _somerepo_1_dump = {
-            "namespace": "someuser",
-            "repository": "somerepo_1",
-            "metadata": {
-                "readme": {"file": "someuser-somerepo_1.b7f3.md"},
-                "description": "Repository Description 1",
-                "extra_metadata": {"key_1": {"key_2": "value_1"}},
-                "topics": [],
-                "sources": [
-                    {
-                        "anchor": "test data source",
-                        "href": "https://example.com",
-                        "isCreator": True,
-                        "isSameAs": False,
-                    }
-                ],
-                "license": "Public Domain",
-            },
-            "external": None,
-        }
-
-        with open(os.path.join(tmpdir, "repositories.yml")) as f:
-            output = f.read()
-        assert safe_load(output) == {
-            "repositories": [
-                {
-                    "namespace": "otheruser",
-                    "repository": "somerepo_2",
-                    "metadata": {
-                        "readme": {"file": "otheruser-somerepo_2.fe37.md"},
-                        "description": "Repository Description 2",
-                        "extra_metadata": None,
-                        "topics": ["topic_1", "topic_2"],
-                        "sources": [
-                            {
-                                "anchor": "test data source",
-                                "href": "https://example.com",
-                            }
-                        ],
-                        "license": None,
-                    },
-                    "external": {
-                        "credential_id": "abcdef-123456",
-                        "plugin": "plugin",
-                        "schedule": None,
-                        "params": {"plugin": "specific", "params": "here"},
-                        "tables": {
-                            "table_1": {
-                                "options": {"param_1": "val_1"},
-                                "schema": [
-                                    {"name": "id", "type": "text"},
-                                    {"name": "val", "type": "text"},
-                                ],
-                            },
-                            "table_2": {"options": {"param_1": "val_2"}, "schema": []},
-                            "table_3": {
-                                "options": {},
-                                "schema": [
-                                    {"name": "id", "type": "text"},
-                                    {"name": "val", "type": "text"},
-                                ],
-                            },
-                        },
-                    },
-                },
-                {
-                    "external": {
-                        "credential_id": "abcdef-123456",
-                        "params": {"params": "here", "plugin": "specific"},
-                        "plugin": "plugin",
-                        "schedule": {"enabled": True, "schedule": "0 * * * *"},
-                        "tables": {
-                            "table_1": {
-                                "options": {"param_1": "val_1"},
-                                "schema": [
-                                    {"name": "id", "type": "text"},
-                                    {"name": "val", "type": "text"},
-                                ],
-                            },
-                            "table_2": {"options": {"param_1": "val_2"}, "schema": []},
-                            "table_3": {
-                                "options": {},
-                                "schema": [
-                                    {"name": "id", "type": "text"},
-                                    {"name": "val", "type": "text"},
-                                ],
-                            },
-                        },
-                    },
-                    "metadata": None,
-                    "namespace": "otheruser",
-                    "repository": "somerepo_3",
-                },
-                _somerepo_1_dump,
-            ]
-        }
-
         with open(os.path.join(tmpdir, "readmes", "someuser-somerepo_1.b7f3.md")) as f:
-            assert f.read() == "Test Repo 1 Readme"
+            readme_1 = f.read()
+        with open(os.path.join(tmpdir, "readmes", "otheruser-somerepo_2.fe37.md")) as f:
+            readme_2 = f.read()
+        with open(os.path.join(tmpdir, "repositories.yml")) as f:
+            repo_yml = f.read()
+
+        snapshot.assert_match_dir(
+            {
+                "readmes": {
+                    "someuser-somerepo_1.b7f3.md": readme_1,
+                    "otheruser-somerepo_2.fe37.md": readme_2,
+                },
+                "repositories.yml": repo_yml,
+            },
+            "sgr_cloud_dump_multiple",
+        )
 
         # Dump a single repo
         result = runner.invoke(
@@ -358,8 +260,15 @@ def test_commandline_dump(snapshot):
         assert result.exit_code == 0
 
         with open(os.path.join(tmpdir, "repositories.yml")) as f:
-            output = f.read()
-        assert safe_load(output) == {"repositories": [_somerepo_1_dump]}
+            repo_yml = f.read()
+
+        snapshot.assert_match_dir(
+            {
+                "readmes": {"someuser-somerepo_1.b7f3.md": readme_1},
+                "repositories.yml": repo_yml,
+            },
+            "sgr_cloud_dump_single",
+        )
 
 
 @httpretty.activate(allow_net_connect=False)
