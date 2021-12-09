@@ -259,3 +259,18 @@ GET_PLUGINS = """query ExternalPlugins {
   }
 }
 """
+
+GET_PLUGIN = """query ExternalPlugin($pluginName: String!) {
+  externalPlugin(name: $pluginName) {
+    pluginName
+    name
+    description
+    paramsSchema
+    credentialsSchema
+    tableParamsSchema
+    iconUrl
+    supportsSync
+    supportsMount
+    supportsLoad
+  }
+}"""

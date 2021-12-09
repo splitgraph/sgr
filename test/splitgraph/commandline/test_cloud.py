@@ -12,6 +12,7 @@ from test.splitgraph.commandline.http_fixtures import (
     REMOTE_CONFIG,
     access_token,
     create_credentials,
+    gql_plugin_callback,
     gql_plugins_callback,
     refresh_token,
     register_user,
@@ -603,7 +604,7 @@ def test_commandline_stub(snapshot):
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
         GQL_ENDPOINT + "/",
-        body=gql_plugins_callback,
+        body=gql_plugin_callback,
     )
 
     with patch(

@@ -1156,11 +1156,9 @@ def stub_c(remote, plugin_name, repository, output_file):
 
     client = GQLAPIClient(remote)
 
-    # TODO: get one plugin using the GQL API
-    plugins = [p for p in client.get_all_plugins() if p.plugin_name == plugin_name]
-    if not plugins:
+    plugin = client.get_plugin(plugin_name)
+    if not plugin:
         raise click.UsageError("Plugin %s not found on remote %s" % (plugin_name, remote))
-    plugin = plugins[0]
 
     yml = ruamel.yaml.YAML()
     output = stub_plugin(plugin, repository.namespace, repository.repository)

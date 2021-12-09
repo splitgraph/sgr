@@ -8,6 +8,7 @@ from splitgraph.cloud import (
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
     CSV_URL,
+    GET_PLUGIN,
     GET_PLUGINS,
     INGESTION_JOB_STATUS,
     JOB_LOGS,
@@ -963,4 +964,23 @@ def gql_plugins_callback(request, uri, response_headers):
         200,
         response_headers,
         json.dumps({"data": {"externalPlugins": [_PG_FDW_DEF, _PG_AB_DEF]}}),
+    ]
+
+
+def gql_plugin_callback(request, uri, response_headers):
+    body = json.loads(request.body)
+    assert body["query"] == GET_PLUGIN
+    plugin_name = body["variables"]["pluginName"]
+    return [
+        200,
+        response_headers,
+        json.dumps(
+            {
+                "data": {
+                    "externalPlugin": {p["pluginName"]: p for p in [_PG_FDW_DEF, _PG_AB_DEF]}.get(
+                        plugin_name
+                    )
+                }
+            }
+        ),
     ]

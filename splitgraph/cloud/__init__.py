@@ -49,6 +49,7 @@ from splitgraph.cloud.queries import (
     BULK_UPSERT_REPO_TOPICS,
     CSV_URL,
     FIND_REPO,
+    GET_PLUGIN,
     GET_PLUGINS,
     GET_REPO_METADATA,
     GET_REPO_SOURCE,
@@ -821,23 +822,40 @@ class GQLAPIClient:
 
         return self._run_start_load_gql_with(variables)
 
+    @staticmethod
+    def _make_plugin(plugin_dict: Dict[str, Any]) -> Plugin:
+        return Plugin(
+            plugin_name=plugin_dict["pluginName"],
+            credentials_schema=plugin_dict["credentialsSchema"],
+            params_schema=plugin_dict["paramsSchema"],
+            table_params_schema=plugin_dict["tableParamsSchema"],
+            name=plugin_dict["name"],
+            description=plugin_dict["description"],
+            icon_url=plugin_dict["iconUrl"],
+            supports_load=plugin_dict["supportsLoad"],
+            supports_sync=plugin_dict["supportsSync"],
+            supports_mount=plugin_dict["supportsMount"],
+        )
+
     def get_all_plugins(self) -> List[Plugin]:
-        response = self._gql({"query": GET_PLUGINS, "operationName": "ExternalPlugins"})
-        return [
-            Plugin(
-                plugin_name=d["pluginName"],
-                credentials_schema=d["credentialsSchema"],
-                params_schema=d["paramsSchema"],
-                table_params_schema=d["tableParamsSchema"],
-                name=d["name"],
-                description=d["description"],
-                icon_url=d["iconUrl"],
-                supports_load=d["supportsLoad"],
-                supports_sync=d["supportsSync"],
-                supports_mount=d["supportsMount"],
-            )
-            for d in response.json()["data"]["externalPlugins"]
-        ]
+        response = self._gql(
+            {"query": GET_PLUGINS, "operationName": "ExternalPlugins"}, handle_errors=True
+        )
+        return [self._make_plugin(d) for d in response.json()["data"]["externalPlugins"]]
+
+    def get_plugin(self, plugin_name: str) -> Optional[Plugin]:
+        response = self._gql(
+            {
+                "query": GET_PLUGIN,
+                "operationName": "ExternalPlugin",
+                "variables": {"pluginName": plugin_name},
+            },
+            handle_errors=True,
+        )
+        data = response.json()["data"]["externalPlugin"]
+        if data is None:
+            return None
+        return self._make_plugin(data)
 
     def start_load_existing(self, namespace: str, repository: str, sync: bool = True) -> str:
         variables = {"namespace": namespace, "repository": repository, "sync": sync}
