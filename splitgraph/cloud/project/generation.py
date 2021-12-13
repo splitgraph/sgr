@@ -51,12 +51,7 @@ def jsonschema_object_to_example(obj: Any, type_override=None) -> Any:
         elif "const" in obj:
             return obj["const"]
         else:
-            if obj_type == "string":
-                return ""
-            elif obj_type == "integer":
-                return 0
-            elif obj_type == "boolean":
-                return False
+            return {"string": "", "integer": 0, "boolean": False}.get(obj_type)
     elif obj_type == "array":
         example = jsonschema_object_to_example(obj["items"])
         seq = CS([example])
