@@ -186,7 +186,7 @@ class ProjectSeed(BaseModel):
     include_dbt: bool = False
 
     def encode(self) -> str:
-        return base64.b64encode(self.json().encode()).decode()
+        return base64.b64encode(self.json(separators=(",", ":")).encode()).decode()
 
     @classmethod
     def decode(cls, encoded: str) -> "ProjectSeed":
