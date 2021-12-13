@@ -1,9 +1,15 @@
-from functools import wraps, reduce
+from functools import reduce, wraps
 from pathlib import Path
-from typing import Optional, Dict, List, Callable, TypeVar
+from typing import Callable, Dict, List, Optional, TypeVar
 
-from splitgraph.cloud.models import RepositoriesYAML, Credential, Repository, Metadata, External
-from splitgraph.utils.yaml import safe_load, safe_dump
+from splitgraph.cloud.models import (
+    Credential,
+    External,
+    Metadata,
+    RepositoriesYAML,
+    Repository,
+)
+from splitgraph.utils.yaml import safe_dump, safe_load
 
 T = TypeVar("T")
 

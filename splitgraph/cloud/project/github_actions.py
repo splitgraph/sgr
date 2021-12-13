@@ -3,7 +3,7 @@ Generate a Github Actions workflow file that runs sgr cloud sync on select repos
 inter-job dependencies.
 """
 
-from typing import Tuple, Dict, Any, List
+from typing import Any, Dict, List, Tuple
 
 
 def generate_job(

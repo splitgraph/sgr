@@ -1,5 +1,4 @@
 import base64
-import contextlib
 import itertools
 import os
 from io import StringIO
@@ -8,11 +7,10 @@ from typing import Any, Dict, List, Tuple
 
 import ruamel.yaml
 from pydantic import BaseModel
-from ruamel.yaml import CommentedMap as CM, CommentedSeq as CS
-
-from splitgraph.cloud import Plugin, GQLAPIClient
+from ruamel.yaml import CommentedMap as CM
+from ruamel.yaml import CommentedSeq as CS
+from splitgraph.cloud import GQLAPIClient, Plugin
 from splitgraph.cloud.project.github_actions import generate_workflow
-from splitgraph.utils.yaml import safe_dump
 
 
 def get_comment(jsonschema_object: Any) -> str:
@@ -197,17 +195,7 @@ class ProjectSeed(BaseModel):
 def generate_project(api_client: GQLAPIClient, seed: ProjectSeed, basedir: Path) -> None:
     all_plugins = {p.plugin_name: p for p in api_client.get_all_plugins()}
 
-    credentials = CM({"credentials": CM({})})
-    repositories = CM({"repositories": CS()})
-
-    repository_names: List[str] = []
-
-    for plugin_name in seed.plugins:
-        plugin = all_plugins[plugin_name]
-        stub = stub_plugin(plugin, namespace=seed.namespace, repository=plugin_name)
-        repository_names.append(f"{seed.namespace}/{plugin_name}")
-        credentials["credentials"].update(stub["credentials"])
-        repositories["repositories"].extend(stub["repositories"])
+    credentials, repositories, repository_names = generate_splitgraph_yml(all_plugins, seed)
 
     yml = ruamel.yaml.YAML()
     with open(os.path.join(basedir, "splitgraph.credentials.yml"), "w") as f:
@@ -221,3 +209,18 @@ def generate_project(api_client: GQLAPIClient, seed: ProjectSeed, basedir: Path)
     os.makedirs(github_root, exist_ok=True)
     with open(os.path.join(github_root, "build.yml"), "w") as f:
         yml.dump(generate_workflow(repository_names, {}), f)
+
+
+def generate_splitgraph_yml(
+    all_plugins: Dict[str, Plugin], seed: ProjectSeed
+) -> Tuple[CM, CM, List[str]]:
+    credentials = CM({"credentials": CM({})})
+    repositories = CM({"repositories": CS()})
+    repository_names: List[str] = []
+    for plugin_name in seed.plugins:
+        plugin = all_plugins[plugin_name]
+        stub = stub_plugin(plugin, namespace=seed.namespace, repository=plugin_name)
+        repository_names.append(f"{seed.namespace}/{plugin_name}")
+        credentials["credentials"].update(stub["credentials"])
+        repositories["repositories"].extend(stub["repositories"])
+    return credentials, repositories, repository_names
