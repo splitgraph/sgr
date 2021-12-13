@@ -89,6 +89,8 @@ def test_generate_project_with_dbt(snapshot):
             github_build_yml = f.read()
         with open(os.path.join(tmpdir, "models/staging/sources.yml")) as f:
             sources_yml = f.read()
+        with open(os.path.join(tmpdir, "dbt_project.yml")) as f:
+            dbt_project_yml = f.read()
 
         snapshot.assert_match_dir(
             {
@@ -100,6 +102,7 @@ def test_generate_project_with_dbt(snapshot):
                 "models": {"staging": {"sources.yml": sources_yml}},
                 "splitgraph.yml": splitgraph_yml,
                 "splitgraph.credentials.yml": splitgraph_credentials_yml,
+                "dbt_project.yml": dbt_project_yml,
             },
             "generate_project_dbt",
         )
