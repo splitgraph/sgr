@@ -116,3 +116,7 @@ def load_project(paths: List[Path]) -> RepositoriesYAML:
 
 def dump_project(project: RepositoriesYAML, stream) -> None:
     safe_dump(project.dict(by_alias=True, exclude_unset=True), stream)
+
+
+def get_source_name(repository: str) -> str:
+    return repository.replace("/", "_").replace("-", "_")

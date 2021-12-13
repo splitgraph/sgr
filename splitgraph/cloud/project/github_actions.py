@@ -5,11 +5,13 @@ inter-job dependencies.
 
 from typing import Any, Dict, List, Tuple
 
+from splitgraph.cloud.project.utils import get_source_name
+
 
 def generate_job(
     repository: str, deploy_url: str = "data.splitgraph.com"
 ) -> Tuple[str, Dict[str, Any]]:
-    job_id = repository.replace("/", "_").replace("-", "_")
+    job_id = get_source_name(repository)
     job_doc = {
         "name": f"Build {repository}",
         "runs-on": "ubuntu-20.04",

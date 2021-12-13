@@ -1,0 +1,21 @@
+# This file defines all data sources referenced by this model. The mapping
+# between the data source name and the Splitgraph repository is in the settings of the dbt plugin
+# in splitgraph.yml (see params -> sources)
+version: 2
+sources:
+- name: some_data_source
+  # Splitgraph will use a different temporary schema for this source by patching this project
+  # at runtime, so this is for informational purposes only. 
+  schema: some-data/source
+  # We can't currently infer the tables produced by a data source at project generation time,
+  # so for now you'll need to define the tables manually.
+  tables:
+  - name: some_table
+- name: some_other_data_raw
+  schema: some-other/data-raw
+  tables:
+  - name: some_table
+- name: and_third_data
+  schema: and-third/data
+  tables:
+  - name: some_table
