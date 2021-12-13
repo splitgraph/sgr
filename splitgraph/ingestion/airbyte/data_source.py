@@ -114,7 +114,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
                 "`none` is no normalization, `basic` is Airbyte's basic normalization, "
                 "`custom` is a custom dbt transformation on the data.",
                 "enum": ["none", "basic", "custom"],
-                "default": ["basic"],
+                "default": "basic",
             },
             "normalization_git_branch": {
                 "type": "string",
