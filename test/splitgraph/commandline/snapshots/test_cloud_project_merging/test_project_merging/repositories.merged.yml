@@ -1,27 +1,30 @@
 credentials:
   my_credential:
+    data:
+      password: override_secret
+      username: my_override_username
     plugin: plugin
+  my_new_credential:
     data:
-      username: my_username
-      password: secret
+      api_key: some_key
+      username: other_username
+    plugin: plugin_1
   my_unused_credential:
-    plugin: plugin_3
     data:
-      username: my_username
       password: secret
+      username: my_username
+    plugin: plugin_3
 repositories:
-- namespace: otheruser
-  repository: somerepo_2
-  external:
-    credential: my_credential
+- external:
+    credential_id: 00000000-0000-0000-0000-000000000000
     params:
-      plugin: specific
       params: here
+      plugin: specific
     plugin: plugin
     tables:
       table_1:
         options:
-          param_1: val_1
+          override_option: val_1
         schema:
         - name: id
           type: text
@@ -49,10 +52,15 @@ repositories:
     topics:
     - topic_1
     - topic_2
-- namespace: someuser
-  repository: somerepo_1
+  namespace: otheruser
+  repository: somerepo_2
+- external:
+    credential: my_other_credential
+    params: {}
+    plugin: plugin_2
+    tables: {}
   metadata:
-    description: Repository Description 1
+    description: Altered description
     license: Public Domain
     readme:
       file: readme_1.md
@@ -61,18 +69,26 @@ repositories:
       href: https://example.com
       isCreator: true
       isSameAs: false
-    topics: []
-  external:
-    credential: my_other_credential
-    plugin: plugin_2
+    topics:
+    - different
+    - topic
+  namespace: someuser
+  repository: somerepo_1
+- external:
+    credential_id: 00000000-0000-0000-0000-000000000000
     params: {}
+    plugin: plugin_3
     tables: {}
-- namespace: someuser
-  repository: somerepo_2
   metadata:
     description: Another Repository
-  external:
+  namespace: someuser
+  repository: somerepo_2
+- external:
     credential_id: 00000000-0000-0000-0000-000000000000
-    plugin: plugin_3
     params: {}
+    plugin: plugin_3
     tables: {}
+  metadata:
+    description: New repository
+  namespace: someuser
+  repository: somerepo_3
