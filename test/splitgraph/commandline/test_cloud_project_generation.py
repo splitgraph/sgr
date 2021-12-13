@@ -1,11 +1,7 @@
 import os
 from tempfile import TemporaryDirectory
-from test.splitgraph.commandline.http_fixtures import (
-    ACCESS_TOKEN,
-    GQL_ENDPOINT,
-    gql_plugins_callback,
-)
-from unittest.mock import PropertyMock, patch
+from test.splitgraph.commandline.http_fixtures import GQL_ENDPOINT, gql_plugins_callback
+from unittest.mock import patch
 
 import httpretty
 from splitgraph.cloud import GQLAPIClient
@@ -19,12 +15,7 @@ def test_generate_project_no_dbt(snapshot):
         GQL_ENDPOINT + "/",
         body=gql_plugins_callback,
     )
-
     with patch(
-        "splitgraph.cloud.RESTAPIClient.access_token",
-        new_callable=PropertyMock,
-        return_value=ACCESS_TOKEN,
-    ), patch(
         "splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT
     ), TemporaryDirectory() as tmpdir:
         generate_project(

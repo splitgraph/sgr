@@ -366,6 +366,16 @@ class RESTAPIClient:
         overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
         return new_access_token
 
+    @property
+    def maybe_access_token(self) -> Optional[str]:
+        """
+        Like access_token but returns None if the user isn't logged in.
+        """
+        try:
+            return self.access_token
+        except AuthAPIError:
+            return None
+
     def get_latest_version(self) -> Optional[str]:
         # Do a version check to see if updates are available. If the user is logged
         # into the registry, also send the user ID for metrics.
@@ -538,9 +548,18 @@ class GQLAPIClient:
         else:
             return self._access_token
 
-    def _gql(self, query: Dict, endpoint=None, handle_errors=False) -> requests.Response:
+    @property
+    def maybe_access_token(self) -> Optional[str]:
+        if self._auth_client:
+            return self._auth_client.maybe_access_token
+        else:
+            return self._access_token
+
+    def _gql(
+        self, query: Dict, endpoint=None, handle_errors=False, anonymous_ok=False
+    ) -> requests.Response:
         endpoint = endpoint or self.endpoint
-        access_token = self.access_token
+        access_token = self.access_token if not anonymous_ok else self.maybe_access_token
         headers = get_headers()
         if access_token:
             headers.update({"Authorization": "Bearer " + access_token})
@@ -857,7 +876,9 @@ class GQLAPIClient:
 
     def get_all_plugins(self) -> List[Plugin]:
         response = self._gql(
-            {"query": GET_PLUGINS, "operationName": "ExternalPlugins"}, handle_errors=True
+            {"query": GET_PLUGINS, "operationName": "ExternalPlugins"},
+            handle_errors=True,
+            anonymous_ok=True,
         )
         return [self._make_plugin(d) for d in response.json()["data"]["externalPlugins"]]
 
@@ -869,6 +890,7 @@ class GQLAPIClient:
                 "variables": {"pluginName": plugin_name},
             },
             handle_errors=True,
+            anonymous_ok=True,
         )
         data = response.json()["data"]["externalPlugin"]
         if data is None:
