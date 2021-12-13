@@ -1,11 +1,18 @@
+import base64
+import contextlib
 import itertools
+import os
 from io import StringIO
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import ruamel.yaml
+from pydantic import BaseModel
 from ruamel.yaml import CommentedMap as CM, CommentedSeq as CS
 
-from splitgraph.cloud import Plugin
+from splitgraph.cloud import Plugin, GQLAPIClient
+from splitgraph.cloud.project.github_actions import generate_workflow
+from splitgraph.utils.yaml import safe_dump
 
 
 def get_comment(jsonschema_object: Any) -> str:
@@ -64,7 +71,7 @@ def jsonschema_object_to_example(obj: Any, type_override=None) -> Any:
             return _get_object_example(obj)
         elif "oneOf" in obj:
             return _get_oneof_example(obj)
-        raise AssertionError
+        return {}
 
 
 def _get_oneof_example(obj: Dict[str, Any]) -> CS:
@@ -168,3 +175,49 @@ def stub_plugin(plugin: Plugin, namespace: str, repository: str) -> CM:
     ] = jsonschema_object_to_example(plugin.table_params_schema)
 
     return ruamel_dict
+
+
+class ProjectSeed(BaseModel):
+    """
+    Contains all information required to generate a Splitgraph project + optionally
+    a dbt model for GitHub Actions
+    """
+
+    namespace: str
+    plugins: List[str]
+
+    def encode(self) -> str:
+        return base64.b64encode(self.json().encode()).decode()
+
+    @classmethod
+    def decode(cls, encoded: str) -> "ProjectSeed":
+        return ProjectSeed.parse_raw(base64.b64decode(encoded.encode()))
+
+
+def generate_project(api_client: GQLAPIClient, seed: ProjectSeed, basedir: Path) -> None:
+    all_plugins = {p.plugin_name: p for p in api_client.get_all_plugins()}
+
+    credentials = CM({"credentials": CM({})})
+    repositories = CM({"repositories": CS()})
+
+    repository_names: List[str] = []
+
+    for plugin_name in seed.plugins:
+        plugin = all_plugins[plugin_name]
+        stub = stub_plugin(plugin, namespace=seed.namespace, repository=plugin_name)
+        repository_names.append(f"{seed.namespace}/{plugin_name}")
+        credentials["credentials"].update(stub["credentials"])
+        repositories["repositories"].extend(stub["repositories"])
+
+    yml = ruamel.yaml.YAML()
+    with open(os.path.join(basedir, "splitgraph.credentials.yml"), "w") as f:
+        yml.dump(credentials, f)
+
+    with open(os.path.join(basedir, "splitgraph.yml"), "w") as f:
+        yml.dump(repositories, f)
+
+    # Generate the Github workflow file
+    github_root = os.path.join(basedir, ".github/workflows")
+    os.makedirs(github_root, exist_ok=True)
+    with open(os.path.join(github_root, "build.yml"), "w") as f:
+        yml.dump(generate_workflow(repository_names, {}), f)

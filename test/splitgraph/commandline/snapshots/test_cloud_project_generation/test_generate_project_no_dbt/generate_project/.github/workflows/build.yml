@@ -1,0 +1,41 @@
+name: Build datasets on Splitgraph
+on: workflow_dispatch
+jobs:
+  myns_postgres_fdw:
+    name: Build myns/postgres_fdw
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Splitgraph
+      uses: splitgraph/setup-splitgraph@master
+      with:
+        splitgraph_deployment_url: data.splitgraph.com
+        splitgraph_api_key: ${{ secrets.SPLITGRAPH_API_KEY }}
+        splitgraph_api_secret: ${{ secrets.SPLITGRAPH_API_SECRET }}
+    - name: Set up credentials for Splitgraph
+      run: echo "$CREDENTIALS_YML" > splitgraph.credentials.yml
+      shell: bash
+      env:
+        CREDENTIALS_YML: ${{secrets.SPLITGRAPH_CREDENTIALS_YML}}
+    - name: Run sgr cloud sync
+      run: sgr cloud sync --remote splitgraph myns/postgres_fdw --wait --use-file
+        -f splitgraph.yml -f splitgraph.credentials.yml
+  myns_airbyte_postgres:
+    name: Build myns/airbyte-postgres
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Splitgraph
+      uses: splitgraph/setup-splitgraph@master
+      with:
+        splitgraph_deployment_url: data.splitgraph.com
+        splitgraph_api_key: ${{ secrets.SPLITGRAPH_API_KEY }}
+        splitgraph_api_secret: ${{ secrets.SPLITGRAPH_API_SECRET }}
+    - name: Set up credentials for Splitgraph
+      run: echo "$CREDENTIALS_YML" > splitgraph.credentials.yml
+      shell: bash
+      env:
+        CREDENTIALS_YML: ${{secrets.SPLITGRAPH_CREDENTIALS_YML}}
+    - name: Run sgr cloud sync
+      run: sgr cloud sync --remote splitgraph myns/airbyte-postgres --wait --use-file
+        -f splitgraph.yml -f splitgraph.credentials.yml
