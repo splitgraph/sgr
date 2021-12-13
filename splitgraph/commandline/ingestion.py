@@ -73,7 +73,7 @@ def csv_export(image_spec, query, file, layered):
     "--primary-key",
     multiple=True,
     help="Use the specified column(s) as primary key(s)",
-    default=False,
+    default=[],
 )
 @click.option(
     "-t",

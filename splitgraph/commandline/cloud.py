@@ -597,7 +597,7 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     "--readme-dir", default="./readmes", help="Path to the directory with the README files"
 )
 @click.option(
-    "--repositories-file", "-f", default="repositories.yml", type=click.Path(), multiple=True
+    "--repositories-file", "-f", default=["repositories.yml"], type=click.Path(), multiple=True
 )
 @click.option(
     "--skip-external",
@@ -833,7 +833,7 @@ def add_c(remote, skip_inject, domain_name):
 @click.command("status")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option(
-    "--repositories-file", "-f", default="repositories.yml", type=click.Path(), multiple=True
+    "--repositories-file", "-f", default=["repositories.yml"], type=click.Path(), multiple=True
 )
 @click.argument("repositories", type=RepositoryType(exists=False), nargs=-1)
 def status_c(remote, repositories_file, repositories):
@@ -1039,7 +1039,7 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
 @click.option("-w", "--wait", help="Attach to the job and wait for it to finish", is_flag=True)
 @click.option("-u", "--use-file", is_flag=True, help="Use a YAML file with repository settings")
 @click.option(
-    "-f", "--repositories-file", default="repositories.yml", type=click.Path(), multiple=True
+    "-f", "--repositories-file", default=["repositories.yml"], type=click.Path(), multiple=True
 )
 @click.argument("repository", type=RepositoryType(exists=False))
 def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
@@ -1168,7 +1168,7 @@ def stub_c(remote, plugin_name, repository, output_file):
 
 @click.command("validate")
 @click.option(
-    "-f", "--repositories-file", default="repositories.yml", type=click.Path(), multiple=True
+    "-f", "--repositories-file", default=["repositories.yml"], type=click.Path(), multiple=True
 )
 def validate_c(repositories_file):
     """Validate, merge and output project file(s)"""
