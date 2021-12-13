@@ -599,8 +599,13 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
 @click.option(
     "--repositories-file", "-f", default="repositories.yml", type=click.Path(), multiple=True
 )
+@click.option(
+    "--skip-external",
+    is_flag=True,
+    help="Only set up the metadata, not the external data source settings",
+)
 @click.argument("limit_repositories", type=str, nargs=-1)
-def load_c(remote, readme_dir, repositories_file, limit_repositories):
+def load_c(remote, readme_dir, skip_external, repositories_file, limit_repositories):
     """
     Load a Splitgraph catalog from a YAML file.
 
@@ -664,30 +669,31 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
     from splitgraph.cloud.project.utils import load_project
 
     repo_yaml = load_project(repositories_file)
-
-    # Set up and load credential IDs from the remote to allow users to refer to them by ID
-    # or by a name.
-    rest_client = RESTAPIClient(remote)
-    gql_client = GQLAPIClient(remote)
-    credential_map = _build_credential_map(rest_client, credentials=repo_yaml.credentials or {})
-
     repositories = repo_yaml.repositories
 
-    if limit_repositories:
-        repositories = [
-            r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
-        ]
+    gql_client = GQLAPIClient(remote)
 
-    logging.info("Uploading images...")
-    external_repositories = []
-    for repository in repositories:
-        if repository.external:
-            external_repository = AddExternalRepositoryRequest.from_external(
-                repository.namespace, repository.repository, repository.external, credential_map
-            )
-            external_repositories.append(external_repository)
-    rest_client.bulk_upsert_external(repositories=external_repositories)
-    logging.info(f"Uploaded images for {pluralise('repository', len(external_repositories))}")
+    if not skip_external:
+        # Set up and load credential IDs from the remote to allow users to refer to them by ID
+        # or by a name.
+        rest_client = RESTAPIClient(remote)
+        credential_map = _build_credential_map(rest_client, credentials=repo_yaml.credentials or {})
+
+        if limit_repositories:
+            repositories = [
+                r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
+            ]
+
+        logging.info("Uploading images...")
+        external_repositories = []
+        for repository in repositories:
+            if repository.external:
+                external_repository = AddExternalRepositoryRequest.from_external(
+                    repository.namespace, repository.repository, repository.external, credential_map
+                )
+                external_repositories.append(external_repository)
+        rest_client.bulk_upsert_external(repositories=external_repositories)
+        logging.info(f"Uploaded images for {pluralise('repository', len(external_repositories))}")
 
     logging.info("Updating metadata...")
     namespace_list = []
