@@ -1,8 +1,9 @@
-from functools import wraps
+from functools import wraps, reduce
+from pathlib import Path
 from typing import Optional, Dict, List, Callable, TypeVar
 
 from splitgraph.cloud.models import RepositoriesYAML, Credential, Repository, Metadata, External
-
+from splitgraph.utils.yaml import safe_load, safe_dump
 
 T = TypeVar("T")
 
@@ -94,3 +95,18 @@ def merge_project_files(left: RepositoriesYAML, right: RepositoriesYAML) -> Repo
         credentials=merge_credentials(left.credentials, right.credentials),
         repositories=merge_repository_lists(left.repositories, right.repositories),
     )
+
+
+def load_project(paths: List[Path]) -> RepositoriesYAML:
+    if not paths:
+        raise ValueError("No project files specified!")
+
+    def _load(path: Path) -> RepositoriesYAML:
+        with open(path, "r") as f:
+            return RepositoriesYAML.parse_obj(safe_load(f))
+
+    return reduce(merge_project_files, map(_load, paths))
+
+
+def dump_project(project: RepositoriesYAML, stream) -> None:
+    safe_dump(project.dict(by_alias=True, exclude_unset=True), stream)

@@ -250,15 +250,15 @@ def test_get_external_from_yaml():
     path = Path(os.path.join(RESOURCES, "repositories_yml", "repositories.yml"))
 
     with pytest.raises(click.UsageError, match="Repository doesnt/exist not found"):
-        _get_external_from_yaml(path, Repository("doesnt", "exist"))
+        _get_external_from_yaml([path], Repository("doesnt", "exist"))
 
     with pytest.raises(click.UsageError, match="Credential my_other_credential not defined"):
-        _get_external_from_yaml(path, Repository("someuser", "somerepo_1"))
+        _get_external_from_yaml([path], Repository("someuser", "somerepo_1"))
 
-    external, credentials = _get_external_from_yaml(path, Repository("someuser", "somerepo_2"))
+    external, credentials = _get_external_from_yaml([path], Repository("someuser", "somerepo_2"))
     assert external.plugin == "plugin_3"
     assert credentials is None
 
-    external, credentials = _get_external_from_yaml(path, Repository("otheruser", "somerepo_2"))
+    external, credentials = _get_external_from_yaml([path], Repository("otheruser", "somerepo_2"))
     assert external.plugin == "plugin"
     assert credentials == {"username": "my_username", "password": "secret"}

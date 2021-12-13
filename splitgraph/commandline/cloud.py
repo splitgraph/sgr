@@ -26,7 +26,6 @@ from splitgraph.commandline.engine import inject_config_into_engines
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.core.output import Color, pluralise
-from splitgraph.utils.yaml import safe_dump
 
 if TYPE_CHECKING:
     from splitgraph.cloud import GQLAPIClient
@@ -583,16 +582,13 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     and all external data source settings for a repository using `sgr cloud load`.
     """
     from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.project.utils import dump_project
 
     client = GQLAPIClient(remote)
     repositories = client.load_all_repositories(limit_to=limit_repositories)
 
     _dump_readmes_to_dir(repositories, readme_dir)
-
-    safe_dump(
-        {"repositories": [r.dict(by_alias=True, exclude_unset=True) for r in repositories]},
-        repositories_file,
-    )
+    dump_project(RepositoriesYAML(repositories=repositories), repositories_file)
 
 
 @click.command("load")
@@ -600,7 +596,9 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
 @click.option(
     "--readme-dir", default="./readmes", help="Path to the directory with the README files"
 )
-@click.option("--repositories-file", "-f", default="repositories.yml", type=click.File("r"))
+@click.option(
+    "--repositories-file", "-f", default="repositories.yml", type=click.Path(), multiple=True
+)
 @click.argument("limit_repositories", type=str, nargs=-1)
 def load_c(remote, readme_dir, repositories_file, limit_repositories):
     """
@@ -663,9 +661,9 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
     ```
     """
     from splitgraph.cloud import GQLAPIClient, RESTAPIClient
-    from splitgraph.utils.yaml import safe_load
+    from splitgraph.cloud.project.utils import load_project
 
-    repo_yaml = RepositoriesYAML.parse_obj(safe_load(repositories_file))
+    repo_yaml = load_project(repositories_file)
 
     # Set up and load credential IDs from the remote to allow users to refer to them by ID
     # or by a name.
@@ -828,7 +826,9 @@ def add_c(remote, skip_inject, domain_name):
 
 @click.command("status")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.option("--repositories-file", "-f", default="repositories.yml", type=click.Path())
+@click.option(
+    "--repositories-file", "-f", default="repositories.yml", type=click.Path(), multiple=True
+)
 @click.argument("repositories", type=RepositoryType(exists=False), nargs=-1)
 def status_c(remote, repositories_file, repositories):
     """
@@ -839,7 +839,7 @@ def status_c(remote, repositories_file, repositories):
     file and get job statuses for all repositories in this file.
     """
     from splitgraph.cloud import GQLAPIClient
-    from splitgraph.utils.yaml import safe_load
+    from splitgraph.cloud.project.utils import load_project
     from tabulate import tabulate
 
     client = GQLAPIClient(remote)
@@ -847,8 +847,7 @@ def status_c(remote, repositories_file, repositories):
     if repositories:
         repo_list = [(r.namespace, r.repository) for r in repositories]
     else:
-        with open(repositories_file, "r") as f:
-            repo_yaml = RepositoriesYAML.parse_obj(safe_load(f))
+        repo_yaml = load_project(repositories_file)
         repo_list = [(r.namespace, r.repository) for r in repo_yaml.repositories]
 
     table: List[Tuple] = []
@@ -1033,7 +1032,9 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
 )
 @click.option("-w", "--wait", help="Attach to the job and wait for it to finish", is_flag=True)
 @click.option("-u", "--use-file", is_flag=True, help="Use a YAML file with repository settings")
-@click.option("-f", "--repositories-file", default="repositories.yml", type=click.Path())
+@click.option(
+    "-f", "--repositories-file", default="repositories.yml", type=click.Path(), multiple=True
+)
 @click.argument("repository", type=RepositoryType(exists=False))
 def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     """
@@ -1050,11 +1051,6 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
 
     client = GQLAPIClient(remote)
 
-    # TODO:
-    #   * consider splitting commands for better UX? (flags kinda weird)
-    #   * _get_external_from_yaml: load credential IDs like in sgr cloud load?
-    #   * think through the use cases and how to set up credentials
-    #   * single GQLAPIClient function to call START_LOAD sufficient?
     if not use_file:
         task_id = client.start_load_existing(
             namespace=repository.namespace, repository=repository.repository, sync=not full_refresh
@@ -1077,12 +1073,11 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
 
 
 def _get_external_from_yaml(
-    repositories_file: Path, repository: "CoreRepository"
+    repositories_file: List[Path], repository: "CoreRepository"
 ) -> Tuple["External", Optional[Dict[str, Any]]]:
-    from splitgraph.utils.yaml import safe_load
+    from splitgraph.cloud.project.utils import load_project
 
-    with open(repositories_file) as f:
-        repo_yaml = RepositoriesYAML.parse_obj(safe_load(f))
+    repo_yaml = load_project(repositories_file)
 
     for repo_settings in repo_yaml.repositories:
         if (
@@ -1165,6 +1160,18 @@ def stub_c(remote, plugin_name, repository, output_file):
     yml.dump(output, output_file)
 
 
+@click.command("validate")
+@click.option(
+    "-f", "--repositories-file", default="repositories.yml", type=click.Path(), multiple=True
+)
+def validate_c(repositories_file):
+    """Validate, merge and output project file(s)"""
+    from splitgraph.cloud.project.utils import dump_project, load_project
+
+    project = load_project(repositories_file)
+    dump_project(project, sys.stdout)
+
+
 @click.group("cloud")
 def cloud_c():
     """Run actions on Splitgraph Cloud."""
@@ -1189,3 +1196,4 @@ cloud_c.add_command(upload_c)
 cloud_c.add_command(sync_c)
 cloud_c.add_command(plugins_c)
 cloud_c.add_command(stub_c)
+cloud_c.add_command(validate_c)
