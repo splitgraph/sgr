@@ -1178,6 +1178,21 @@ def validate_c(repositories_file):
     dump_project(project, sys.stdout)
 
 
+@click.command("seed")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("seed")
+@click.argument("directory", type=click.Path(file_okay=False), default=".")
+def seed_c(remote, seed, directory):
+    """Generate a starter Splitgraph Cloud project from a seed."""
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.project.generation import generate_project, ProjectSeed
+
+    client = GQLAPIClient(remote)
+
+    generate_project(client, ProjectSeed.decode(seed), directory)
+    click.echo(f"Splitgraph project generated in {os.path.abspath(directory)}.")
+
+
 @click.group("cloud")
 def cloud_c():
     """Run actions on Splitgraph Cloud."""
@@ -1203,3 +1218,4 @@ cloud_c.add_command(sync_c)
 cloud_c.add_command(plugins_c)
 cloud_c.add_command(stub_c)
 cloud_c.add_command(validate_c)
+cloud_c.add_command(seed_c)
