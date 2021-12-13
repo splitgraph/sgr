@@ -99,7 +99,7 @@ def merge_repository_lists(left: List[Repository], right: List[Repository]) -> L
 def merge_project_files(left: RepositoriesYAML, right: RepositoriesYAML) -> RepositoriesYAML:
     return RepositoriesYAML(
         credentials=merge_credentials(left.credentials, right.credentials),
-        repositories=merge_repository_lists(left.repositories, right.repositories),
+        repositories=merge_repository_lists(left.repositories or [], right.repositories or []),
     )
 
 
