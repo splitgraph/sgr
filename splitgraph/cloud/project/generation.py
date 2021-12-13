@@ -21,14 +21,14 @@ def get_comment(jsonschema_object: Any) -> str:
     if "title" in jsonschema_object:
         result.append(jsonschema_object["title"])
     if "description" in jsonschema_object:
-        result.append(jsonschema_object["description"])
+        result.append(jsonschema_object["description"].strip().replace("\n", " "))
     if "enum" in jsonschema_object:
         enum = jsonschema_object["enum"]
         if len(enum) == 1:
             result.append("Constant")
         else:
             result.append("One of " + ", ".join(enum))
-    if "const" in jsonschema_object:
+    if "const" in jsonschema_object and "Constant" not in result:
         result.append("Constant")
     if "oneOf" in jsonschema_object:
         result.append("Choose one of:")
