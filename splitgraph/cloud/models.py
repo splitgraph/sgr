@@ -86,7 +86,7 @@ class Repository(BaseModel):
 
 
 class RepositoriesYAML(BaseModel):
-    repositories: Optional[List[Repository]]
+    repositories: List[Repository] = []
     credentials: Optional[Dict[str, Credential]]
 
 

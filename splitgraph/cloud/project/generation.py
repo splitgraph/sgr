@@ -3,7 +3,7 @@ import itertools
 import os
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Mapping, Tuple
 
 import ruamel.yaml
 from pydantic import BaseModel
@@ -224,7 +224,7 @@ def generate_project(api_client: GQLAPIClient, seed: ProjectSeed, basedir: Path)
 
 
 def generate_splitgraph_yml(
-    all_plugins: Dict[str, Plugin], seed: ProjectSeed
+    all_plugins: Mapping[str, Plugin], seed: ProjectSeed
 ) -> Tuple[CM, CM, List[Tuple[str, bool, bool]]]:
     repository_info: List[Tuple[str, bool, bool]] = []
     repository_names: List[str] = []
