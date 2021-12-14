@@ -105,7 +105,7 @@ def _get_object_example(obj: Dict[str, Any]) -> CM:
     return result
 
 
-TEMPLATE = """credentials:
+SPLITGRAPH_YML_TEMPLATE = """credentials:
   CREDENTIAL_NAME:  # This is the name of this credential that "external" sections can reference.
     plugin: PLUGIN_NAME
     # Credential-specific data matching the plugin's credential schema
@@ -148,11 +148,11 @@ repositories:
 
 def stub_plugin(plugin: Plugin, namespace: str, repository: str, is_live: bool = False) -> CM:
     """
-    Generate a repositories.yml file based on a plugin's JSONSchemas.
+    Generate a splitgraph.yml file based on a plugin's JSONSchemas.
     """
     yml = ruamel.yaml.YAML()
     repositories_yaml = (
-        TEMPLATE.replace("CREDENTIAL_NAME", plugin.plugin_name)
+        SPLITGRAPH_YML_TEMPLATE.replace("CREDENTIAL_NAME", plugin.plugin_name)
         .replace("NAMESPACE", namespace)
         .replace("REPOSITORY", repository)
         .replace("PLUGIN_NAME", plugin.plugin_name)

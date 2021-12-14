@@ -568,13 +568,13 @@ def _normalise_filename(filename):
 @click.command("dump")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option("--readme-dir", default="./readmes", help="Directory to dump the data into")
-@click.option("--repositories-file", "-f", default="repositories.yml", type=click.File("w"))
+@click.option("--repositories-file", "-f", default="splitgraph.yml", type=click.File("w"))
 @click.argument("limit_repositories", type=str, nargs=-1)
 def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     """
     Dump a Splitgraph catalog to a YAML file.
 
-    This creates a repositories.yml file in the target directory as well as a subdirectory `readmes`
+    This creates a splitgraph.yml file in the target directory as well as a subdirectory `readmes`
     with all the repository readmes. This file can be used to recreate all catalog metadata
     and all external data source settings for a repository using `sgr cloud load`.
     """
@@ -594,7 +594,7 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     "--readme-dir", default="./readmes", help="Path to the directory with the README files"
 )
 @click.option(
-    "--repositories-file", "-f", default=["repositories.yml"], type=click.Path(), multiple=True
+    "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
 )
 @click.option(
     "--skip-external",
@@ -606,61 +606,8 @@ def load_c(remote, readme_dir, skip_external, repositories_file, limit_repositor
     """
     Load a Splitgraph catalog from a YAML file.
 
-    This will load a repositories.yml file and the `readmes` subdirectory produced by
+    This will load a splitgraph.yml file and the `readmes` subdirectory produced by
     `sgr cloud dump` back into a remote Splitgraph catalog.
-
-    The format is an extension of the format accepted by `sgr cloud metadata` to include multiple
-    repositories. README files are read from the `readmes` subdirectory.
-
-    \b
-    ```
-    credentials:      # Optional credentials to access remote data sources
-      my_bucket:
-        plugin: csv
-        data:
-          s3_access_key: ...
-          s3_secret_key: ...
-    repositories:
-    - namespace: my_username
-      repository: repository
-      metadata:
-        readme: dataset-readme.md
-        description: Dataset description (160 characters max).
-        topics:
-          - topic_1
-          - topic_2
-        sources:
-          - anchor: Source
-            href: https://www.splitgraph.com
-            isCreator: true
-            isSameAs: false
-          - anchor: Source 2
-            href: https://www.splitgraph.com
-            isCreator: false
-            isSameAs: true
-        license: Public Domain
-        extra_metadata:
-          key_1:
-            key_1_1: value_1_1
-            key_1_2: value_1_2
-          key_2:
-            key_2_1: value_2_1
-            key_2_2: value_2_2
-      external:
-        credential: my_bucket
-        plugin: csv
-        params:
-          s3_bucket: my_bucket
-        tables:
-          table_1:
-            schema:
-            - name: column_1
-              type: text
-            - name: column_2
-              type: integer
-            options:
-              s3_object: some/s3_key.csv
-    ```
     """
     from splitgraph.cloud import GQLAPIClient, RESTAPIClient
     from splitgraph.cloud.project.utils import load_project
@@ -830,7 +777,7 @@ def add_c(remote, skip_inject, domain_name):
 @click.command("status")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option(
-    "--repositories-file", "-f", default=["repositories.yml"], type=click.Path(), multiple=True
+    "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
 )
 @click.argument("repositories", type=RepositoryType(exists=False), nargs=-1)
 def status_c(remote, repositories_file, repositories):
@@ -838,7 +785,7 @@ def status_c(remote, repositories_file, repositories):
     Get job statuses for given repositories.
 
     If this command is passed a list of repositories, it will get the latest job
-    statuses just for those repositories. Otherwise, it will use an existing repositories.yml
+    statuses just for those repositories. Otherwise, it will use an existing splitgraph.yml
     file and get job statuses for all repositories in this file.
     """
     from splitgraph.cloud import GQLAPIClient
@@ -1036,7 +983,7 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
 @click.option("-w", "--wait", help="Attach to the job and wait for it to finish", is_flag=True)
 @click.option("-u", "--use-file", is_flag=True, help="Use a YAML file with repository settings")
 @click.option(
-    "-f", "--repositories-file", default=["repositories.yml"], type=click.Path(), multiple=True
+    "-f", "--repositories-file", default=["splitgraph.yml"], type=click.Path(), multiple=True
 )
 @click.argument("repository", type=RepositoryType(exists=False))
 def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
@@ -1044,9 +991,9 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     Trigger an ingestion job for a repository.
 
     This starts off a load job for an existing/new repository, optionally using a
-    repositories.yml file and waiting for the job to complete before exiting.
+    splitgraph.yml file and waiting for the job to complete before exiting.
 
-    If the repositories.yml file is specified, it will use the settings for that repository
+    If the splitgraph.yml file is specified, it will use the settings for that repository
     from there to override the existing parameters for a repository or to create a new repository.
     Otherwise, it will use the existing parameters.
     """
@@ -1090,7 +1037,7 @@ def _get_external_from_yaml(
             break
     else:
         raise click.UsageError(
-            "Repository %s not found in the repositories.yml file" % repository.to_schema()
+            "Repository %s not found in the splitgraph.yml file" % repository.to_schema()
         )
     if not repo_settings.external:
         raise click.UsageError(
@@ -1103,7 +1050,7 @@ def _get_external_from_yaml(
             or repo_settings.external.credential not in repo_yaml.credentials
         ):
             raise click.UsageError(
-                "Credential %s not defined in repositories.yml" % repo_settings.external.credential
+                "Credential %s not defined in splitgraph.yml" % repo_settings.external.credential
             )
         credential_data = repo_yaml.credentials[repo_settings.external.credential].data
     return repo_settings.external, credential_data
@@ -1147,7 +1094,7 @@ def plugins_c(remote, filter_plugins):
 @click.argument("repository", type=RepositoryType(exists=False))
 @click.argument("output_file", type=click.File("w"), default="-")
 def stub_c(remote, plugin_name, repository, output_file):
-    """Generate a repositories.yml stub file for a given plugin"""
+    """Generate a splitgraph.yml stub file for a given plugin"""
     import ruamel.yaml
     from splitgraph.cloud import GQLAPIClient
     from splitgraph.cloud.project.generation import stub_plugin
@@ -1165,7 +1112,7 @@ def stub_c(remote, plugin_name, repository, output_file):
 
 @click.command("validate")
 @click.option(
-    "-f", "--repositories-file", default=["repositories.yml"], type=click.Path(), multiple=True
+    "-f", "--repositories-file", default=["splitgraph.yml"], type=click.Path(), multiple=True
 )
 def validate_c(repositories_file):
     """Validate, merge and output project file(s)"""

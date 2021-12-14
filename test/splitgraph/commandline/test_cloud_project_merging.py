@@ -10,9 +10,9 @@ from splitgraph.utils.yaml import safe_dump, safe_load
 
 
 def test_project_merging(snapshot):
-    with open(os.path.join(RESOURCES, "repositories_yml", "repositories.yml")) as f:
+    with open(os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml")) as f:
         left = RepositoriesYAML.parse_obj(safe_load(f))
-    with open(os.path.join(RESOURCES, "repositories_yml", "repositories.override.yml")) as f:
+    with open(os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.override.yml")) as f:
         right = RepositoriesYAML.parse_obj(safe_load(f))
 
     merged = merge_project_files(left, right)
@@ -33,9 +33,9 @@ def test_project_validate(snapshot):
         validate_c,
         [
             "-f",
-            os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
+            os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),
             "-f",
-            os.path.join(RESOURCES, "repositories_yml", "repositories.override.yml"),
+            os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.override.yml"),
         ],
     )
     assert result.exit_code == 0

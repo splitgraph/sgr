@@ -49,7 +49,7 @@ def test_job_status_yaml(snapshot):
             status_c,
             [
                 "-f",
-                os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
+                os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),
             ],
             catch_exceptions=False,
         )
@@ -212,7 +212,7 @@ def test_sync_yaml_file():
             [
                 "--use-file",
                 "--repositories-file",
-                os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
+                os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),
                 "otheruser/somerepo_2",
             ],
             catch_exceptions=False,
@@ -247,7 +247,7 @@ def test_sync_wait():
 
 
 def test_get_external_from_yaml():
-    path = Path(os.path.join(RESOURCES, "repositories_yml", "repositories.yml"))
+    path = Path(os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"))
 
     with pytest.raises(click.UsageError, match="Repository doesnt/exist not found"):
         _get_external_from_yaml([path], Repository("doesnt", "exist"))

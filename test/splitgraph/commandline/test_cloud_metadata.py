@@ -220,7 +220,7 @@ def test_commandline_dump(snapshot):
                 "--readme-dir",
                 os.path.join(tmpdir, "readmes"),
                 "-f",
-                os.path.join(tmpdir, "repositories.yml"),
+                os.path.join(tmpdir, "splitgraph.yml"),
             ],
             catch_exceptions=False,
         )
@@ -230,7 +230,7 @@ def test_commandline_dump(snapshot):
             readme_1 = f.read()
         with open(os.path.join(tmpdir, "readmes", "otheruser-somerepo_2.fe37.md")) as f:
             readme_2 = f.read()
-        with open(os.path.join(tmpdir, "repositories.yml")) as f:
+        with open(os.path.join(tmpdir, "splitgraph.yml")) as f:
             repo_yml = f.read()
 
         snapshot.assert_match_dir(
@@ -239,7 +239,7 @@ def test_commandline_dump(snapshot):
                     "someuser-somerepo_1.b7f3.md": readme_1,
                     "otheruser-somerepo_2.fe37.md": readme_2,
                 },
-                "repositories.yml": repo_yml,
+                "splitgraph.yml": repo_yml,
             },
             "sgr_cloud_dump_multiple",
         )
@@ -251,20 +251,20 @@ def test_commandline_dump(snapshot):
                 "--readme-dir",
                 os.path.join(tmpdir, "readmes"),
                 "-f",
-                os.path.join(tmpdir, "repositories.yml"),
+                os.path.join(tmpdir, "splitgraph.yml"),
                 "someuser/somerepo_1",
             ],
             catch_exceptions=False,
         )
         assert result.exit_code == 0
 
-        with open(os.path.join(tmpdir, "repositories.yml")) as f:
+        with open(os.path.join(tmpdir, "splitgraph.yml")) as f:
             repo_yml = f.read()
 
         snapshot.assert_match_dir(
             {
                 "readmes": {"someuser-somerepo_1.b7f3.md": readme_1},
-                "repositories.yml": repo_yml,
+                "splitgraph.yml": repo_yml,
             },
             "sgr_cloud_dump_single",
         )
@@ -319,9 +319,9 @@ def test_commandline_load():
             load_c,
             [
                 "--readme-dir",
-                os.path.join(RESOURCES, "repositories_yml", "readmes"),
+                os.path.join(RESOURCES, "splitgraph_yml", "readmes"),
                 "-f",
-                os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
+                os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),
             ],
             catch_exceptions=False,
         )

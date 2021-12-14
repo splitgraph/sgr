@@ -1,4 +1,4 @@
-"""Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
+"""Definitions for the splitgraph.yml format that's used to batch-populate a Splitgraph catalog
 with repositories and their metadata.
 """
 
