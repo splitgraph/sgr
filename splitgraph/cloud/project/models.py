@@ -64,6 +64,6 @@ class Repository(BaseModel):
     external: Optional[External]
 
 
-class RepositoriesYAML(BaseModel):
+class SplitgraphYAML(BaseModel):
     repositories: List[Repository] = []
     credentials: Optional[Dict[str, Credential]]

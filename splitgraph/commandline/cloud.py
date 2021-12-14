@@ -17,7 +17,7 @@ from urllib.parse import quote, urlparse
 import click
 from click import wrap_text
 from splitgraph.cloud.models import AddExternalRepositoryRequest
-from splitgraph.cloud.project.models import Metadata, RepositoriesYAML
+from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
 from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
 from splitgraph.commandline.engine import inject_config_into_engines
 from splitgraph.config.config import get_from_subsection
@@ -585,7 +585,7 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     repositories = client.load_all_repositories(limit_to=limit_repositories)
 
     _dump_readmes_to_dir(repositories, readme_dir)
-    dump_project(RepositoriesYAML(repositories=repositories), repositories_file)
+    dump_project(SplitgraphYAML(repositories=repositories), repositories_file)
 
 
 @click.command("load")

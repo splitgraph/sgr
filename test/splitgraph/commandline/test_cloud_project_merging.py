@@ -3,7 +3,7 @@ from io import StringIO
 from test.splitgraph.conftest import RESOURCES
 
 from click.testing import CliRunner
-from splitgraph.cloud.project.models import RepositoriesYAML
+from splitgraph.cloud.project.models import SplitgraphYAML
 from splitgraph.cloud.project.utils import merge_project_files
 from splitgraph.commandline.cloud import validate_c
 from splitgraph.utils.yaml import safe_dump, safe_load
@@ -11,9 +11,9 @@ from splitgraph.utils.yaml import safe_dump, safe_load
 
 def test_project_merging(snapshot):
     with open(os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml")) as f:
-        left = RepositoriesYAML.parse_obj(safe_load(f))
+        left = SplitgraphYAML.parse_obj(safe_load(f))
     with open(os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.override.yml")) as f:
-        right = RepositoriesYAML.parse_obj(safe_load(f))
+        right = SplitgraphYAML.parse_obj(safe_load(f))
 
     merged = merge_project_files(left, right)
 
