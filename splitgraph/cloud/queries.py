@@ -252,7 +252,6 @@ GET_PLUGINS = """query ExternalPlugins {
     paramsSchema
     credentialsSchema
     tableParamsSchema
-    iconUrl
     supportsSync
     supportsMount
     supportsLoad
@@ -268,7 +267,6 @@ GET_PLUGIN = """query ExternalPlugin($pluginName: String!) {
     paramsSchema
     credentialsSchema
     tableParamsSchema
-    iconUrl
     supportsSync
     supportsMount
     supportsLoad

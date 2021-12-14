@@ -24,7 +24,6 @@ class Plugin(BaseModel):
     table_params_schema: Dict[str, Any]
     name: str
     description: str
-    icon_url: str
     supports_mount: bool
     supports_load: bool
     supports_sync: bool
