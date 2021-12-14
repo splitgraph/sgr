@@ -31,6 +31,7 @@ from splitgraph.commandline.cloud import (
     metadata_c,
     readme_c,
     search_c,
+    validate_c,
 )
 from splitgraph.exceptions import (
     GQLAPIError,
@@ -334,3 +335,23 @@ def test_commandline_load():
         assert_repository_sources(reqs.pop())
         reqs.pop()  # discard duplicate request
         assert_repository_profiles(reqs.pop())
+
+
+def test_project_validate(snapshot):
+    # Use the same file as the merging test
+    snapshot.snapshot_dir = os.path.join(
+        os.path.dirname(__file__), "../cloud/project/snapshots/test_merging/test_project_merging"
+    )
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        validate_c,
+        [
+            "-f",
+            os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),
+            "-f",
+            os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.override.yml"),
+        ],
+    )
+    assert result.exit_code == 0
+
+    snapshot.assert_match(result.stdout, "repositories.merged.yml")
