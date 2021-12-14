@@ -15,6 +15,7 @@ from splitgraph.cloud.project.dbt import (
     generate_dbt_project,
 )
 from splitgraph.cloud.project.github_actions import generate_workflow
+from splitgraph.cloud.project.templates import SPLITGRAPH_YML_TEMPLATE
 
 
 def get_comment(jsonschema_object: Any) -> str:
@@ -103,47 +104,6 @@ def _get_object_example(obj: Dict[str, Any]) -> CM:
         if comment:
             result.yaml_add_eol_comment(comment, key=item)
     return result
-
-
-SPLITGRAPH_YML_TEMPLATE = """credentials:
-  CREDENTIAL_NAME:  # This is the name of this credential that "external" sections can reference.
-    plugin: PLUGIN_NAME
-    # Credential-specific data matching the plugin's credential schema
-    data: {}
-repositories:
-- namespace: NAMESPACE
-  repository: REPOSITORY
-  # Catalog-specific metadata for the repository. Optional.
-  metadata:
-    readme:
-      text: Readme
-    description: Description of the repository
-    topics:
-    - sample_topic
-  # Data source settings for the repository. Optional.
-  external:
-    # Name of the credential that the plugin uses. This can also be a credential_id if the
-    # credential is already registered on Splitgraph.
-    credential: CREDENTIAL_NAME
-    plugin: PLUGIN_NAME
-    # Plugin-specific parameters matching the plugin's parameters schema
-    params: {}
-    tables:
-      sample_table:
-        # Plugin-specific table parameters matching the plugin's schema
-        options: {}
-
-        # Schema of the table. If set to `[]`, will infer.
-        schema:
-          - name: col_1
-            type: varchar
-    # Whether live querying is enabled for the plugin (creates a "live" tag in the
-    # repository proxying to the data source). The plugin must support live querying.
-    is_live: false
-    # Ingestion schedule settings. Disable this if you're using GitHub Actions or other methods
-    # to trigger ingestion.
-    schedule:
-"""
 
 
 def stub_plugin(plugin: Plugin, namespace: str, repository: str, is_live: bool = False) -> CM:
