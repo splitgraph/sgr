@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
+from importlib.resources import read_binary
 from random import getrandbits
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, cast
 
@@ -21,6 +22,7 @@ from splitgraph.core.types import (
 )
 from splitgraph.engine import ResultShape
 from splitgraph.ingestion.common import add_timestamp_tags
+from splitgraph.resources import icons
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -40,6 +42,14 @@ class DataSource(ABC):
     supports_mount = False
     supports_sync = False
     supports_load = False
+    _icon_file: Optional[str] = None
+
+    @classmethod
+    @abstractmethod
+    def get_icon(cls) -> Optional[bytes]:
+        if cls._icon_file:
+            return read_binary(icons, cls._icon_file)
+        return None
 
     @classmethod
     @abstractmethod

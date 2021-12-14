@@ -150,6 +150,8 @@ EOF
         + "The schema parameter is required when subquery isn't used."
     )
 
+    _icon_file = "snowflake.svg"
+
     def __init__(
         self,
         engine: "PostgresEngine",

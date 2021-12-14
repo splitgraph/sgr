@@ -473,6 +473,8 @@ If a dictionary, must have the format
                     "options": {[get passed to CREATE FOREIGN TABLE]}}}.
     """
 
+    _icon_file = "postgresql.svg"
+
     def get_server_options(self):
         return {
             "host": self.params["host"],
@@ -536,6 +538,8 @@ Mounts one or more collections on a remote Mongo database as a set of foreign ta
 ```
 """
 
+    _icon_file = "mongodb.svg"
+
     @classmethod
     def get_name(cls) -> str:
         return "MongoDB"
@@ -591,6 +595,8 @@ If a dictionary, must have the format
     {"table_name": {"schema": {"col_1": "type_1", ...},
                     "options": {[get passed to CREATE FOREIGN TABLE]}}}.
         """
+
+    _icon_file = "mysql.svg"
 
     @classmethod
     def get_name(cls) -> str:
@@ -704,6 +710,8 @@ EOF
 \b
 ```
 """
+
+    _icon_file = "elasticsearch.svg"
 
     @classmethod
     def get_name(cls) -> str:
