@@ -80,6 +80,8 @@ class DBTDataSource(TransformingDataSource, LoadableDataSource):
         "required": ["git_url"],
     }
 
+    _icon_file = "dbt.svg"
+
     def __init__(
         self,
         engine: "PostgresEngine",

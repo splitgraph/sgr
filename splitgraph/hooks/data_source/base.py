@@ -45,7 +45,6 @@ class DataSource(ABC):
     _icon_file: Optional[str] = None
 
     @classmethod
-    @abstractmethod
     def get_icon(cls) -> Optional[bytes]:
         if cls._icon_file:
             return read_binary(icons, cls._icon_file)
