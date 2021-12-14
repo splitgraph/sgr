@@ -107,13 +107,14 @@ def generate_dbt_project(repositories: List[str], basedir: Path) -> None:
 
     # Generate models/staging/[source_name]/[source_name.sql]
     for repository in repositories:
-        model_path = os.path.join(basedir, "models/staging", get_source_name(repository))
+        source_name = get_source_name(repository)
+        model_path = os.path.join(basedir, "models/staging", source_name)
         os.makedirs(model_path, exist_ok=True)
-        with open(os.path.join(model_path, get_source_name(repository) + ".sql"), "w") as f:
+        with open(os.path.join(model_path, source_name + ".sql"), "w") as f:
             f.write(  # nosec
                 f"""SELECT 
   *
-FROM {{{{ source('{get_source_name(repository).replace("'", "''")}', 'some_table') }}}}
+FROM {{{{ source('{source_name.replace("'", "''")}', 'some_table') }}}}
 """
             )
 

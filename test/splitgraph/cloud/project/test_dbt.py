@@ -38,15 +38,17 @@ def test_generate_dbt_project(snapshot):
     with TemporaryDirectory() as tmpdir:
         generate_dbt_project(["some-data/source", "some-other/data-raw", "and-third/data"], tmpdir)
 
-        project_files = [os.path.join(dp, f) for dp, dn, fn in os.walk(tmpdir) for f in fn]
+        project_files = [
+            os.path.join(dp, f) for dp, dn, fn in sorted(os.walk(tmpdir)) for f in sorted(fn)
+        ]
         assert project_files == [
             os.path.join(tmpdir, d)
             for d in [
                 "dbt_project.yml",
                 "models/staging/sources.yml",
+                "models/staging/and_third_data/and_third_data.sql",
                 "models/staging/some_data_source/some_data_source.sql",
                 "models/staging/some_other_data_raw/some_other_data_raw.sql",
-                "models/staging/and_third_data/and_third_data.sql",
             ]
         ]
 
@@ -55,14 +57,14 @@ def test_generate_dbt_project(snapshot):
         with open(project_files[1]) as f:
             actual_dict["models"] = {"staging": {"sources.yml": f.read()}}
         with open(project_files[2]) as f:
+            actual_dict["models"]["staging"]["and_third_data"] = {"and_third_data.sql": f.read()}
+        with open(project_files[3]) as f:
             actual_dict["models"]["staging"]["some_data_source"] = {
                 "some_data_source.sql": f.read()
             }
-        with open(project_files[3]) as f:
+        with open(project_files[4]) as f:
             actual_dict["models"]["staging"]["some_other_data_raw"] = {
                 "some_other_data_raw.sql": f.read()
             }
-        with open(project_files[4]) as f:
-            actual_dict["models"]["staging"]["and_third_data"] = {"and_third_data.sql": f.read()}
 
         snapshot.assert_match_dir(actual_dict, "splitgraph_template")
