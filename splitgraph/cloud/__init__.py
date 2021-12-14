@@ -866,7 +866,6 @@ class GQLAPIClient:
             table_params_schema=plugin_dict["tableParamsSchema"],
             name=plugin_dict["name"],
             description=plugin_dict["description"],
-            icon_url=plugin_dict["iconUrl"],
             supports_load=plugin_dict["supportsLoad"],
             supports_sync=plugin_dict["supportsSync"],
             supports_mount=plugin_dict["supportsMount"],
