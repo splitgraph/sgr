@@ -2,7 +2,7 @@ from functools import reduce, wraps
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, TypeVar
 
-from splitgraph.cloud.models import (
+from splitgraph.cloud.project.models import (
     Credential,
     External,
     Metadata,

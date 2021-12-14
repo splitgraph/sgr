@@ -3,7 +3,7 @@ from io import StringIO
 from test.splitgraph.conftest import RESOURCES
 
 from click.testing import CliRunner
-from splitgraph.cloud.models import RepositoriesYAML
+from splitgraph.cloud.project.models import RepositoriesYAML
 from splitgraph.cloud.project.utils import merge_project_files
 from splitgraph.commandline.cloud import validate_c
 from splitgraph.utils.yaml import safe_dump, safe_load

@@ -16,11 +16,8 @@ from urllib.parse import quote, urlparse
 
 import click
 from click import wrap_text
-from splitgraph.cloud.models import (
-    AddExternalRepositoryRequest,
-    Metadata,
-    RepositoriesYAML,
-)
+from splitgraph.cloud.models import AddExternalRepositoryRequest
+from splitgraph.cloud.project.models import Metadata, RepositoriesYAML
 from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
 from splitgraph.commandline.engine import inject_config_into_engines
 from splitgraph.config.config import get_from_subsection
@@ -29,7 +26,7 @@ from splitgraph.core.output import Color, pluralise
 
 if TYPE_CHECKING:
     from splitgraph.cloud import GQLAPIClient
-    from splitgraph.cloud.models import External, Repository
+    from splitgraph.cloud.project.models import External, Repository
     from splitgraph.core.repository import Repository as CoreRepository
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)

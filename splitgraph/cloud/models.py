@@ -1,45 +1,20 @@
 """
-Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
-with repositories and their metadata.
+Definitions for responses from the cloud GQL/REST APIs
 """
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+from splitgraph.cloud.project.models import (
+    External,
+    IngestionSchedule,
+    Metadata,
+    Repository,
+    Source,
+    Table,
+)
 from splitgraph.core.types import Params, TableSchema
-
-# Models for the externals API data (tables, plugin params etc)
-
-
-class Table(BaseModel):
-    class Column(BaseModel):
-        name: str
-        pg_type: str = Field(alias="type")
-        comment: Optional[str]
-
-    options: Dict[str, Any]
-    schema_: List[Column] = Field(alias="schema")
-
-
-class Credential(BaseModel):
-    plugin: str
-    data: Dict[str, Any]
-
-
-class IngestionSchedule(BaseModel):
-    schedule: str
-    enabled = True
-
-
-class External(BaseModel):
-    credential_id: Optional[str]
-    credential: Optional[str]
-    plugin: str
-    params: Dict[str, Any]
-    tables: Dict[str, Table]
-    is_live: bool = True
-    schedule: Optional[IngestionSchedule]
 
 
 class Plugin(BaseModel):
@@ -53,41 +28,6 @@ class Plugin(BaseModel):
     supports_mount: bool
     supports_load: bool
     supports_sync: bool
-
-
-# Models for the catalog metadata (description, README, topics etc)
-
-
-class Source(BaseModel):
-    anchor: str
-    href: str
-    isCreator: Optional[bool]
-    isSameAs: Optional[bool]
-
-
-class Metadata(BaseModel):
-    class Readme(BaseModel):
-        file: Optional[str]
-        text: Optional[str]
-
-    readme: Optional[Union[str, Readme]]
-    description: Optional[str]
-    topics: Optional[List[str]]
-    sources: Optional[List[Source]]
-    license: Optional[str]
-    extra_metadata: Optional[Dict[str, Any]]
-
-
-class Repository(BaseModel):
-    namespace: str
-    repository: str
-    metadata: Optional[Metadata]
-    external: Optional[External]
-
-
-class RepositoriesYAML(BaseModel):
-    repositories: List[Repository] = []
-    credentials: Optional[Dict[str, Credential]]
 
 
 # GQL response for the catalog metadata

@@ -32,19 +32,17 @@ from splitgraph.cloud.models import (
     AddExternalCredentialRequest,
     AddExternalRepositoriesRequest,
     AddExternalRepositoryRequest,
-    External,
     ExternalResponse,
     IngestionJobStatus,
     ListExternalCredentialsResponse,
-    Metadata,
     MetadataResponse,
     Plugin,
-    Repository,
     RepositoryIngestionJobStatusResponse,
     UpdateExternalCredentialRequest,
     UpdateExternalCredentialResponse,
     make_repositories,
 )
+from splitgraph.cloud.project.models import External, Metadata, Repository
 from splitgraph.cloud.queries import (
     BULK_UPDATE_REPO_SOURCES,
     BULK_UPSERT_REPO_PROFILES,
