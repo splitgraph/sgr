@@ -37,11 +37,11 @@ jobs:
       shell: bash
       env:
         CREDENTIALS_YML: ${{secrets.SPLITGRAPH_CREDENTIALS_YML}}
+    - name: Run sgr cloud sync to perform the data load into a private repo
+      run: sgr cloud sync --remote splitgraph --initial-private --use-file -f splitgraph.yml
+        -f splitgraph.credentials.yml --wait myns/airbyte-postgres
+      shell: bash
     - name: Run sgr cloud load to set up metadata
       run: sgr cloud load --remote splitgraph --skip-external -f splitgraph.yml -f
         splitgraph.credentials.yml myns/airbyte-postgres
-      shell: bash
-    - name: Run sgr cloud sync to perform the data load
-      run: sgr cloud sync --remote splitgraph --use-file -f splitgraph.yml -f splitgraph.credentials.yml
-        --wait myns/airbyte-postgres
       shell: bash

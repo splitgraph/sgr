@@ -60,21 +60,22 @@ def generate_job(
             }
         )
     else:
-        # For repositories that don't support mount, we only use sgr cloud load to set up
-        # their READMEs etc. Then we use `sgr cloud sync` to actually run ingestion.
+        # For repositories that don't support mount, first run `sgr cloud sync` to load the data
+        # and make the repository private by default. Then, run `sgr cloud load` to set up the
+        # repo's README etc (without saving the ingestion settings).
         steps.append(
             {
-                "name": "Run sgr cloud load to set up metadata",
-                "run": "sgr cloud load --remote splitgraph --skip-external "
-                f"-f splitgraph.yml -f splitgraph.credentials.yml {repository}",
+                "name": "Run sgr cloud sync to perform the data load into a private repo",
+                "run": "sgr cloud sync --remote splitgraph --initial-private --use-file "
+                f"-f splitgraph.yml -f splitgraph.credentials.yml --wait {repository}",
                 "shell": "bash",
             }
         )
         steps.append(
             {
-                "name": "Run sgr cloud sync to perform the data load",
-                "run": "sgr cloud sync --remote splitgraph --use-file "
-                f"-f splitgraph.yml -f splitgraph.credentials.yml --wait {repository}",
+                "name": "Run sgr cloud load to set up metadata",
+                "run": "sgr cloud load --remote splitgraph --skip-external "
+                f"-f splitgraph.yml -f splitgraph.credentials.yml {repository}",
                 "shell": "bash",
             }
         )
