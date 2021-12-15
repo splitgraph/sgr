@@ -630,15 +630,23 @@ def load_c(
     gql_client = GQLAPIClient(remote)
 
     if not skip_external:
-        # Set up and load credential IDs from the remote to allow users to refer to them by ID
-        # or by a name.
         rest_client = RESTAPIClient(remote)
-        credential_map = _build_credential_map(rest_client, credentials=repo_yaml.credentials or {})
-
         if limit_repositories:
             repositories = [
                 r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
             ]
+
+        filter_credential_names = [
+            r.external.credential for r in repositories if r.external and r.external.credential
+        ]
+
+        # Set up and load credential IDs from the remote to allow users to refer to them by ID
+        # or by a name. Only include credentials for repositories that we're actually loading.
+        credential_map = _build_credential_map(
+            rest_client,
+            credentials=repo_yaml.credentials or {},
+            filter_credential_names=filter_credential_names,
+        )
 
         logging.info("Uploading images...")
         external_repositories = []
@@ -670,11 +678,15 @@ def load_c(
     logging.info(f"Updated metadata for {pluralise('repository', len(repository_list))}")
 
 
-def _build_credential_map(auth_client, credentials=None):
+def _build_credential_map(
+    auth_client, credentials=None, filter_credential_names: Optional[List[str]] = None
+):
     credential_map = {}
     if credentials:
         logging.info("Setting up credentials on the remote...")
         for credential_name, credential in credentials.items():
+            if filter_credential_names and credential_name not in filter_credential_names:
+                continue
             credential_id = auth_client.ensure_external_credential(
                 credential_data=credential.data,
                 credential_name=credential_name,
@@ -687,7 +699,9 @@ def _build_credential_map(auth_client, credentials=None):
     # name in YAML files without redefining them)
     response = auth_client.list_external_credentials()
     for credential in response.credentials:
-        if credential.credential_name not in credential_map:
+        if credential.credential_name not in credential_map and (
+            not filter_credential_names or credential.credential_name in filter_credential_names
+        ):
             credential_map[credential.credential_name] = credential.credential_id
 
     return credential_map
