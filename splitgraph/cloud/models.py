@@ -237,6 +237,7 @@ class AddExternalRepositoryRequest(BaseModel):
     credential_name: Optional[str]
     credential_data: Optional[Dict[str, Any]]
     schedule: Optional[IngestionSchedule]
+    initial_private: bool = False
 
     @classmethod
     def from_external(
@@ -245,6 +246,7 @@ class AddExternalRepositoryRequest(BaseModel):
         repository: str,
         external: External,
         credential_map: Optional[Dict[str, str]] = None,
+        initial_private: bool = False,
     ):
         credential_map = credential_map or {}
 
@@ -271,6 +273,7 @@ class AddExternalRepositoryRequest(BaseModel):
             credential_id=credential_id,
             is_live=external.is_live,
             schedule=external.schedule,
+            initial_private=initial_private,
         )
 
 

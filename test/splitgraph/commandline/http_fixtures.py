@@ -397,55 +397,61 @@ def add_external_credential(request, uri, response_headers):
     ]
 
 
-def add_external_repo(request, uri, response_headers):
-    data = json.loads(request.body)
+def add_external_repo(initial_private=False):
+    def cb(request, uri, response_headers):
+        data = json.loads(request.body)
 
-    assert data["repositories"] is not None
-    assert data["repositories"] == [
-        {
-            "credential_id": "98765432-aaaa-bbbb-a456-000000000000",
-            "is_live": True,
-            "namespace": "otheruser",
-            "params": {"params": "here", "plugin": "specific"},
-            "plugin_name": "plugin",
-            "repository": "somerepo_2",
-            "tables": {
-                "table_1": {
-                    "options": {"param_1": "val_1"},
-                    "schema": {"id": "text", "val": "text"},
+        assert data["repositories"] is not None
+        assert data["repositories"] == [
+            {
+                "credential_id": "98765432-aaaa-bbbb-a456-000000000000",
+                "is_live": True,
+                "namespace": "otheruser",
+                "params": {"params": "here", "plugin": "specific"},
+                "plugin_name": "plugin",
+                "repository": "somerepo_2",
+                "tables": {
+                    "table_1": {
+                        "options": {"param_1": "val_1"},
+                        "schema": {"id": "text", "val": "text"},
+                    },
+                    "table_2": {"options": {"param_1": "val_2"}, "schema": {}},
+                    "table_3": {"options": {}, "schema": {"id": "text", "val": "text"}},
                 },
-                "table_2": {"options": {"param_1": "val_2"}, "schema": {}},
-                "table_3": {"options": {}, "schema": {"id": "text", "val": "text"}},
+                "schedule": None,
+                "initial_private": initial_private,
             },
-            "schedule": None,
-        },
-        {
-            "namespace": "someuser",
-            "repository": "somerepo_1",
-            "plugin_name": "plugin_2",
-            "params": {},
-            "is_live": True,
-            "tables": {},
-            "credential_id": "123e4567-e89b-12d3-a456-426655440000",
-            "schedule": None,
-        },
-        {
-            "namespace": "someuser",
-            "repository": "somerepo_2",
-            "plugin_name": "plugin_3",
-            "params": {},
-            "is_live": True,
-            "tables": {},
-            "credential_id": "00000000-0000-0000-0000-000000000000",
-            "schedule": None,
-        },
-    ]
+            {
+                "namespace": "someuser",
+                "repository": "somerepo_1",
+                "plugin_name": "plugin_2",
+                "params": {},
+                "is_live": True,
+                "tables": {},
+                "credential_id": "123e4567-e89b-12d3-a456-426655440000",
+                "schedule": None,
+                "initial_private": initial_private,
+            },
+            {
+                "namespace": "someuser",
+                "repository": "somerepo_2",
+                "plugin_name": "plugin_3",
+                "params": {},
+                "is_live": True,
+                "tables": {},
+                "credential_id": "00000000-0000-0000-0000-000000000000",
+                "schedule": None,
+                "initial_private": initial_private,
+            },
+        ]
 
-    return [
-        200,
-        response_headers,
-        json.dumps({"live_image_hashes": ["abcdef12" * 8, "ghijkl34" * 8, "mnoprs56" * 8]}),
-    ]
+        return [
+            200,
+            response_headers,
+            json.dumps({"live_image_hashes": ["abcdef12" * 8, "ghijkl34" * 8, "mnoprs56" * 8]}),
+        ]
+
+    return cb
 
 
 def assert_repository_profiles(request):

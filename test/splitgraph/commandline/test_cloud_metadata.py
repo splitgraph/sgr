@@ -271,8 +271,9 @@ def test_commandline_dump(snapshot):
         )
 
 
+@pytest.mark.parametrize("initial_private", [True, False])
 @httpretty.activate(allow_net_connect=False)
-def test_commandline_load():
+def test_commandline_load(initial_private):
     runner = CliRunner()
 
     httpretty.register_uri(
@@ -296,7 +297,7 @@ def test_commandline_load():
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
         QUERY_ENDPOINT + "/api/external/bulk-add",
-        body=add_external_repo,
+        body=add_external_repo(initial_private=initial_private),
     )
 
     httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/")
@@ -318,7 +319,8 @@ def test_commandline_load():
     ), patch("splitgraph.cloud.get_remote_param", get_remote_param):
         result = runner.invoke(
             load_c,
-            [
+            (["--initial-private"] if initial_private else [])
+            + [
                 "--readme-dir",
                 os.path.join(RESOURCES, "splitgraph_yml", "readmes"),
                 "-f",

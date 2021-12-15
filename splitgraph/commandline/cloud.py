@@ -594,6 +594,12 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     "--readme-dir", default="./readmes", help="Path to the directory with the README files"
 )
 @click.option(
+    "-p",
+    "--initial-private",
+    is_flag=True,
+    help="If the repository doesn't exist, create it as private.",
+)
+@click.option(
     "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
 )
 @click.option(
@@ -602,12 +608,18 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     help="Only set up the metadata, not the external data source settings",
 )
 @click.argument("limit_repositories", type=str, nargs=-1)
-def load_c(remote, readme_dir, skip_external, repositories_file, limit_repositories):
+def load_c(
+    remote, readme_dir, skip_external, initial_private, repositories_file, limit_repositories
+):
     """
     Load a Splitgraph catalog from a YAML file.
 
     This will load a splitgraph.yml file and the `readmes` subdirectory produced by
     `sgr cloud dump` back into a remote Splitgraph catalog.
+
+    By default, if a repository doesn't yet exist, it will be public. Pass `--initial-private` to
+    this command to make it start off as private. This won't apply to existing repositories: use
+    the Splitgraph GUI to manage repository access settings.
     """
     from splitgraph.cloud import GQLAPIClient, RESTAPIClient
     from splitgraph.cloud.project.utils import load_project
@@ -633,7 +645,11 @@ def load_c(remote, readme_dir, skip_external, repositories_file, limit_repositor
         for repository in repositories:
             if repository.external:
                 external_repository = AddExternalRepositoryRequest.from_external(
-                    repository.namespace, repository.repository, repository.external, credential_map
+                    repository.namespace,
+                    repository.repository,
+                    repository.external,
+                    credential_map=credential_map,
+                    initial_private=initial_private,
                 )
                 external_repositories.append(external_repository)
         rest_client.bulk_upsert_external(repositories=external_repositories)

@@ -197,7 +197,7 @@ def test_sync_existing():
 
 
 @httpretty.activate(allow_net_connect=False)
-@pytest.mark.parametrize("initial_private", (True, False))
+@pytest.mark.parametrize("initial_private", [True, False])
 def test_sync_yaml_file(initial_private):
     gql_sync_cb = gql_sync(
         "otheruser", "somerepo_2", is_existing=False, initial_private=initial_private
