@@ -1156,16 +1156,17 @@ def validate_c(repositories_file):
 
 @click.command("seed")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--github-repository", help="Name of the GitHub repository")
 @click.argument("seed")
 @click.argument("directory", type=click.Path(file_okay=False), default=".")
-def seed_c(remote, seed, directory):
+def seed_c(remote, seed, github_repository, directory):
     """Generate a starter Splitgraph Cloud project from a seed."""
     from splitgraph.cloud import GQLAPIClient
     from splitgraph.cloud.project.generation import ProjectSeed, generate_project
 
     client = GQLAPIClient(remote)
 
-    generate_project(client, ProjectSeed.decode(seed), directory)
+    generate_project(client, ProjectSeed.decode(seed), directory, github_repo=github_repository)
     click.echo(f"Splitgraph project generated in {os.path.abspath(directory)}.")
 
 

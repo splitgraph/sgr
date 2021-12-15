@@ -24,6 +24,7 @@ def test_generate_project_no_dbt(snapshot):
             GQLAPIClient("anyremote"),
             seed=ProjectSeed(namespace="myns", plugins=["postgres_fdw", "airbyte-postgres"]),
             basedir=tmpdir,
+            github_repo="my/repo",
         )
 
         with open(os.path.join(tmpdir, "splitgraph.yml")) as f:
@@ -63,6 +64,7 @@ def test_generate_project_with_dbt(snapshot):
                 namespace="myns", plugins=["postgres_fdw", "airbyte-postgres"], include_dbt=True
             ),
             basedir=tmpdir,
+            github_repo="my/repo",
         )
 
         project_files = [
@@ -71,6 +73,7 @@ def test_generate_project_with_dbt(snapshot):
         assert project_files == [
             os.path.join(tmpdir, d)
             for d in [
+                "README.md",
                 "dbt_project.yml",
                 "splitgraph.credentials.yml",
                 "splitgraph.yml",
@@ -83,6 +86,8 @@ def test_generate_project_with_dbt(snapshot):
 
         with open(os.path.join(tmpdir, "splitgraph.yml")) as f:
             splitgraph_yml = f.read()
+        with open(os.path.join(tmpdir, "README.md")) as f:
+            readme_md = f.read()
         with open(os.path.join(tmpdir, "splitgraph.credentials.yml")) as f:
             splitgraph_credentials_yml = f.read()
         with open(os.path.join(tmpdir, ".github/workflows/build.yml")) as f:
@@ -103,6 +108,7 @@ def test_generate_project_with_dbt(snapshot):
                 "splitgraph.yml": splitgraph_yml,
                 "splitgraph.credentials.yml": splitgraph_credentials_yml,
                 "dbt_project.yml": dbt_project_yml,
+                "README.md": readme_md,
             },
             "generate_project_dbt",
         )

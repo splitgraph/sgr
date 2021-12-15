@@ -3,7 +3,7 @@ import itertools
 import os
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import ruamel.yaml
 from pydantic import BaseModel
@@ -15,7 +15,7 @@ from splitgraph.cloud.project.dbt import (
     generate_dbt_project,
 )
 from splitgraph.cloud.project.github_actions import generate_workflow
-from splitgraph.cloud.project.templates import SPLITGRAPH_YML_TEMPLATE
+from splitgraph.cloud.project.templates import README_TEMPLATE, SPLITGRAPH_YML_TEMPLATE
 
 
 def get_comment(jsonschema_object: Any) -> str:
@@ -153,7 +153,9 @@ class ProjectSeed(BaseModel):
         return ProjectSeed.parse_raw(base64.b64decode(encoded.encode()))
 
 
-def generate_project(api_client: GQLAPIClient, seed: ProjectSeed, basedir: Path) -> None:
+def generate_project(
+    api_client: GQLAPIClient, seed: ProjectSeed, basedir: Path, github_repo: Optional[str] = None
+) -> None:
     all_plugins = {p.plugin_name: p for p in api_client.get_all_plugins()}
 
     credentials, repositories, repository_info = generate_splitgraph_yml(all_plugins, seed)
@@ -181,6 +183,15 @@ def generate_project(api_client: GQLAPIClient, seed: ProjectSeed, basedir: Path)
 
     with open(os.path.join(github_root, "build.yml"), "w") as f:
         yml.dump(generate_workflow(repository_info, dependencies), f)
+
+    # Generate the README
+    with open(os.path.join(basedir, "README.md"), "w") as f:
+        template = README_TEMPLATE
+        # Add the GitHub repo to some places that might need it, e.g. URLs to the
+        # repo settings page
+        if github_repo:
+            template = template.replace("$GITHUB_REPO", github_repo)
+        f.write(template)
 
 
 def generate_splitgraph_yml(
