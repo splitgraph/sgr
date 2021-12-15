@@ -1,4 +1,4 @@
-# syntax = docker/dockerfile:experimental
+# syntax = docker/dockerfile:1.3-labs
 
 # Base PostgreSQL debug image, where we compile and install it from source with
 # full debugging capabilities. For more details see:
@@ -19,8 +19,10 @@ RUN rm -rf /usr/lib/postgresql/12/* && \
     apt-get update -qq && \
     apt-get install -y --allow-downgrades \
         build-essential \
+        curl \
         wget \
         git \
+        vim \
         libssl-dev \
         libsasl2-dev \
         pkgconf \
@@ -53,6 +55,9 @@ RUN rm -rf /usr/lib/postgresql/12/* && \
         zlib1g \
         zlib1g-dev && \
     rm -rf /var/lib/apt/lists/* && \
+    # pgprint command for GDB
+    git clone https://github.com/tvesely/gdbpg.git && \
+    # Download PG source, compile and install
     git clone https://github.com/postgres/postgres.git && \
     cd /postgres && \
     git checkout REL_12_STABLE && \
@@ -60,3 +65,10 @@ RUN rm -rf /usr/lib/postgresql/12/* && \
     ./configure --enable-cassert --enable-debug CFLAGS="-ggdb -Og -g3 -fno-omit-frame-pointer" -prefix=/usr/lib/postgresql/12 && \
     make && \
     make install
+
+# Configure GDB: enable pgprint, disable confirmation and dynamic load prompt
+COPY <<EOF /etc/gdb/gdbinit
+source /gdbpg/gdbpg.py
+set confirm off
+set breakpoint pending on
+EOF

@@ -28,14 +28,9 @@ FROM splitgraph/pg_debug:development
 
 RUN apt-get update -qq && \
     apt-get install -y \
-        curl \
         libprotobuf-c1 \
         libpython3.7 \
-        python3.7 \
-        python3-setuptools \
-        postgresql-plpython3-12 \
-        git \
-        wget && \
+        postgresql-plpython3-12 && \
     curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     python3.7 get-pip.py && \
     rm get-pip.py && \
