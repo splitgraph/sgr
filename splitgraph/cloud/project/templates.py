@@ -25,11 +25,8 @@ repositories:
       sample_table:
         # Plugin-specific table parameters matching the plugin's schema
         options: {}
-
-        # Schema of the table. If set to `[]`, will infer.
-        schema:
-          - name: col_1
-            type: varchar
+        # Schema of the table, a list of objects with `name` and `type`. If set to `[]`, will infer. 
+        schema: []
     # Whether live querying is enabled for the plugin (creates a "live" tag in the
     # repository proxying to the data source). The plugin must support live querying.
     is_live: false
@@ -39,13 +36,13 @@ repositories:
 """
 
 DBT_PROJECT_TEMPLATE = """# Sample dbt project referencing data from all ingested/added Splitgraph datasets.
-# This is not exactly ready to run, as you'll need to:
+# This is not ready to run, as you'll need to:
 #
 #   * Manually define tables in your sources (see models/staging/sources.yml, "tables" sections)
 #   * Reference the sources using the source(...) macros (see 
 #     models/staging/(source_name)/source_name.sql for an example)
 #   * Write the actual models
-# 
+
 name: 'splitgraph_template'
 version: '1.0.0'
 config-version: 2
