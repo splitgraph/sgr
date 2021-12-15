@@ -9,7 +9,7 @@ jobs:
     - name: Set up Splitgraph
       uses: splitgraph/setup-splitgraph@master
       with:
-        splitgraph_deployment_url: data.splitgraph.com
+        splitgraph_deployment_url: splitgraph.com
         splitgraph_api_key: ${{ secrets.SPLITGRAPH_API_KEY }}
         splitgraph_api_secret: ${{ secrets.SPLITGRAPH_API_SECRET }}
     - name: Set up data source credentials
@@ -29,7 +29,7 @@ jobs:
     - name: Set up Splitgraph
       uses: splitgraph/setup-splitgraph@master
       with:
-        splitgraph_deployment_url: data.splitgraph.com
+        splitgraph_deployment_url: splitgraph.com
         splitgraph_api_key: ${{ secrets.SPLITGRAPH_API_KEY }}
         splitgraph_api_secret: ${{ secrets.SPLITGRAPH_API_SECRET }}
     - name: Set up data source credentials
@@ -53,7 +53,7 @@ jobs:
     - name: Set up Splitgraph
       uses: splitgraph/setup-splitgraph@master
       with:
-        splitgraph_deployment_url: data.splitgraph.com
+        splitgraph_deployment_url: splitgraph.com
         splitgraph_api_key: ${{ secrets.SPLITGRAPH_API_KEY }}
         splitgraph_api_secret: ${{ secrets.SPLITGRAPH_API_SECRET }}
     - name: Set up dbt Git URL

@@ -9,7 +9,7 @@ from splitgraph.cloud.project.utils import get_source_name
 
 
 def generate_job(
-    repository: str, is_live: bool, is_dbt: bool, deploy_url: str = "data.splitgraph.com"
+    repository: str, is_live: bool, is_dbt: bool, deploy_url: str = "splitgraph.com"
 ) -> Tuple[str, Dict[str, Any]]:
     job_id = get_source_name(repository)
 
