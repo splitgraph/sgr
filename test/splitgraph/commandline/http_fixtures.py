@@ -720,7 +720,7 @@ def gql_upload(namespace, repository, final_status="SUCCESS"):
     return _gql_callback, _file_upload_callback
 
 
-def gql_sync(namespace, repository, is_existing=True, is_sync=True):
+def gql_sync(namespace, repository, is_existing=True, is_sync=True, initial_private=False):
     def _gql_callback(request, uri, response_headers):
         body = json.loads(request.body)
 
@@ -758,6 +758,11 @@ def gql_sync(namespace, repository, is_existing=True, is_sync=True):
                     ],
                     "sync": True,
                     "credentialData": '{"username": "my_username", "password": "secret"}',
+                    "initialVisibility": (
+                        "RepositoryVisibility.PRIVATE"
+                        if initial_private
+                        else "RepositoryVisibility.PUBLIC"
+                    ),
                 }
             return [
                 200,

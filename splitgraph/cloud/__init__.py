@@ -906,6 +906,7 @@ class GQLAPIClient:
         external: External,
         sync: bool = True,
         credential_data: Optional[Dict[str, Any]] = None,
+        initial_private: bool = False,
     ) -> str:
         variables = {
             "namespace": namespace,
@@ -921,6 +922,9 @@ class GQLAPIClient:
                 for tn, to in external.tables.items()
             ],
             "sync": sync,
+            "initialVisibility": (
+                "RepositoryVisibility.PRIVATE" if initial_private else "RepositoryVisibility.PUBLIC"
+            ),
         }
 
         if credential_data:

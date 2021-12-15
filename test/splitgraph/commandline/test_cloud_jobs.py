@@ -197,8 +197,11 @@ def test_sync_existing():
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_sync_yaml_file():
-    gql_sync_cb = gql_sync("otheruser", "somerepo_2", is_existing=False)
+@pytest.mark.parametrize("initial_private", (True, False))
+def test_sync_yaml_file(initial_private):
+    gql_sync_cb = gql_sync(
+        "otheruser", "somerepo_2", is_existing=False, initial_private=initial_private
+    )
     runner = CliRunner(mix_stderr=False)
     httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/", body=gql_sync_cb)
 
@@ -209,7 +212,8 @@ def test_sync_yaml_file():
     ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
         result = runner.invoke(
             sync_c,
-            [
+            (["--initial-private"] if initial_private else [])
+            + [
                 "--use-file",
                 "--repositories-file",
                 os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),

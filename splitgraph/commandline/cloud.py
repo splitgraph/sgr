@@ -981,12 +981,18 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
     is_flag=True,
 )
 @click.option("-w", "--wait", help="Attach to the job and wait for it to finish", is_flag=True)
+@click.option(
+    "-p",
+    "--initial-private",
+    is_flag=True,
+    help="If the repository doesn't exist, create it as private.",
+)
 @click.option("-u", "--use-file", is_flag=True, help="Use a YAML file with repository settings")
 @click.option(
     "-f", "--repositories-file", default=["splitgraph.yml"], type=click.Path(), multiple=True
 )
 @click.argument("repository", type=RepositoryType(exists=False))
-def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
+def sync_c(remote, full_refresh, wait, initial_private, use_file, repositories_file, repository):
     """
     Trigger an ingestion job for a repository.
 
@@ -996,12 +1002,21 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
     If the splitgraph.yml file is specified, it will use the settings for that repository
     from there to override the existing parameters for a repository or to create a new repository.
     Otherwise, it will use the existing parameters.
+
+    By default, if a repository doesn't yet exist, it will be public. Pass `--initial-private` to
+    this command to make it start off as private. This won't apply to existing repositories: use
+    the Splitgraph GUI to manage repository access settings.
     """
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
 
     if not use_file:
+        if initial_private:
+            logging.warning(
+                "--initial-private is ignored when manipulating existing repositories. "
+                "Use the Splitgraph GUI to manage repository access settings."
+            )
         task_id = client.start_load_existing(
             namespace=repository.namespace, repository=repository.repository, sync=not full_refresh
         )
@@ -1014,6 +1029,7 @@ def sync_c(remote, full_refresh, wait, use_file, repositories_file, repository):
             external=external,
             sync=not full_refresh,
             credential_data=credential_data,
+            initial_private=initial_private,
         )
 
     if not wait:
