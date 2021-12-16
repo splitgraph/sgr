@@ -154,10 +154,10 @@ def _mount_elasticsearch(repository):
                     },
                     "schema": {
                         "account_number": "integer",
-                        "balance": "integer",
+                        "balance": "double precision",
                         "firstname": "character varying (20)",
                         "lastname": "character varying (20)",
-                        "age": "integer",
+                        "age": "smallint",
                         "gender": "character varying (1)",
                         "address": "text",
                         "employer": "character varying (10)",
