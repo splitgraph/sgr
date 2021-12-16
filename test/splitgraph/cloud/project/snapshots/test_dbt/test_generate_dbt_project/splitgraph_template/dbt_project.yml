@@ -1,0 +1,43 @@
+# Sample dbt project referencing data from all ingested/added Splitgraph datasets.
+# This is not ready to run, as you'll need to:
+#
+#   * Manually define tables in your sources (see models/staging/sources.yml, "tables" sections)
+#   * Reference the sources using the source(...) macros (see 
+#     models/staging/(source_name)/source_name.sql for an example)
+#   * Write the actual models
+
+name: 'splitgraph_template'
+version: '1.0.0'
+config-version: 2
+
+# This setting configures which "profile" dbt uses for this project.
+# Note that the Splitgraph runner overrides this at runtime, so this is only useful
+# if you are running a local Splitgraph engine and are developing this dbt model against it.
+profile: 'splitgraph_template'
+
+# These configurations specify where dbt should look for different types of files.
+# The `model-paths` config, for example, states that models in this project can be
+# found in the "models/" directory. You probably won't need to change these!
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"  # directory which will store compiled SQL files
+clean-targets:         # directories to be removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+
+# Configuring models
+# Full documentation: https://docs.getdbt.com/docs/configuring-models
+
+models:
+  splitgraph_template:
+    # Staging data (materialized as CTEs) that references the source Splitgraph repositories.
+    # Here as a starting point. You can reference these models downstream in models that actually
+    # materialize as tables.
+    staging:
+      +materialized: cte

@@ -198,6 +198,8 @@ class CSVDataSource(ForeignDataWrapperDataSource):
     supports_load = True
     supports_sync = False
 
+    _icon_file = "csv.svg"
+
     commandline_help = """Mount CSV files in S3/HTTP.
 
 If passed an URL, this will live query a CSV file on an HTTP server. If passed

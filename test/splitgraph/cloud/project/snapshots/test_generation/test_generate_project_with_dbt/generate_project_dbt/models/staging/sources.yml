@@ -1,0 +1,17 @@
+# This file defines all data sources referenced by this model. The mapping
+# between the data source name and the Splitgraph repository is in the settings of the dbt plugin
+# in splitgraph.yml (see params -> sources)
+version: 2
+sources:
+- name: myns_postgres_fdw
+  # Splitgraph will use a different temporary schema for this source by patching this project
+  # at runtime, so this is for informational purposes only. 
+  schema: myns/postgres_fdw
+  # We can't currently infer the tables produced by a data source at project generation time,
+  # so for now you'll need to define the tables manually.
+  tables:
+  - name: some_table
+- name: myns_airbyte_postgres
+  schema: myns/airbyte-postgres
+  tables:
+  - name: some_table

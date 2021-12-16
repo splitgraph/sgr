@@ -1,0 +1,1 @@
+resources(sources=["*.py", "*.svg"])

@@ -123,6 +123,13 @@ class GQLRepoDoesntExistError(GQLAPIError):
     """Repository doesn't exist"""
 
 
+class JSONSchemaValidationError(SplitGraphError):
+    """Error validating the remote schema"""
+
+    def __init__(self, message: str):
+        self.message = message
+
+
 def get_exception_name(o):
     module = o.__class__.__module__
     if module is None or module == str.__class__.__module__:

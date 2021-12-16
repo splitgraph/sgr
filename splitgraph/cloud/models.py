@@ -1,79 +1,32 @@
 """
-Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
-with repositories and their metadata.
+Definitions for responses from the cloud GQL/REST APIs
 """
 import logging
-from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+from splitgraph.cloud.project.models import (
+    External,
+    IngestionSchedule,
+    Metadata,
+    Repository,
+    Source,
+    Table,
+)
 from splitgraph.core.types import Params, TableSchema
 
-# Models for the externals API data (tables, plugin params etc)
 
-
-class Table(BaseModel):
-    class Column(BaseModel):
-        name: str
-        pg_type: str = Field(alias="type")
-        comment: Optional[str]
-
-    options: Dict[str, Any]
-    schema_: List[Column] = Field(alias="schema")
-
-
-class Credential(BaseModel):
-    plugin: str
-    data: Dict[str, Any]
-
-
-class IngestionSchedule(BaseModel):
-    schedule: str
-    enabled = True
-
-
-class External(BaseModel):
-    credential_id: Optional[str]
-    credential: Optional[str]
-    plugin: str
-    params: Dict[str, Any]
-    tables: Dict[str, Table]
-    is_live: bool = True
-    schedule: Optional[IngestionSchedule]
-
-
-# Models for the catalog metadata (description, README, topics etc)
-
-
-class Source(BaseModel):
-    anchor: str
-    href: str
-    isCreator: Optional[bool]
-    isSameAs: Optional[bool]
-
-
-class Metadata(BaseModel):
-    class Readme(BaseModel):
-        file: Optional[str]
-        text: Optional[str]
-
-    readme: Optional[Union[str, Readme]]
-    description: Optional[str]
-    topics: Optional[List[str]]
-    sources: Optional[List[Source]]
-    license: Optional[str]
-    extra_metadata: Optional[Dict[str, Any]]
-
-
-class Repository(BaseModel):
-    namespace: str
-    repository: str
-    metadata: Optional[Metadata]
-    external: Optional[External]
-
-
-class RepositoriesYAML(BaseModel):
-    repositories: List[Repository]
-    credentials: Optional[Dict[str, Credential]]
+class Plugin(BaseModel):
+    plugin_name: str
+    credentials_schema: Dict[str, Any]
+    params_schema: Dict[str, Any]
+    table_params_schema: Dict[str, Any]
+    name: str
+    description: str
+    supports_mount: bool
+    supports_load: bool
+    supports_sync: bool
 
 
 # GQL response for the catalog metadata
@@ -202,6 +155,32 @@ class ExternalResponse(BaseModel):
         )
 
 
+class IngestionJobStatus(BaseModel):
+    task_id: str
+    started: datetime
+    finished: Optional[datetime]
+    is_manual: bool
+    status: Optional[str]
+
+
+class RepositoryIngestionJobStatusResponse(BaseModel):
+    class RepositoryIngestionJobStatus(BaseModel):
+        class Node(BaseModel):
+            taskId: str
+            started: datetime
+            finished: Optional[datetime]
+            isManual: bool
+            status: Optional[str]
+
+        nodes: List[Node]
+
+    repositoryIngestionJobStatus: RepositoryIngestionJobStatus
+
+    @classmethod
+    def from_response(cls, response) -> "RepositoryIngestionJobStatusResponse":
+        return cls.parse_obj(response["data"])
+
+
 def make_repositories(
     metadata_responses: List[MetadataResponse], external_responses: List[ExternalResponse]
 ) -> List[Repository]:
@@ -258,6 +237,7 @@ class AddExternalRepositoryRequest(BaseModel):
     credential_name: Optional[str]
     credential_data: Optional[Dict[str, Any]]
     schedule: Optional[IngestionSchedule]
+    initial_private: bool = False
 
     @classmethod
     def from_external(
@@ -266,6 +246,7 @@ class AddExternalRepositoryRequest(BaseModel):
         repository: str,
         external: External,
         credential_map: Optional[Dict[str, str]] = None,
+        initial_private: bool = False,
     ):
         credential_map = credential_map or {}
 
@@ -292,6 +273,7 @@ class AddExternalRepositoryRequest(BaseModel):
             credential_id=credential_id,
             is_live=external.is_live,
             schedule=external.schedule,
+            initial_private=initial_private,
         )
 
 

@@ -1,0 +1,57 @@
+credentials:
+  airbyte-postgres:  # This is the name of this credential that "external" sections can reference.
+    plugin: airbyte-postgres
+    # Credential-specific data matching the plugin's credential schema
+    data:
+      normalization_git_url: ''  # dbt model Git URL. For `custom` normalization, a URL to the Git repo with the dbt project, for example,`https://uname:pass_or_token@github.com/organisation/repository.git`.
+      password: '' # Password. Password associated with the username.
+repositories:
+- namespace: test
+  repository: repo
+  # Catalog-specific metadata for the repository. Optional.
+  metadata:
+    readme:
+      text: Readme
+    description: Description of the repository
+    topics:
+    - sample_topic
+  # Data source settings for the repository. Optional.
+  external:
+    # Name of the credential that the plugin uses. This can also be a credential_id if the
+    # credential is already registered on Splitgraph.
+    credential: airbyte-postgres
+    plugin: airbyte-postgres
+    # Plugin-specific parameters matching the plugin's parameters schema
+    params:
+      normalization_mode:  # Post-ingestion normalization. Whether to normalize raw Airbyte tables. `none` is no normalization, `basic` is Airbyte's basic normalization, `custom` is a custom dbt transformation on the data.. One of none, basic, custom
+      - basic
+      normalization_git_branch: master # dbt model Git branch. Branch or commit hash to use for the normalization dbt project.
+      host: '' # Host. Hostname of the database.
+      port: '5432' # Port. Port of the database.
+      database: '' # DB Name. Name of the database.
+      username: '' # User. Username to use to access the database.
+      ssl: false # Connect using SSL. Encrypt client/server communications for increased security.
+      replication_method: # Replication Method. Replication method to use for extracting data from the database.. Choose one of:
+      -  # Standard. Standard replication requires no setup on the DB side but will not be able to represent deletions incrementally.
+        method: Standard  # REQUIRED. Constant
+      - # Logical Replication (CDC). Logical replication uses the Postgres write-ahead log (WAL) to detect inserts, updates, and deletes. This needs to be configured on the source database itself. Only available on Postgres 10 and above. Read the <a href="https://docs.airbyte.io/integrations/sources/postgres">Postgres Source</a> docs for more information.
+        method: CDC  # REQUIRED. Constant
+        replication_slot: '' # REQUIRED. A plug-in logical replication slot.
+        publication: '' # REQUIRED. A Postgres publication used for consuming changes.
+        plugin: pgoutput # A logical decoding plug-in installed on the PostgreSQL server. `pgoutput` plug-in is used by default. If replication table contains a lot of big jsonb values it is recommended to use `wal2json` plug-in. For more information about `wal2json` plug-in read <a href="https://docs.airbyte.io/integrations/sources/postgres">Postgres Source</a> docs.. One of pgoutput, wal2json
+    tables:
+      sample_table:
+        # Plugin-specific table parameters matching the plugin's schema
+        options:
+          airbyte_cursor_fields:  # Cursor field(s). Fields in this stream to be used as a cursor for incremental replication (overrides Airbyte configuration's cursor_field)
+          - ''
+          airbyte_primary_key_fields: # Primary key field(s). Fields in this stream to be used as a primary key for deduplication (overrides Airbyte configuration's primary_key)
+          - ''
+        # Schema of the table, a list of objects with `name` and `type`. If set to `[]`, will infer. 
+        schema: []
+    # Whether live querying is enabled for the plugin (creates a "live" tag in the
+    # repository proxying to the data source). The plugin must support live querying.
+    is_live: false
+    # Ingestion schedule settings. Disable this if you're using GitHub Actions or other methods
+    # to trigger ingestion.
+    schedule:

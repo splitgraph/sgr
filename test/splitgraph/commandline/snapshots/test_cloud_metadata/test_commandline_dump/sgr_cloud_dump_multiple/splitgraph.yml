@@ -1,21 +1,11 @@
-credentials:
-  my_credential:
-    plugin: plugin
-    data:
-      username: my_username
-      password: secret
-  my_unused_credential:
-    plugin: plugin_3
-    data:
-      username: my_username
-      password: secret
 repositories:
 - external:
-    credential: my_credential
+    credential_id: abcdef-123456
     params:
-      plugin: specific
       params: here
+      plugin: specific
     plugin: plugin
+    schedule: null
     tables:
       table_1:
         options:
@@ -38,9 +28,10 @@ repositories:
           type: text
   metadata:
     description: Repository Description 2
+    extra_metadata: null
     license: null
     readme:
-      file: readme_2.md
+      file: otheruser-somerepo_2.fe37.md
     sources:
     - anchor: test data source
       href: https://example.com
@@ -49,30 +40,52 @@ repositories:
     - topic_2
   namespace: otheruser
   repository: somerepo_2
-- namespace: someuser
-  repository: somerepo_1
+- external:
+    credential_id: abcdef-123456
+    params:
+      params: here
+      plugin: specific
+    plugin: plugin
+    schedule:
+      enabled: true
+      schedule: 0 * * * *
+    tables:
+      table_1:
+        options:
+          param_1: val_1
+        schema:
+        - name: id
+          type: text
+        - name: val
+          type: text
+      table_2:
+        options:
+          param_1: val_2
+        schema: []
+      table_3:
+        options: {}
+        schema:
+        - name: id
+          type: text
+        - name: val
+          type: text
+  metadata: null
+  namespace: otheruser
+  repository: somerepo_3
+- external: null
   metadata:
     description: Repository Description 1
+    extra_metadata:
+      key_1:
+        key_2: value_1
     license: Public Domain
     readme:
-      file: readme_1.md
+      file: someuser-somerepo_1.b7f3.md
     sources:
     - anchor: test data source
       href: https://example.com
       isCreator: true
       isSameAs: false
     topics: []
-  external:
-    credential: my_other_credential
-    plugin: plugin_2
-    params: {}
-    tables: {}
-- namespace: someuser
-  repository: somerepo_2
-  metadata:
-    description: Another Repository
-  external:
-    credential_id: 00000000-0000-0000-0000-000000000000
-    plugin: plugin_3
-    params: {}
-    tables: {}
+  namespace: someuser
+  repository: somerepo_1

@@ -23,7 +23,6 @@ from unittest.mock import PropertyMock, patch
 
 import httpretty
 import pytest
-import yaml
 from click.testing import CliRunner
 from splitgraph.commandline.cloud import (
     description_c,
@@ -32,6 +31,7 @@ from splitgraph.commandline.cloud import (
     metadata_c,
     readme_c,
     search_c,
+    validate_c,
 )
 from splitgraph.exceptions import (
     GQLAPIError,
@@ -204,7 +204,7 @@ def test_commandline_search():
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_commandline_dump():
+def test_commandline_dump(snapshot):
     runner = CliRunner()
     httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/", body=gql_metadata_get())
 
@@ -221,127 +221,29 @@ def test_commandline_dump():
                 "--readme-dir",
                 os.path.join(tmpdir, "readmes"),
                 "-f",
-                os.path.join(tmpdir, "repositories.yml"),
+                os.path.join(tmpdir, "splitgraph.yml"),
             ],
             catch_exceptions=False,
         )
         assert result.exit_code == 0
 
-        contents = list(os.walk(tmpdir))
-        # Check the dump root
-        assert contents[0] == (tmpdir, ["readmes"], ["repositories.yml"])
-
-        # Check the readmes subdirectory: no directories
-        assert contents[1][:2] == (
-            os.path.join(tmpdir, "readmes"),
-            [],
-        )
-
-        # ... and two files
-        assert sorted(contents[1][2]) == [
-            "otheruser-somerepo_2.fe37.md",
-            "someuser-somerepo_1.b7f3.md",
-        ]
-
-        _somerepo_1_dump = {
-            "namespace": "someuser",
-            "repository": "somerepo_1",
-            "metadata": {
-                "readme": {"file": "someuser-somerepo_1.b7f3.md"},
-                "description": "Repository Description 1",
-                "extra_metadata": {"key_1": {"key_2": "value_1"}},
-                "topics": [],
-                "sources": [
-                    {
-                        "anchor": "test data source",
-                        "href": "https://example.com",
-                        "isCreator": True,
-                        "isSameAs": False,
-                    }
-                ],
-                "license": "Public Domain",
-            },
-            "external": None,
-        }
-
-        with open(os.path.join(tmpdir, "repositories.yml")) as f:
-            output = f.read()
-        assert yaml.safe_load(output) == {
-            "repositories": [
-                {
-                    "namespace": "otheruser",
-                    "repository": "somerepo_2",
-                    "metadata": {
-                        "readme": {"file": "otheruser-somerepo_2.fe37.md"},
-                        "description": "Repository Description 2",
-                        "extra_metadata": None,
-                        "topics": ["topic_1", "topic_2"],
-                        "sources": [
-                            {
-                                "anchor": "test data source",
-                                "href": "https://example.com",
-                            }
-                        ],
-                        "license": None,
-                    },
-                    "external": {
-                        "credential_id": "abcdef-123456",
-                        "plugin": "plugin",
-                        "schedule": None,
-                        "params": {"plugin": "specific", "params": "here"},
-                        "tables": {
-                            "table_1": {
-                                "options": {"param_1": "val_1"},
-                                "schema": [
-                                    {"name": "id", "type": "text"},
-                                    {"name": "val", "type": "text"},
-                                ],
-                            },
-                            "table_2": {"options": {"param_1": "val_2"}, "schema": []},
-                            "table_3": {
-                                "options": {},
-                                "schema": [
-                                    {"name": "id", "type": "text"},
-                                    {"name": "val", "type": "text"},
-                                ],
-                            },
-                        },
-                    },
-                },
-                {
-                    "external": {
-                        "credential_id": "abcdef-123456",
-                        "params": {"params": "here", "plugin": "specific"},
-                        "plugin": "plugin",
-                        "schedule": {"enabled": True, "schedule": "0 * * * *"},
-                        "tables": {
-                            "table_1": {
-                                "options": {"param_1": "val_1"},
-                                "schema": [
-                                    {"name": "id", "type": "text"},
-                                    {"name": "val", "type": "text"},
-                                ],
-                            },
-                            "table_2": {"options": {"param_1": "val_2"}, "schema": []},
-                            "table_3": {
-                                "options": {},
-                                "schema": [
-                                    {"name": "id", "type": "text"},
-                                    {"name": "val", "type": "text"},
-                                ],
-                            },
-                        },
-                    },
-                    "metadata": None,
-                    "namespace": "otheruser",
-                    "repository": "somerepo_3",
-                },
-                _somerepo_1_dump,
-            ]
-        }
-
         with open(os.path.join(tmpdir, "readmes", "someuser-somerepo_1.b7f3.md")) as f:
-            assert f.read() == "Test Repo 1 Readme"
+            readme_1 = f.read()
+        with open(os.path.join(tmpdir, "readmes", "otheruser-somerepo_2.fe37.md")) as f:
+            readme_2 = f.read()
+        with open(os.path.join(tmpdir, "splitgraph.yml")) as f:
+            repo_yml = f.read()
+
+        snapshot.assert_match_dir(
+            {
+                "readmes": {
+                    "someuser-somerepo_1.b7f3.md": readme_1,
+                    "otheruser-somerepo_2.fe37.md": readme_2,
+                },
+                "splitgraph.yml": repo_yml,
+            },
+            "sgr_cloud_dump_multiple",
+        )
 
         # Dump a single repo
         result = runner.invoke(
@@ -350,20 +252,28 @@ def test_commandline_dump():
                 "--readme-dir",
                 os.path.join(tmpdir, "readmes"),
                 "-f",
-                os.path.join(tmpdir, "repositories.yml"),
+                os.path.join(tmpdir, "splitgraph.yml"),
                 "someuser/somerepo_1",
             ],
             catch_exceptions=False,
         )
         assert result.exit_code == 0
 
-        with open(os.path.join(tmpdir, "repositories.yml")) as f:
-            output = f.read()
-        assert yaml.safe_load(output) == {"repositories": [_somerepo_1_dump]}
+        with open(os.path.join(tmpdir, "splitgraph.yml")) as f:
+            repo_yml = f.read()
+
+        snapshot.assert_match_dir(
+            {
+                "readmes": {"someuser-somerepo_1.b7f3.md": readme_1},
+                "splitgraph.yml": repo_yml,
+            },
+            "sgr_cloud_dump_single",
+        )
 
 
+@pytest.mark.parametrize("initial_private", [True, False])
 @httpretty.activate(allow_net_connect=False)
-def test_commandline_load():
+def test_commandline_load(initial_private):
     runner = CliRunner()
 
     httpretty.register_uri(
@@ -387,7 +297,7 @@ def test_commandline_load():
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
         QUERY_ENDPOINT + "/api/external/bulk-add",
-        body=add_external_repo,
+        body=add_external_repo(initial_private=initial_private),
     )
 
     httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/")
@@ -409,11 +319,12 @@ def test_commandline_load():
     ), patch("splitgraph.cloud.get_remote_param", get_remote_param):
         result = runner.invoke(
             load_c,
-            [
+            (["--initial-private"] if initial_private else [])
+            + [
                 "--readme-dir",
-                os.path.join(RESOURCES, "repositories_yml", "readmes"),
+                os.path.join(RESOURCES, "splitgraph_yml", "readmes"),
                 "-f",
-                os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
+                os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),
             ],
             catch_exceptions=False,
         )
@@ -426,3 +337,23 @@ def test_commandline_load():
         assert_repository_sources(reqs.pop())
         reqs.pop()  # discard duplicate request
         assert_repository_profiles(reqs.pop())
+
+
+def test_project_validate(snapshot):
+    # Use the same file as the merging test
+    snapshot.snapshot_dir = os.path.join(
+        os.path.dirname(__file__), "../cloud/project/snapshots/test_merging/test_project_merging"
+    )
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        validate_c,
+        [
+            "-f",
+            os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),
+            "-f",
+            os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.override.yml"),
+        ],
+    )
+    assert result.exit_code == 0
+
+    snapshot.assert_match(result.stdout, "repositories.merged.yml")

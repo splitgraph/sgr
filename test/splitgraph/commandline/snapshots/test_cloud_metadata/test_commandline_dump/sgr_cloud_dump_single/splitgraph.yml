@@ -1,0 +1,18 @@
+repositories:
+- external: null
+  metadata:
+    description: Repository Description 1
+    extra_metadata:
+      key_1:
+        key_2: value_1
+    license: Public Domain
+    readme:
+      file: someuser-somerepo_1.b7f3.md
+    sources:
+    - anchor: test data source
+      href: https://example.com
+      isCreator: true
+      isSameAs: false
+    topics: []
+  namespace: someuser
+  repository: somerepo_1

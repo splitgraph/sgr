@@ -7,8 +7,8 @@ from random import getrandbits
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
-import yaml
 from docker.types import LogConfig
+from ruamel.yaml import YAMLError
 from splitgraph.ingestion.airbyte.docker_utils import (
     detect_network_mode,
     remove_at_end,
@@ -19,7 +19,7 @@ from splitgraph.utils.docker import (
     get_docker_client,
     get_file_from_container,
 )
-from yaml import YAMLError
+from splitgraph.utils.yaml import safe_dump, safe_load
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine
@@ -100,7 +100,7 @@ def patch_dbt_project_sources(
             logging.debug("Checking %s", filepath)
             with open(filepath, "r") as f:
                 try:
-                    data = yaml.safe_load(f)
+                    data = safe_load(f)
                 except YAMLError as e:
                     logging.warning("Error loading %s, ignoring", filepath, exc_info=e)
                 if not data or "sources" not in data:
@@ -118,7 +118,7 @@ def patch_dbt_project_sources(
                     source["schema"] = target
 
             with open(filepath, "w") as f:
-                yaml.safe_dump(data, f, sort_keys=False)
+                safe_dump(data, f)
 
 
 def run_dbt_transformation_from_git(
@@ -165,7 +165,7 @@ def run_dbt_transformation_from_git(
         # Make a dbt profile file that points to our engine
         profile = make_dbt_profile(engine.conn_params, target_schema)
         with open(os.path.join(tmp_dir, "profiles.yml"), "w") as f:
-            yaml.safe_dump(profile, f)
+            safe_dump(profile, f)
 
         # Create the normalization container
         # We'll use Airbyte's image for now (since they have an image with dbt installed and our
@@ -216,11 +216,11 @@ def compile_dbt_manifest(
         # Make a dbt profile file that points to our engine
         profile = make_dbt_profile(engine.conn_params, "splitgraph")
         with open(os.path.join(tmp_dir, "profiles.yml"), "w") as f:
-            yaml.safe_dump(profile, f)
+            safe_dump(profile, f)
 
         # Get the location of the target that the build outputs the manifest to
         with open(os.path.join(project_path, "dbt_project.yml"), "r") as f:
-            project = yaml.safe_load(f)
+            project = safe_load(f)
             build_dir = project.get("target-path", "target")
 
         entrypoint = ["/bin/bash"]
