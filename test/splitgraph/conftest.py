@@ -32,6 +32,7 @@ PG_MNT = R("test/pg_mount")
 PG_MNT_PULL = R("test_pg_mount_pull")
 MG_MNT = R("test_mg_mount")
 MYSQL_MNT = R("test/mysql_mount")
+ES_MNT = R("test/es_mount")
 OUTPUT = R("output")
 
 # On the host, mapped into localhost; on the local engine works as intended.
@@ -138,6 +139,40 @@ def _mount_mysql(repository):
     )
 
 
+def _mount_elasticsearch(repository):
+    mount(
+        "tmp",
+        "elasticsearch",
+        {
+            "host": "esorigin",
+            "port": 9200,
+            "tables": {
+                "account": {
+                    "options": {
+                        "index": "account",
+                        "scroll_size": 5,
+                    },
+                    "schema": {
+                        "account_number": "integer",
+                        "balance": "integer",
+                        "firstname": "character varying (20)",
+                        "lastname": "character varying (20)",
+                        "age": "integer",
+                        "gender": "character varying (1)",
+                        "address": "text",
+                        "employer": "character varying (10)",
+                        "email": "text",
+                        "city": "character varying (10)",
+                        "state": "character varying (5)",
+                    },
+                }
+            },
+        },
+    )
+    repository.import_tables([], R("tmp"), [], foreign_tables=True, do_checkout=True)
+    R("tmp").delete()
+
+
 TEST_MOUNTPOINTS = [
     PG_MNT,
     PG_MNT_PULL,
@@ -146,6 +181,7 @@ TEST_MOUNTPOINTS = [
     R("output_stage_2"),
     Repository(READONLY_NAMESPACE, "pg_mount"),
     MYSQL_MNT,
+    ES_MNT,
 ]
 
 
@@ -165,6 +201,7 @@ def healthcheck_mounting():
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
     _mount_mysql(MYSQL_MNT)
+    _mount_elasticsearch(ES_MNT)
     try:
         assert (
             get_engine().run_sql(
@@ -187,8 +224,15 @@ def healthcheck_mounting():
             )
             is not None
         )
+        assert (
+            get_engine().run_sql(
+                'SELECT COUNT(*) FROM "test/es_mount".account',
+                return_shape=ResultShape.ONE_ONE,
+            )
+            is not None
+        )
     finally:
-        for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
+        for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT, ES_MNT]:
             mountpoint.delete()
 
 
