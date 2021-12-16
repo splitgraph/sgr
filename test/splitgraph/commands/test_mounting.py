@@ -61,7 +61,7 @@ def test_mount_mysql(local_engine_empty):
 
 
 @pytest.mark.mounting
-def test_mount_elasticsearch(local_engine_empty):
+def test_mount_esorigin(local_engine_empty):
     try:
         # Mount Elasticsearch with a set schema instead of letting the FDW detect it
         _mount_elasticsearch(ES_MNT)
@@ -75,7 +75,7 @@ def test_mount_elasticsearch(local_engine_empty):
         # Assert random record matches
         assert result[28] == (
             140,
-            26696,
+            26696.0,
             "Cotton",
             "Christensen",
             32,
@@ -83,7 +83,7 @@ def test_mount_elasticsearch(local_engine_empty):
             "878 Schermerhorn Street",
             "Prowaste",
             "cottonchristensen@prowaste.com",
-            "Mayfair,",
+            "Mayfair",
             "LA",
         )
     finally:
