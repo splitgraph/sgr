@@ -74,6 +74,7 @@ from splitgraph.exceptions import (
     GQLRepoDoesntExistError,
     GQLUnauthenticatedError,
     GQLUnauthorizedError,
+    JSONSchemaValidationError,
 )
 
 
@@ -429,6 +430,7 @@ class RESTAPIClient:
         response_class: Optional[Type[T]] = None,
         endpoint=None,
         method: str = "post",
+        jsonschema_endpoint: bool = False,
     ) -> Optional[T]:
         endpoint = endpoint or self.endpoint
         response = requests.request(
@@ -439,6 +441,17 @@ class RESTAPIClient:
             data=request.json(by_alias=True, exclude_unset=True) if request else None,
         )
         logging.debug(response.text)
+
+        if response.status_code in (405, 400) and jsonschema_endpoint:
+            response_j = response.json()
+            if "errors" in response_j:
+                message = str(response_j["errors"])
+            elif "error" in response_j:
+                message = str(response_j["error"])
+            else:
+                message = response_j.text
+            raise JSONSchemaValidationError(message)
+
         response.raise_for_status()
 
         if response_class:
@@ -465,41 +478,62 @@ class RESTAPIClient:
 
         credentials = self.list_external_credentials()
 
-        for credential in credentials.credentials:
-            if (
-                credential.plugin_name == plugin_name
-                and credential.credential_name == credential_name
-            ):
-                self._perform_request(
-                    "/update_external_credential",
-                    access_token,
-                    UpdateExternalCredentialRequest(
-                        credential_id=credential.credential_id,
-                        credential_name=credential_name,
-                        credential_data=credential_data,
-                        plugin_name=plugin_name,
-                    ),
-                )
-                return credential.credential_id
+        try:
+            credential: Union[
+                Optional["ListExternalCredentialsResponse.ExternalCredential"],
+                Optional[UpdateExternalCredentialResponse],
+            ]
+            for credential in credentials.credentials:
+                if (
+                    credential.plugin_name == plugin_name
+                    and credential.credential_name == credential_name
+                ):
+                    self._perform_request(
+                        "/update_external_credential",
+                        access_token,
+                        UpdateExternalCredentialRequest(
+                            credential_id=credential.credential_id,
+                            credential_name=credential_name,
+                            credential_data=credential_data,
+                            plugin_name=plugin_name,
+                        ),
+                        jsonschema_endpoint=True,
+                    )
+                    return credential.credential_id
 
-        # Credential doesn't exist: create it.
-        credential = self._perform_request(
-            "/add_external_credential",
-            access_token,
-            AddExternalCredentialRequest(
-                credential_name=credential_name,
-                credential_data=credential_data,
-                plugin_name=plugin_name,
-            ),
-            UpdateExternalCredentialResponse,
-        )
-        assert credential
-        return credential.credential_id
+            # Credential doesn't exist: create it.
+            credential = self._perform_request(
+                "/add_external_credential",
+                access_token,
+                AddExternalCredentialRequest(
+                    credential_name=credential_name,
+                    credential_data=credential_data,
+                    plugin_name=plugin_name,
+                ),
+                UpdateExternalCredentialResponse,
+                jsonschema_endpoint=True,
+            )
+
+            assert credential
+            return credential.credential_id
+        except JSONSchemaValidationError:
+            if logging.getLogger().getEffectiveLevel() >= logging.INFO:
+                logging.error(
+                    "JSONSchema error validating the credentials. Not displaying the contents of "
+                    "the error, as it may contain the textual values of the credentials. "
+                    "Run sgr with --verbosity DEBUG to see the full error message."
+                )
+                raise JSONSchemaValidationError(message="[MASKED]")
+            raise
 
     def bulk_upsert_external(self, repositories: List[AddExternalRepositoryRequest]):
         request = AddExternalRepositoriesRequest(repositories=repositories)
         self._perform_request(
-            "/bulk-add", self.access_token, request, endpoint=self.externals_endpoint
+            "/bulk-add",
+            self.access_token,
+            request,
+            endpoint=self.externals_endpoint,
+            jsonschema_endpoint=True,
         )
 
 
