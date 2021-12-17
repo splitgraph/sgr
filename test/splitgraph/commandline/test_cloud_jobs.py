@@ -154,7 +154,7 @@ def test_csv_upload(success, snapshot):
         new_callable=PropertyMock,
         return_value=ACCESS_TOKEN,
     ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT), patch(
-        "splitgraph.commandline.cloud.GQL_POLL_TIME", 0
+        "splitgraph.commandline.common.GQL_POLL_TIME", 0
     ):
         # Also patch out the poll frequency so that we don't wait between calls to the job
         # status endpoint.

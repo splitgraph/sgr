@@ -1,6 +1,6 @@
 Uploading the files...
- (STARTED) Loading someuser/somerepo_1, task ID ingest_task
- (SUCCESS) Loading someuser/somerepo_1, task ID ingest_task
+ (STARTED) Waiting for task ID ingest_task
+ (SUCCESS) Waiting for task ID ingest_task
 
 
 Success. See the repository at http://www.example.com/someuser/somerepo_1/-/tables or query it with:

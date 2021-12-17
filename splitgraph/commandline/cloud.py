@@ -1,36 +1,29 @@
 """Command line routines related to registering/setting up connections to the Splitgraph registry."""
 import hashlib
-import itertools
 import logging
 import os
 import shutil
 import string
 import subprocess
 import sys
-import time
 from copy import copy
 from glob import glob
 from pathlib import Path
-from typing import (
-    IO,
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    TypeVar,
-    cast,
-)
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote, urlparse
 
 import click
 from click import wrap_text
-from splitgraph.cloud.models import AddExternalRepositoryRequest, JobStatus
+from splitgraph.cloud.models import AddExternalRepositoryRequest
 from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
-from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
+from splitgraph.commandline.common import (
+    ImageType,
+    RepositoryType,
+    download_file,
+    emit_sql_results,
+    upload_file,
+    wait_for_job,
+)
 from splitgraph.commandline.engine import inject_config_into_engines
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
@@ -958,22 +951,6 @@ def upload_c(remote, file_format, repository, files):
     click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names[0]}"\'')  # nosec
 
 
-def upload_file(file: IO, upload_url: str) -> None:
-    import requests
-    from tqdm import tqdm
-    from tqdm.utils import CallbackIOWrapper
-
-    size = os.fstat(file.fileno()).st_size
-    with tqdm(total=size, unit="B", unit_scale=True, unit_divisor=1024) as t:
-        wrapped_file = CallbackIOWrapper(t.update, file, "read")
-        t.set_description(os.path.basename(file.name))
-        requests.put(upload_url, data=wrapped_file)
-
-
-GQL_POLL_TIME = 5
-SPINNER_FREQUENCY = 10
-
-
 def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
     final_status = wait_for_job(
         task_id, lambda: client.get_latest_ingestion_job_status(namespace, repository)
@@ -985,48 +962,6 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
         )
         click.echo(logs)
         raise ValueError("Error loading data")
-
-
-def get_spinner_settings() -> Tuple[Iterator[str], int]:
-    from splitgraph.config import SG_CMD_ASCII
-
-    chars = ["|", "/", "-", "\\"] if SG_CMD_ASCII else ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
-    spinner = itertools.cycle(chars)
-    poll_interval = max(int(SPINNER_FREQUENCY * GQL_POLL_TIME), 1)
-    return spinner, poll_interval
-
-
-S = TypeVar("S", bound=JobStatus)
-
-
-def wait_for_job(task_id: str, status_callback: Callable[[], Optional[S]]) -> S:
-    spinner, poll_interval = get_spinner_settings()
-
-    interval = 0
-    status_str: Optional[str] = None
-    while True:
-        if interval % poll_interval == 0:
-            status = status_callback()
-            if not status:
-                raise AssertionError("Job not found")
-
-            if not sys.stdout.isatty() and status_str != status.status:
-                click.echo(
-                    f" ({status.status}) Waiting for task ID {task_id}",
-                )
-            status_str = status.status
-
-        if sys.stdout.isatty():
-            click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
-            click.echo(f" ({status_str}) Waiting for task ID {task_id}", nl=False)
-            sys.stdout.flush()
-        time.sleep(1.0 / SPINNER_FREQUENCY)
-        interval += 1
-
-        if status_str in ("SUCCESS", "FAILURE"):
-            click.echo()
-            assert status
-            return status
 
 
 def wait_for_download(client: "GQLAPIClient", task_id: str) -> str:
@@ -1059,29 +994,6 @@ def download_c(remote, file_format, query, output_filename):
     task_id = client.start_export(query=query)
     download_url = wait_for_download(client, task_id)
     download_file(download_url, output_filename)
-
-
-def download_file(url: str, filename: Optional[str]) -> None:
-    import re
-
-    import requests
-    from tqdm import tqdm
-
-    response = requests.get(url, stream=True)
-    if not filename and "Content-Disposition" in response.headers.keys():
-        filename = re.findall("filename=(.+)", response.headers["Content-Disposition"])[0]
-    if not filename:
-        filename = urlparse(url).path.split("/")[-1]
-    with open(filename, "wb") as f:
-        with tqdm.wrapattr(
-            f,
-            "write",
-            miniters=1,
-            desc=filename,
-            total=int(response.headers.get("content-length", 0)),
-        ) as fout:
-            for chunk in response.iter_content(chunk_size=4096):
-                fout.write(chunk)
 
 
 @click.command("sync")
