@@ -9,6 +9,7 @@ Subpackages
 
    splitgraph.ingestion.airbyte
    splitgraph.ingestion.csv
+   splitgraph.ingestion.dbt
    splitgraph.ingestion.singer
    splitgraph.ingestion.snowflake
    splitgraph.ingestion.socrata

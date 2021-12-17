@@ -1,16 +1,16 @@
 splitgraph.ingestion.singer package
 ===================================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   splitgraph.ingestion.singer.commandline
+
 Submodules
 ----------
-
-splitgraph.ingestion.singer.commandline module
-----------------------------------------------
-
-.. automodule:: splitgraph.ingestion.singer.commandline
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 splitgraph.ingestion.singer.common module
 -----------------------------------------
