@@ -30,6 +30,7 @@ from splitgraph.commandline.cloud import (
     stub_c,
     plugins_c,
     sync_c,
+    download_c,
 )
 from splitgraph.commandline.engine import (
     add_engine_c,
@@ -89,6 +90,7 @@ STRUCTURE = [
             "cloud status",
             "cloud logs",
             "cloud upload",
+            "cloud download",
             "cloud plugins",
             "cloud stub",
             "cloud validate",
@@ -127,6 +129,7 @@ STRUCTURE_CMD_OVERRIDE = {
     "cloud status": status_c,
     "cloud logs": logs_c,
     "cloud upload": upload_c,
+    "cloud download": download_c,
     "cloud sync": sync_c,
     "cloud plugins": plugins_c,
     "cloud stub": stub_c,

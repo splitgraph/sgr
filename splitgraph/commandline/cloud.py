@@ -980,8 +980,8 @@ def wait_for_download(client: "GQLAPIClient", task_id: str) -> str:
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option("--file-format", default="csv", type=click.Choice(["csv"]))
 @click.argument("query", type=str)
-@click.argument("output_filename", type=str, default=None, required=False)
-def download_c(remote, file_format, query, output_filename):
+@click.argument("output_path", type=str, default=None, required=False)
+def download_c(remote, file_format, query, output_path):
     """
     Download query results from Splitgraph.
 
@@ -993,7 +993,7 @@ def download_c(remote, file_format, query, output_filename):
 
     task_id = client.start_export(query=query)
     download_url = wait_for_download(client, task_id)
-    download_file(download_url, output_filename)
+    download_file(download_url, output_path)
 
 
 @click.command("sync")
