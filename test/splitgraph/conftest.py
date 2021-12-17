@@ -32,7 +32,6 @@ PG_MNT = R("test/pg_mount")
 PG_MNT_PULL = R("test_pg_mount_pull")
 MG_MNT = R("test_mg_mount")
 MYSQL_MNT = R("test/mysql_mount")
-ES_MNT = R("test/es_mount")
 OUTPUT = R("output")
 
 # On the host, mapped into localhost; on the local engine works as intended.
@@ -179,7 +178,6 @@ TEST_MOUNTPOINTS = [
     R("output_stage_2"),
     Repository(READONLY_NAMESPACE, "pg_mount"),
     MYSQL_MNT,
-    ES_MNT,
 ]
 
 
@@ -199,7 +197,7 @@ def healthcheck_mounting():
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
     _mount_mysql(MYSQL_MNT)
-    _mount_elasticsearch(ES_MNT)
+    _mount_elasticsearch()
     try:
         assert (
             get_engine().run_sql(
@@ -224,13 +222,13 @@ def healthcheck_mounting():
         )
         assert (
             get_engine().run_sql(
-                'SELECT COUNT(*) FROM "test/es_mount".account',
+                "SELECT COUNT(*) FROM es.account",
                 return_shape=ResultShape.ONE_ONE,
             )
             is not None
         )
     finally:
-        for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT, ES_MNT]:
+        for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
             mountpoint.delete()
 
 
