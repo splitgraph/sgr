@@ -243,13 +243,13 @@ def wait_for_job(task_id: str, status_callback: Callable[[], Optional[S]]) -> S:
 
             if not sys.stdout.isatty() and status_str != status.status:
                 click.echo(
-                    f" ({status.status}) Waiting for task ID {task_id}",
+                    f" ({status.status or 'PENDING'}) Waiting for task ID {task_id}",
                 )
             status_str = status.status
 
         if sys.stdout.isatty():
             click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
-            click.echo(f" ({status_str}) Waiting for task ID {task_id}", nl=False)
+            click.echo(f" ({status_str or 'PENDING'}) Waiting for task ID {task_id}", nl=False)
             sys.stdout.flush()
         time.sleep(1.0 / SPINNER_FREQUENCY)
         interval += 1
