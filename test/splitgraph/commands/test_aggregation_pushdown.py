@@ -169,7 +169,7 @@ def test_elasticsearch_gropuing_clauses_only(local_engine_empty):
 def test_elasticsearch_gropuing_and_aggregations_bare(local_engine_empty):
     _mount_elasticsearch()
 
-    # Single column grouping
+    # Aggregations functions and grouping bare combination
     query = "SELECT gender, avg(balance), avg(age) FROM es.account GROUP BY gender"
 
     # Ensure query is going to be pushed down
@@ -197,6 +197,53 @@ def test_elasticsearch_gropuing_and_aggregations_bare(local_engine_empty):
         ("M", 25803.800788954635, Decimal("30.027613412228796")),
     ]
 
+    # We support pushing down aggregation queries with sorting, with the caveat
+    # that the sorting operation is performed on the PG side for now
+    query = "SELECT age, COUNT(account_number) FROM es.account GROUP BY age ORDER BY age DESC"
+
+    # Ensure query is going to be pushed down
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert len(result) > 2
+    assert _extract_query_from_explain(result) == {
+        "aggs": {
+            "group_buckets": {
+                "composite": {"sources": [{"age": {"terms": {"field": "age"}}}], "size": 5},
+                "aggregations": {
+                    "count.account_number": {"value_count": {"field": "account_number"}}
+                },
+            }
+        }
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query)
+    assert len(result) == 21
+
+    # Assert aggregation result
+    assert result == [
+        (40, 45),
+        (39, 60),
+        (38, 39),
+        (37, 42),
+        (36, 52),
+        (35, 52),
+        (34, 49),
+        (33, 50),
+        (32, 52),
+        (31, 61),
+        (30, 47),
+        (29, 35),
+        (28, 51),
+        (27, 39),
+        (26, 59),
+        (25, 42),
+        (24, 42),
+        (23, 42),
+        (22, 51),
+        (21, 46),
+        (20, 44),
+    ]
+
 
 @pytest.mark.mounting
 def test_elasticsearch_not_pushed_down(local_engine_empty):
@@ -213,6 +260,11 @@ def test_elasticsearch_not_pushed_down(local_engine_empty):
 
     # Grouping only filtering is not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT age FROM es.account WHERE age > 30 GROUP BY age")
+    assert len(result) > 2
+    assert _extract_query_from_explain(result) == _bare_filtering_query
+
+    # Grouping only post-aggregation filtering is not going to be pushed down either
+    result = get_engine().run_sql("EXPLAIN SELECT age FROM es.account GROUP BY age HAVING age > 30")
     assert len(result) > 2
     assert _extract_query_from_explain(result) == _bare_filtering_query
 
