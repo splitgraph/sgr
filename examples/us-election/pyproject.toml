@@ -11,7 +11,7 @@ homepage = "https://www.splitgraph.com"
 repository = "https://github.com/splitgraph/splitgraph"
 
 [tool.poetry.dependencies]
-python = "~=3.6"
+python = ">=3.7,<4.0"
 splitgraph = { path = "../.." }
 pandas = ">=0.24"
 scipy = ">=1.0"
