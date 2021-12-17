@@ -8,11 +8,13 @@ from splitgraph.cloud import (
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
     CSV_URL,
+    EXPORT_JOB_STATUS,
     GET_PLUGIN,
     GET_PLUGINS,
     INGESTION_JOB_STATUS,
     JOB_LOGS,
     PROFILE_UPSERT,
+    START_EXPORT,
     START_LOAD,
 )
 
@@ -993,3 +995,59 @@ def gql_plugin_callback(request, uri, response_headers):
             }
         ),
     ]
+
+
+def gql_download(final_status="SUCCESS"):
+    status_call_count = 0
+
+    def _gql_callback(request, uri, response_headers):
+        body = json.loads(request.body)
+
+        if body["query"] == START_EXPORT:
+            assert body["variables"] == {
+                "query": "SELECT * FROM some_table",
+            }
+            return [
+                200,
+                response_headers,
+                json.dumps({"data": {"exportQuery": {"id": "export_task"}}}),
+            ]
+        elif body["query"] == EXPORT_JOB_STATUS:
+            nonlocal status_call_count
+            if status_call_count == 0:
+                status = {
+                    "taskId": "export_task",
+                    "started": str(datetime(2021, 1, 1, 0, 0, 0)),
+                    "finished": None,
+                    "status": None,
+                    "userId": None,
+                    "exportFormat": "csv",
+                    "output": None,
+                }
+                status_call_count = 1
+            else:
+                status = {
+                    "taskId": "ingest_task",
+                    "started": str(datetime(2021, 1, 1, 0, 0, 0)),
+                    "finished": str(datetime(2021, 1, 1, 1, 0, 0)),
+                    "status": final_status,
+                    "userId": None,
+                    "exportFormat": "csv",
+                    "output": None
+                    if final_status == "FAILURE"
+                    else {"url": STORAGE_ENDPOINT + "/some-file.csv.gz?some_aws_param=42"},
+                }
+            return [
+                200,
+                response_headers,
+                json.dumps({"data": {"exportJobStatus": status}}),
+            ]
+        raise AssertionError()
+
+    def _file_download_callback(request, uri, response_headers):
+        assert uri == STORAGE_ENDPOINT + "/some-file.csv.gz?some_aws_param=42"
+        # We're not testing that the CLI decompresses the file (just that it downloads it), so
+        # return a plaintext "CSV" to make testing easier.
+        return [200, response_headers, b"fruit_id,timestamp,name"]
+
+    return _gql_callback, _file_download_callback
