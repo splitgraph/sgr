@@ -1106,6 +1106,11 @@ def _get_external_from_yaml(
     type=str,
 )
 def plugins_c(remote, filter_plugins):
+    """List all Splitgraph Cloud data plugins.
+
+    This command lists all plugins available on a remote Splitgraph Cloud instance.
+    """
+
     import tabulate
     from splitgraph.cloud import GQLAPIClient
 

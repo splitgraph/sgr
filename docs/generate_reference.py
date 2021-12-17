@@ -204,6 +204,10 @@ def _emit_command(command_name):
         command = getattr(cmd, command_name + "_c")
     short_help_str = command.get_short_help_str(limit=150)
     result = _emit_command_invocation(command, command_name)
+
+    if command.help is None:
+        raise ValueError("Command %s doesn't have help!" % command_name)
+
     # Future: move examples under options?
     result += "\n" + command.help.replace("Examples:", "### Examples")
     result += _emit_command_options(command)
