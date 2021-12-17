@@ -1,2 +1,3 @@
  (SUCCESS) Waiting for task ID export_task
 
+Downloaded query results to some-file.csv.gz.

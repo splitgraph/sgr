@@ -295,3 +295,4 @@ def download_file(url: str, filename: Optional[str]) -> None:
         ) as fout:
             for chunk in response.iter_content(chunk_size=4096):
                 fout.write(chunk)
+    click.echo("Downloaded query results to %s." % filename)
