@@ -139,9 +139,9 @@ def _mount_mysql(repository):
     )
 
 
-def _mount_elasticsearch(repository):
+def _mount_elasticsearch():
     mount(
-        "tmp",
+        "es",
         "elasticsearch",
         {
             "host": "esorigin",
@@ -169,8 +169,6 @@ def _mount_elasticsearch(repository):
             },
         },
     )
-    repository.import_tables([], R("tmp"), [], foreign_tables=True, do_checkout=True)
-    R("tmp").delete()
 
 
 TEST_MOUNTPOINTS = [

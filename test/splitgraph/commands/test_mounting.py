@@ -16,7 +16,6 @@ from splitgraph.hooks.mount_handlers import mount
 PG_MNT = Repository.from_schema("test/pg_mount")
 MG_MNT = Repository.from_schema("test_mg_mount")
 MYSQL_MNT = Repository.from_schema("test/mysql_mount")
-ES_MNT = Repository.from_schema("test/es_mount")
 
 
 @pytest.mark.mounting
@@ -62,32 +61,29 @@ def test_mount_mysql(local_engine_empty):
 
 @pytest.mark.mounting
 def test_mount_esorigin(local_engine_empty):
-    try:
-        # Mount Elasticsearch with a set schema instead of letting the FDW detect it
-        _mount_elasticsearch(ES_MNT)
-        result = get_engine().run_sql(
-            """SELECT account_number, balance, firstname, lastname, age, gender,
-            address, employer, email, city, state
-            FROM "test/es_mount".account"""
-        )
-        assert len(result) == 1000
+    # Mount Elasticsearch with a set schema instead of letting the FDW detect it
+    _mount_elasticsearch()
+    result = get_engine().run_sql(
+        """SELECT account_number, balance, firstname, lastname, age, gender,
+        address, employer, email, city, state
+        FROM es.account"""
+    )
+    assert len(result) == 1000
 
-        # Assert random record matches
-        assert result[28] == (
-            140,
-            26696.0,
-            "Cotton",
-            "Christensen",
-            32,
-            "M",
-            "878 Schermerhorn Street",
-            "Prowaste",
-            "cottonchristensen@prowaste.com",
-            "Mayfair",
-            "LA",
-        )
-    finally:
-        ES_MNT.delete()
+    # Assert random record matches
+    assert result[28] == (
+        140,
+        26696.0,
+        "Cotton",
+        "Christensen",
+        32,
+        "M",
+        "878 Schermerhorn Street",
+        "Prowaste",
+        "cottonchristensen@prowaste.com",
+        "Mayfair",
+        "LA",
+    )
 
 
 @pytest.mark.mounting
