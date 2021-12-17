@@ -45,7 +45,7 @@
 - commands:
   - "# Check out the 'serious' version of the dbt project that uses data from"
   - "# the actual warehouse rather than seed data."
-  - cd jaffle_shop && git checkout demo/master --force
+  - cd jaffle_shop && git checkout 35b23ee6b745929d8a209be8248878a88933f029 --force
 - commands:
   - "# Check that dbt is set up to connect to the Splitgraph engine."
   - "# We will be outputting data into the dbt_jaffle repository, so set that up."
