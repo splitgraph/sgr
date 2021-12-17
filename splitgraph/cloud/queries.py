@@ -272,3 +272,23 @@ GET_PLUGIN = """query ExternalPlugin($pluginName: String!) {
     supportsLoad
   }
 }"""
+
+START_EXPORT = """mutation StartExport($query: String!) {
+  exportQuery(query: $query, exportFormat: "csv") {
+    id
+  }
+}
+"""
+
+EXPORT_JOB_STATUS = """query ExportJobStatus($taskId: UUID!) {
+  exportJobStatus(taskId: $taskId) {
+    taskId
+    started
+    finished
+    status
+    userId
+    exportFormat
+    output
+  }
+}
+"""

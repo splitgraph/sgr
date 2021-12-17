@@ -11,12 +11,24 @@ import time
 from copy import copy
 from glob import glob
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, cast
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    cast,
+)
 from urllib.parse import quote, urlparse
 
 import click
 from click import wrap_text
-from splitgraph.cloud.models import AddExternalRepositoryRequest
+from splitgraph.cloud.models import AddExternalRepositoryRequest, JobStatus
 from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
 from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
 from splitgraph.commandline.engine import inject_config_into_engines
@@ -963,44 +975,16 @@ SPINNER_FREQUENCY = 10
 
 
 def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
-    spinner, poll_interval = get_spinner_settings()
+    final_status = wait_for_job(
+        task_id, lambda: client.get_latest_ingestion_job_status(namespace, repository)
+    )
 
-    interval = 0
-    status_str: Optional[str] = None
-    while True:
-        if interval % poll_interval == 0:
-            status = client.get_latest_ingestion_job_status(namespace, repository)
-            if not status:
-                raise AssertionError("Ingestion job not found")
-            if status.task_id != task_id:
-                raise AssertionError("Unexpected task ID")
-
-            if not sys.stdout.isatty() and status_str != status.status:
-                click.echo(
-                    f" ({status.status}) Loading {namespace}/{repository}, task ID {task_id}",
-                )
-
-            status_str = status.status
-
-        if sys.stdout.isatty():
-            click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
-            click.echo(
-                f" ({status_str}) Loading {namespace}/{repository}, task ID {task_id}", nl=False
-            )
-            sys.stdout.flush()
-        time.sleep(1.0 / SPINNER_FREQUENCY)
-        interval += 1
-
-        if status_str == "SUCCESS":
-            click.echo()
-            return
-        if status_str == "FAILURE":
-            click.echo()
-            logs = client.get_ingestion_job_logs(
-                namespace=namespace, repository=repository, task_id=task_id
-            )
-            click.echo(logs)
-            raise ValueError("Error loading data")
+    if final_status.status == "FAILURE":
+        logs = client.get_ingestion_job_logs(
+            namespace=namespace, repository=repository, task_id=task_id
+        )
+        click.echo(logs)
+        raise ValueError("Error loading data")
 
 
 def get_spinner_settings() -> Tuple[Iterator[str], int]:
@@ -1010,6 +994,94 @@ def get_spinner_settings() -> Tuple[Iterator[str], int]:
     spinner = itertools.cycle(chars)
     poll_interval = max(int(SPINNER_FREQUENCY * GQL_POLL_TIME), 1)
     return spinner, poll_interval
+
+
+S = TypeVar("S", bound=JobStatus)
+
+
+def wait_for_job(task_id: str, status_callback: Callable[[], Optional[S]]) -> S:
+    spinner, poll_interval = get_spinner_settings()
+
+    interval = 0
+    status_str: Optional[str] = None
+    while True:
+        if interval % poll_interval == 0:
+            status = status_callback()
+            if not status:
+                raise AssertionError("Job not found")
+
+            if not sys.stdout.isatty() and status_str != status.status:
+                click.echo(
+                    f" ({status.status}) Waiting for task ID {task_id}",
+                )
+            status_str = status.status
+
+        if sys.stdout.isatty():
+            click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
+            click.echo(f" ({status_str}) Waiting for task ID {task_id}", nl=False)
+            sys.stdout.flush()
+        time.sleep(1.0 / SPINNER_FREQUENCY)
+        interval += 1
+
+        if status_str in ("SUCCESS", "FAILURE"):
+            click.echo()
+            assert status
+            return status
+
+
+def wait_for_download(client: "GQLAPIClient", task_id: str) -> str:
+    final_status = wait_for_job(task_id, lambda: client.get_export_job_status(task_id))
+    if final_status.status == "SUCCESS":
+        assert final_status.output
+        return str(final_status.output["url"])
+    else:
+        raise ValueError(
+            "Error running query. This could be due to a syntax error. "
+            "Run the query interactively with `sgr cloud sql` to investigate the cause."
+        )
+
+
+@click.command("download")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--file-format", default="csv", type=click.Choice(["csv"]))
+@click.argument("query", type=str)
+@click.argument("output_filename", type=str, default=None, required=False)
+def download_c(remote, file_format, query, output_filename):
+    """
+    Download query results from Splitgraph.
+
+    This runs a query on Splitgraph Cloud and exports the results into a csv.gz format.
+    """
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+
+    task_id = client.start_export(query=query)
+    download_url = wait_for_download(client, task_id)
+    download_file(download_url, output_filename)
+
+
+def download_file(url: str, filename: Optional[str]) -> None:
+    import re
+
+    import requests
+    from tqdm import tqdm
+
+    response = requests.get(url, stream=True)
+    if not filename and "Content-Disposition" in response.headers.keys():
+        filename = re.findall("filename=(.+)", response.headers["Content-Disposition"])[0]
+    if not filename:
+        filename = urlparse(url).path.split("/")[-1]
+    with open(filename, "wb") as f:
+        with tqdm.wrapattr(
+            f,
+            "write",
+            miniters=1,
+            desc=filename,
+            total=int(response.headers.get("content-length", 0)),
+        ) as fout:
+            for chunk in response.iter_content(chunk_size=4096):
+                fout.write(chunk)
 
 
 @click.command("sync")
@@ -1215,6 +1287,7 @@ cloud_c.add_command(add_c)
 cloud_c.add_command(status_c)
 cloud_c.add_command(logs_c)
 cloud_c.add_command(upload_c)
+cloud_c.add_command(download_c)
 cloud_c.add_command(sync_c)
 cloud_c.add_command(plugins_c)
 cloud_c.add_command(stub_c)
