@@ -1,13 +1,11 @@
 """Command line routines related to registering/setting up connections to the Splitgraph registry."""
 import hashlib
-import itertools
 import logging
 import os
 import shutil
 import string
 import subprocess
 import sys
-import time
 from copy import copy
 from glob import glob
 from pathlib import Path
@@ -18,7 +16,14 @@ import click
 from click import wrap_text
 from splitgraph.cloud.models import AddExternalRepositoryRequest
 from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
-from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
+from splitgraph.commandline.common import (
+    ImageType,
+    RepositoryType,
+    download_file,
+    emit_sql_results,
+    upload_file,
+    wait_for_job,
+)
 from splitgraph.commandline.engine import inject_config_into_engines
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
@@ -915,10 +920,8 @@ def upload_c(remote, file_format, repository, files):
     This uses the upload API to add data like CSV files to a remote Splitgraph instance,
     trigger a load and wait for the data to load into a repository.
     """
-    import requests
+
     from splitgraph.cloud import GQLAPIClient
-    from tqdm import tqdm
-    from tqdm.utils import CallbackIOWrapper
 
     client = GQLAPIClient(remote)
 
@@ -932,12 +935,7 @@ def upload_c(remote, file_format, repository, files):
     for file in files:
         upload, download = client.get_csv_upload_download_urls()
         download_urls.append(download)
-        size = os.fstat(file.fileno()).st_size
-
-        with tqdm(total=size, unit="B", unit_scale=True, unit_divisor=1024) as t:
-            wrapped_file = CallbackIOWrapper(t.update, file, "read")
-            t.set_description(os.path.basename(file.name))
-            requests.put(upload, data=wrapped_file)
+        upload_file(file, upload)
 
     task_id = client.start_csv_load(
         repository.namespace, repository.repository, download_urls, table_names
@@ -953,53 +951,49 @@ def upload_c(remote, file_format, repository, files):
     click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names[0]}"\'')  # nosec
 
 
-GQL_POLL_TIME = 5
-SPINNER_FREQUENCY = 10
-
-
 def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
-    from splitgraph.config import SG_CMD_ASCII
+    final_status = wait_for_job(
+        task_id, lambda: client.get_latest_ingestion_job_status(namespace, repository)
+    )
 
-    chars = ["|", "/", "-", "\\"] if SG_CMD_ASCII else ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
-    spinner = itertools.cycle(chars)
+    if final_status.status == "FAILURE":
+        logs = client.get_ingestion_job_logs(
+            namespace=namespace, repository=repository, task_id=task_id
+        )
+        click.echo(logs)
+        raise ValueError("Error loading data")
 
-    interval = 0
-    poll_interval = max(int(SPINNER_FREQUENCY * GQL_POLL_TIME), 1)
-    status_str: Optional[str] = None
-    while True:
-        if interval % poll_interval == 0:
-            status = client.get_latest_ingestion_job_status(namespace, repository)
-            if not status:
-                raise AssertionError("Ingestion job not found")
-            if status.task_id != task_id:
-                raise AssertionError("Unexpected task ID")
 
-            if not sys.stdout.isatty() and status_str != status.status:
-                click.echo(
-                    f" ({status.status}) Loading {namespace}/{repository}, task ID {task_id}",
-                )
+def wait_for_download(client: "GQLAPIClient", task_id: str) -> str:
+    final_status = wait_for_job(task_id, lambda: client.get_export_job_status(task_id))
+    if final_status.status == "SUCCESS":
+        assert final_status.output
+        return str(final_status.output["url"])
+    else:
+        raise ValueError(
+            "Error running query. This could be due to a syntax error. "
+            "Run the query interactively with `sgr cloud sql` to investigate the cause."
+        )
 
-            status_str = status.status
 
-        if sys.stdout.isatty():
-            click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
-            click.echo(
-                f" ({status_str}) Loading {namespace}/{repository}, task ID {task_id}", nl=False
-            )
-            sys.stdout.flush()
-        time.sleep(1.0 / SPINNER_FREQUENCY)
-        interval += 1
+@click.command("download")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--file-format", default="csv", type=click.Choice(["csv"]))
+@click.argument("query", type=str)
+@click.argument("output_path", type=str, default=None, required=False)
+def download_c(remote, file_format, query, output_path):
+    """
+    Download query results from Splitgraph.
 
-        if status_str == "SUCCESS":
-            click.echo()
-            return
-        if status_str == "FAILURE":
-            click.echo()
-            logs = client.get_ingestion_job_logs(
-                namespace=namespace, repository=repository, task_id=task_id
-            )
-            click.echo(logs)
-            raise ValueError("Error loading data")
+    This runs a query on Splitgraph Cloud and exports the results into a csv.gz format.
+    """
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+
+    task_id = client.start_export(query=query)
+    download_url = wait_for_download(client, task_id)
+    download_file(download_url, output_path)
 
 
 @click.command("sync")
@@ -1205,6 +1199,7 @@ cloud_c.add_command(add_c)
 cloud_c.add_command(status_c)
 cloud_c.add_command(logs_c)
 cloud_c.add_command(upload_c)
+cloud_c.add_command(download_c)
 cloud_c.add_command(sync_c)
 cloud_c.add_command(plugins_c)
 cloud_c.add_command(stub_c)

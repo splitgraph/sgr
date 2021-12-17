@@ -1,10 +1,12 @@
 import os
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from test.splitgraph.commandline.http_fixtures import (
     ACCESS_TOKEN,
     GQL_ENDPOINT,
     STORAGE_ENDPOINT,
+    gql_download,
     gql_job_logs,
     gql_job_status,
     gql_sync,
@@ -23,6 +25,7 @@ from click.testing import CliRunner
 from splitgraph.commandline.cloud import (
     _deduplicate_items,
     _get_external_from_yaml,
+    download_c,
     logs_c,
     status_c,
     sync_c,
@@ -154,7 +157,7 @@ def test_csv_upload(success, snapshot):
         new_callable=PropertyMock,
         return_value=ACCESS_TOKEN,
     ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT), patch(
-        "splitgraph.commandline.cloud.GQL_POLL_TIME", 0
+        "splitgraph.commandline.common.GQL_POLL_TIME", 0
     ):
         # Also patch out the poll frequency so that we don't wait between calls to the job
         # status endpoint.
@@ -266,3 +269,60 @@ def test_get_external_from_yaml():
     external, credentials = _get_external_from_yaml([path], Repository("otheruser", "somerepo_2"))
     assert external.plugin == "plugin"
     assert credentials == {"username": "my_username", "password": "secret"}
+
+
+@httpretty.activate(allow_net_connect=False)
+@pytest.mark.parametrize("success", [True, False])
+def test_csv_download(success, snapshot):
+    gql_download_cb, file_download_cb = gql_download(
+        final_status="SUCCESS" if success else "FAILURE",
+    )
+
+    runner = CliRunner(mix_stderr=False)
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        GQL_ENDPOINT + "/",
+        body=gql_download_cb,
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.GET,
+        re.compile(re.escape(STORAGE_ENDPOINT + "/") + ".*"),
+        body=file_download_cb,
+    )
+
+    with patch(
+        "splitgraph.cloud.RESTAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=ACCESS_TOKEN,
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT), patch(
+        "splitgraph.commandline.common.GQL_POLL_TIME", 0
+    ):
+        # Also patch out the poll frequency so that we don't wait between calls to the job
+        # status endpoint.
+        with TemporaryDirectory() as tmpdir:
+            currdir = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                result = runner.invoke(
+                    download_c,
+                    [
+                        # Also check that we strip semicolons since the downloader uses
+                        # "COPY (query) TO ..."
+                        "SELECT * FROM some_table;"
+                    ],
+                )
+            finally:
+                os.chdir(currdir)
+
+            if success:
+                assert result.exit_code == 0
+                snapshot.assert_match(result.stdout, "sgr_cloud_download_success.txt")
+
+                assert os.listdir(tmpdir) == ["some-file.csv.gz"]
+                with open(os.path.join(tmpdir, "some-file.csv.gz"), "r") as f:
+                    assert f.read() == "fruit_id,timestamp,name"
+
+            else:
+                assert result.exit_code == 1
+                snapshot.assert_match(result.stdout, "sgr_cloud_download_failure.txt")

@@ -1,12 +1,29 @@
 """
 Various common functions used by the command line interface.
 """
+import itertools
 import json
+import os
+import sys
+import time
 from functools import wraps
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+from urllib.parse import urlparse
 
 import click
 from click.core import Context, Parameter
+from splitgraph.cloud.models import JobStatus
 from splitgraph.config import REMOTES
 from splitgraph.exceptions import RepositoryNotFoundError
 
@@ -188,3 +205,94 @@ def emit_sql_results(results, use_json=False, show_all=False):
             click.echo("...")
     else:
         click.echo(sql_results_to_str(results, use_json))
+
+
+GQL_POLL_TIME = 5
+SPINNER_FREQUENCY = 10
+
+
+def get_spinner_settings() -> Tuple[Iterator[str], int]:
+    from splitgraph.config import SG_CMD_ASCII
+
+    chars = ["|", "/", "-", "\\"] if SG_CMD_ASCII else ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+    spinner = itertools.cycle(chars)
+    poll_interval = max(int(SPINNER_FREQUENCY * GQL_POLL_TIME), 1)
+    return spinner, poll_interval
+
+
+S = TypeVar("S", bound=JobStatus)
+
+
+def wait_for_job(task_id: str, status_callback: Callable[[], Optional[S]]) -> S:
+    """
+    Wait for a job to complete (with a CLI spinner) and return its final result.
+
+    :param task_id: ID of the task (used for display)
+    :param status_callback: Callback that returns a `JobStatus`
+    :return: Final `JobStatus`
+    """
+    spinner, poll_interval = get_spinner_settings()
+
+    interval = 0
+    status_str: Optional[str] = None
+    while True:
+        if interval % poll_interval == 0:
+            status = status_callback()
+            if not status:
+                raise AssertionError("Job not found")
+
+            if not sys.stdout.isatty() and status_str != status.status:
+                click.echo(
+                    f" ({status.status or 'PENDING'}) Waiting for task ID {task_id}",
+                )
+            status_str = status.status
+
+        if sys.stdout.isatty():
+            click.echo(f"\033[2K\033[1G{next(spinner)}", nl=False)
+            click.echo(f" ({status_str or 'PENDING'}) Waiting for task ID {task_id}", nl=False)
+            sys.stdout.flush()
+        time.sleep(1.0 / SPINNER_FREQUENCY)
+        interval += 1
+
+        if status_str in ("SUCCESS", "FAILURE"):
+            click.echo()
+            assert status
+            return status
+
+
+def upload_file(file: IO, upload_url: str) -> None:
+    """Upload a file to a presigned URL with a tqdm progress bar"""
+    import requests
+    from tqdm import tqdm
+    from tqdm.utils import CallbackIOWrapper
+
+    size = os.fstat(file.fileno()).st_size
+    with tqdm(total=size, unit="B", unit_scale=True, unit_divisor=1024) as t:
+        wrapped_file = CallbackIOWrapper(t.update, file, "read")
+        t.set_description(os.path.basename(file.name))
+        requests.put(upload_url, data=wrapped_file)
+
+
+def download_file(url: str, filename: Optional[str]) -> None:
+    """Download a file with a tqdm progress bar"""
+    import re
+
+    import requests
+    from tqdm import tqdm
+
+    response = requests.get(url, stream=True)
+    if not filename and "Content-Disposition" in response.headers.keys():
+        filename = re.findall("filename=(.+)", response.headers["Content-Disposition"])[0]
+    if not filename:
+        filename = urlparse(url).path.split("/")[-1]
+    with open(filename, "wb") as f:
+        with tqdm.wrapattr(
+            f,
+            "write",
+            miniters=1,
+            desc=filename,
+            total=int(response.headers.get("content-length", 0)),
+        ) as fout:
+            for chunk in response.iter_content(chunk_size=4096):
+                fout.write(chunk)
+    click.echo("Downloaded query results to %s." % filename)

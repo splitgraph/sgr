@@ -32,6 +32,7 @@ from splitgraph.cloud.models import (
     AddExternalCredentialRequest,
     AddExternalRepositoriesRequest,
     AddExternalRepositoryRequest,
+    ExportJobStatus,
     ExternalResponse,
     IngestionJobStatus,
     ListExternalCredentialsResponse,
@@ -48,6 +49,7 @@ from splitgraph.cloud.queries import (
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
     CSV_URL,
+    EXPORT_JOB_STATUS,
     FIND_REPO,
     GET_PLUGIN,
     GET_PLUGINS,
@@ -58,6 +60,7 @@ from splitgraph.cloud.queries import (
     PROFILE_UPSERT,
     REPO_CONDITIONS,
     REPO_PARAMS,
+    START_EXPORT,
     START_LOAD,
 )
 from splitgraph.config import CONFIG, create_config_dict, get_singleton
@@ -827,6 +830,45 @@ class GQLAPIClient:
                 is_manual=node.isManual,
                 status=node.status,
             )
+
+    def get_export_job_status(self, task_id: str) -> Optional[ExportJobStatus]:
+        response = self._gql(
+            {
+                "query": EXPORT_JOB_STATUS,
+                "operationName": "ExportJobStatus",
+                "variables": {"taskId": task_id},
+            },
+            handle_errors=True,
+        )
+
+        data = response.json()["data"]["exportJobStatus"]
+        if not data:
+            return None
+        return ExportJobStatus(
+            task_id=data["taskId"],
+            started=data["started"],
+            finished=data["finished"],
+            status=data["status"],
+            user_id=data["userId"],
+            export_format=data["exportFormat"],
+            output=data["output"],
+        )
+
+    def start_export(self, query: str) -> str:
+        query = query.strip()
+        if query.endswith(";"):
+            logging.warning("The query ends with ';', automatically removing")
+            query = query[:-1]
+
+        response = self._gql(
+            {
+                "query": START_EXPORT,
+                "operationName": "StartExport",
+                "variables": {"query": query},
+            },
+            handle_errors=True,
+        )
+        return str(response.json()["data"]["exportQuery"]["id"])
 
     def get_ingestion_job_logs(self, namespace: str, repository: str, task_id: str) -> str:
         response = self._gql(

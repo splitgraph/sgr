@@ -155,12 +155,21 @@ class ExternalResponse(BaseModel):
         )
 
 
-class IngestionJobStatus(BaseModel):
+class JobStatus(BaseModel):
     task_id: str
     started: datetime
     finished: Optional[datetime]
-    is_manual: bool
     status: Optional[str]
+
+
+class IngestionJobStatus(JobStatus):
+    is_manual: bool
+
+
+class ExportJobStatus(JobStatus):
+    user_id: Optional[str]
+    export_format: str
+    output: Optional[Dict[str, Any]]
 
 
 class RepositoryIngestionJobStatusResponse(BaseModel):
