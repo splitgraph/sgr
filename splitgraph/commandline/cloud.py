@@ -11,7 +11,7 @@ import time
 from copy import copy
 from glob import glob
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
+from typing import IO, TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, cast
 from urllib.parse import quote, urlparse
 
 import click
@@ -915,10 +915,8 @@ def upload_c(remote, file_format, repository, files):
     This uses the upload API to add data like CSV files to a remote Splitgraph instance,
     trigger a load and wait for the data to load into a repository.
     """
-    import requests
+
     from splitgraph.cloud import GQLAPIClient
-    from tqdm import tqdm
-    from tqdm.utils import CallbackIOWrapper
 
     client = GQLAPIClient(remote)
 
@@ -932,12 +930,7 @@ def upload_c(remote, file_format, repository, files):
     for file in files:
         upload, download = client.get_csv_upload_download_urls()
         download_urls.append(download)
-        size = os.fstat(file.fileno()).st_size
-
-        with tqdm(total=size, unit="B", unit_scale=True, unit_divisor=1024) as t:
-            wrapped_file = CallbackIOWrapper(t.update, file, "read")
-            t.set_description(os.path.basename(file.name))
-            requests.put(upload, data=wrapped_file)
+        upload_file(file, upload)
 
     task_id = client.start_csv_load(
         repository.namespace, repository.repository, download_urls, table_names
@@ -953,18 +946,26 @@ def upload_c(remote, file_format, repository, files):
     click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names[0]}"\'')  # nosec
 
 
+def upload_file(file: IO, upload_url: str) -> None:
+    import requests
+    from tqdm import tqdm
+    from tqdm.utils import CallbackIOWrapper
+
+    size = os.fstat(file.fileno()).st_size
+    with tqdm(total=size, unit="B", unit_scale=True, unit_divisor=1024) as t:
+        wrapped_file = CallbackIOWrapper(t.update, file, "read")
+        t.set_description(os.path.basename(file.name))
+        requests.put(upload_url, data=wrapped_file)
+
+
 GQL_POLL_TIME = 5
 SPINNER_FREQUENCY = 10
 
 
 def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
-    from splitgraph.config import SG_CMD_ASCII
-
-    chars = ["|", "/", "-", "\\"] if SG_CMD_ASCII else ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
-    spinner = itertools.cycle(chars)
+    spinner, poll_interval = get_spinner_settings()
 
     interval = 0
-    poll_interval = max(int(SPINNER_FREQUENCY * GQL_POLL_TIME), 1)
     status_str: Optional[str] = None
     while True:
         if interval % poll_interval == 0:
@@ -1000,6 +1001,15 @@ def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_
             )
             click.echo(logs)
             raise ValueError("Error loading data")
+
+
+def get_spinner_settings() -> Tuple[Iterator[str], int]:
+    from splitgraph.config import SG_CMD_ASCII
+
+    chars = ["|", "/", "-", "\\"] if SG_CMD_ASCII else ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+    spinner = itertools.cycle(chars)
+    poll_interval = max(int(SPINNER_FREQUENCY * GQL_POLL_TIME), 1)
+    return spinner, poll_interval
 
 
 @click.command("sync")
