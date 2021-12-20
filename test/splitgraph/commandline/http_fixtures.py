@@ -766,11 +766,7 @@ def gql_sync(namespace, repository, is_existing=True, is_sync=True, initial_priv
                     ],
                     "sync": True,
                     "credentialData": '{"username": "my_username", "password": "secret"}',
-                    "initialVisibility": (
-                        "RepositoryVisibility.PRIVATE"
-                        if initial_private
-                        else "RepositoryVisibility.PUBLIC"
-                    ),
+                    "initialVisibility": ("PRIVATE" if initial_private else "PUBLIC"),
                 }
             return [
                 200,
