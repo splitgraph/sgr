@@ -225,60 +225,19 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           path: artifacts
-      - name: List artifacts
-        run: find artifacts
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rename artifacts
+        run:
+          - mv artifacts/sgr-windows/sgr.exe artifacts/sgr-windows-x86_64.exe
+          - mv artifacts/sgr-linux/sgr artifacts/sgr-linux-x86_64
+          - mv artifacts/sgr-linux/osx artifacts/sgr-osx-x86_64
+      - name: Release artifacts
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
+          files: |
+            artifacts/sgr-windows-x86_64.exe
+            artifacts/sgr-linux-x86_64
+            artifacts/sgr-osx-x86_64
+            artifacts/dist/sgr-docs-bin.tar.gz
+            artifacts/dist/install.sh
           draft: true
-          prerelease: false
-      - name: Upload doc bundle
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/dist/sgr-docs-bin.tar.gz
-          asset_name: sgr-docs-bin.tar.gz
-          asset_content_type: application/gzip
-      - name: Upload installation script
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/dist/install.sh
-          asset_name: install.sh
-          asset_content_type: application/x-sh
-      - name: Upload Windows binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/sgr-windows/sgr.exe
-          asset_name: sgr-windows-x86_64.exe
-          asset_content_type: application/octet-stream
-      - name: Upload Linux binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/sgr-linux/sgr
-          asset_name: sgr-linux-x86_64
-          asset_content_type: application/octet-stream
-      - name: Upload OSX binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/sgr-osx/sgr
-          asset_name: sgr-osx-x86_64
-          asset_content_type: application/octet-stream
+          fail_on_unmatched_files: false
