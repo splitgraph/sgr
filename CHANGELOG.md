@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.1 (2021-12-20)
+
+Fix `sgr cloud sync` invocation issue (https://github.com/splitgraph/splitgraph/pull/589)
+
 ## v0.3.0 (2021-12-17)
 
 Fleshing out the `splitgraph.yml` (aka `repositories.yml`) format that defines a Splitgraph Cloud "project" (datasets, their sources and metadata).

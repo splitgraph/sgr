@@ -93,9 +93,6 @@ jobs:
         env:
           SG_DEMO_KEY: ${{ secrets.SG_DEMO_KEY }}
           SG_DEMO_SECRET: ${{ secrets.SG_DEMO_SECRET }}
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
         run: |
           echo "Building Asciicast/doc bundle"
           export PATH=$PATH:$(readlink -f $DBT_VENV/bin)
