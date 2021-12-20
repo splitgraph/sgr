@@ -80,27 +80,41 @@ jobs:
         run: |
           source "$HOME"/.poetry/env
           poetry run coveralls --service=github
-      - name: "Build doc / Asciicast bundle and push out Docker engine (tags only)"
-        if: "startsWith(github.ref, 'refs/tags/')"
+      - name: "Push out Docker engine (tags only)"
+        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip engine]')"
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "Uploading engine image to Docker Hub"
+          ./.ci/push_engine.sh
+      - name: "Build doc / Asciicast bundle"
+        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip docs]')"
         env:
           SG_DEMO_KEY: ${{ secrets.SG_DEMO_KEY }}
           SG_DEMO_SECRET: ${{ secrets.SG_DEMO_SECRET }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        # We could split this out into a separate stage but it would mean installing Poetry, Compose and this package all over again.
         run: |
           echo "Building Asciicast/doc bundle"
           export PATH=$PATH:$(readlink -f $DBT_VENV/bin)
-          ./.ci/build_artifacts.sh
-          echo "Uploading engine image to Docker Hub"
-          ./.ci/push_engine.sh
+          ./.ci/build_docs.sh
           cp ./install.sh dist
-          # TODO figure out if we want to do poetry upload here
+          # TODO figure out if we want to do poetry upload here (can only do once, so will fail
+          # if we're retrying an upload)
           # "$HOME"/.poetry/bin/poetry build
-          # Currently upload is commented out since it's once-only and we love
-          # republishing v0.1.0 for now.
-          # "$HOME"/.poetry/bin/poetry publish -r testpypi
+      - name: "Build and publish wheel"
+        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip wheel]')"
+        env:
+          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        # We could split this out into a separate stage but it would mean installing Poetry, Compose and this package all over again.
+        run: |
+          ./.ci/build_wheel.sh
+          cp ./install.sh dist
+          # TODO figure out if we want to do poetry upload here (can only do once, so will fail
+          # if we're retrying an upload)
+          # "$HOME"/.poetry/bin/poetry build
       - name: "Upload release artifacts"
         uses: actions/upload-artifact@v2
         with:
