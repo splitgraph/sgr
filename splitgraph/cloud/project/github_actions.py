@@ -29,8 +29,10 @@ def generate_job(
         steps.append(
             {
                 "name": "Set up dbt Git URL",
-                "run": 'echo "$CREDENTIALS_YML" > splitgraph.credentials.yml'
-                + '\nsed -i "s|\\$THIS_REPO_URL|https://$GITHUB_ACTOR:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY|g" splitgraph.credentials.yml',
+                "run": [
+                    'echo "$CREDENTIALS_YML" > splitgraph.credentials.yml',
+                    'sed -i "s|\$THIS_REPO_URL|https://$GITHUB_ACTOR:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY|g" splitgraph.credentials.yml',
+                ],
                 "shell": "bash",
                 "env": {
                     "CREDENTIALS_YML": "${{secrets.SPLITGRAPH_CREDENTIALS_YML}}",
