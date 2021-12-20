@@ -246,6 +246,78 @@ def test_elasticsearch_gropuing_and_aggregations_bare(local_engine_empty):
 
 
 @pytest.mark.mounting
+def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
+    """
+    Most of the magic in these examples is coming from PG, not our Multicorn code
+    (i.e. discarding redundant targets from subqueries).
+    Here we just make sure that we don't break that somehow.
+    """
+
+    _mount_elasticsearch()
+
+    # DISTINCT on a grouping clause from a subquery
+    query = """SELECT DISTINCT gender FROM(
+        SELECT state, gender, min(age), max(balance)
+        FROM es.account GROUP BY state, gender
+    ) AS t"""
+
+    # Ensure only the relevant part is pushed down (i.e. no aggregations as they are redundant)
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert len(result) > 2
+    assert _extract_query_from_explain(result) == {
+        "aggs": {
+            "group_buckets": {
+                "composite": {
+                    "sources": [
+                        {"state": {"terms": {"field": "state"}}},
+                        {"gender": {"terms": {"field": "gender"}}},
+                    ],
+                    "size": 5,
+                }
+            }
+        }
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query, return_shape=ResultShape.MANY_ONE)
+    assert len(result) == 2
+
+    # Assert aggregation result
+    assert result == ["F", "M"]
+
+    # DISTINCT on a aggregated column from a subquery
+    query = """SELECT DISTINCT min FROM(
+        SELECT state, gender, min(age), max(balance)
+        FROM es.account GROUP BY state, gender
+    ) AS t"""
+
+    # Ensure only the relevant part is pushed down (no redundant aggregations, i.e. only min)
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert len(result) > 2
+    assert _extract_query_from_explain(result) == {
+        "aggs": {
+            "group_buckets": {
+                "composite": {
+                    "sources": [
+                        {"state": {"terms": {"field": "state"}}},
+                        {"gender": {"terms": {"field": "gender"}}},
+                    ],
+                    "size": 5,
+                },
+                "aggregations": {"min.age": {"min": {"field": "age"}}},
+            }
+        }
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query, return_shape=ResultShape.MANY_ONE)
+    assert len(result) == 8
+
+    # Assert aggregation result
+    assert result == [20, 21, 22, 23, 24, 25, 26, 28]
+
+
+@pytest.mark.mounting
 def test_elasticsearch_not_pushed_down(local_engine_empty):
     _mount_elasticsearch()
 
