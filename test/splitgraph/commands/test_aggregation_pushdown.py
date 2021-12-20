@@ -316,6 +316,38 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
     # Assert aggregation result
     assert result == [20, 21, 22, 23, 24, 25, 26, 28]
 
+    # Aggregation of the sub-aggregation through a CTE
+    query = """WITH sub_agg AS (
+        SELECT state, gender, min(age), max(balance) as max_balance
+        FROM es.account GROUP BY state, gender
+    )
+    SELECT min(max_balance), gender FROM sub_agg GROUP BY gender"""
+
+    # Only the subquery is pushed-down, with no redundant aggregations
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert len(result) > 2
+    assert _extract_query_from_explain(result) == {
+        "aggs": {
+            "group_buckets": {
+                "composite": {
+                    "sources": [
+                        {"state": {"terms": {"field": "state"}}},
+                        {"gender": {"terms": {"field": "gender"}}},
+                    ],
+                    "size": 5,
+                },
+                "aggregations": {"max.balance": {"max": {"field": "balance"}}},
+            }
+        }
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query)
+    assert len(result) == 2
+
+    # Assert aggregation result
+    assert result == [(37358, "M"), (31968, "F")]
+
 
 @pytest.mark.mounting
 def test_elasticsearch_not_pushed_down(local_engine_empty):
