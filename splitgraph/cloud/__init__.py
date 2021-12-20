@@ -998,9 +998,7 @@ class GQLAPIClient:
                 for tn, to in external.tables.items()
             ],
             "sync": sync,
-            "initialVisibility": (
-                "RepositoryVisibility.PRIVATE" if initial_private else "RepositoryVisibility.PUBLIC"
-            ),
+            "initialVisibility": ("PRIVATE" if initial_private else "PUBLIC"),
         }
 
         if credential_data:
