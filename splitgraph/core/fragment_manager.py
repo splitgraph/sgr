@@ -634,7 +634,12 @@ class FragmentManager(MetadataManager):
                 [(image_hash, old_table.table_name, new_schema_spec, old_table.objects)],
             )
 
-    def split_changeset_boundaries(self, changeset, change_key, objects):
+    def split_changeset_boundaries(
+        self, changeset: Changeset, change_key: List[Tuple[str, str]], objects: List[str]
+    ) -> List[Changeset]:
+        if not objects:
+            return [changeset]
+
         min_max = self.get_min_max_pks(objects, change_key)
         groups = get_chunk_groups([(o, mm[0], mm[1]) for o, mm in zip(objects, min_max)])
         group_boundaries = [
