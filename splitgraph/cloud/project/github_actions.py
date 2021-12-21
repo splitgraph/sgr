@@ -31,7 +31,7 @@ def generate_job(
                 "name": "Set up dbt Git URL",
                 "run": [
                     'echo "$CREDENTIALS_YML" > splitgraph.credentials.yml',
-                    'sed -i "s|\$THIS_REPO_URL|https://$GITHUB_ACTOR:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY|g" splitgraph.credentials.yml',
+                    'sed -i "s|\\$THIS_REPO_URL|https://$GITHUB_ACTOR:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY|g" splitgraph.credentials.yml',
                 ],
                 "shell": "bash",
                 "env": {
