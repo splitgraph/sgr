@@ -555,7 +555,10 @@ class PsycopgEngine(SQLEngine):
                             ) from e
                     elif (
                         isinstance(e, psycopg2.OperationalError)
-                        and "connection has been closed unexpectedly" in str(e)
+                        and (
+                            "connection has been closed unexpectedly" in str(e)
+                            or "server closed the connection unexpectedly" in str(e)
+                        )
                         and attempt == 0
                     ):
                         # Handle the registry closing the connection by retrying once.
