@@ -24,20 +24,44 @@ from typing import (
 import requests
 from pydantic import BaseModel
 from requests import HTTPError
+from requests.adapters import HTTPAdapter
 from requests.models import Response
+from requests.packages.urllib3.util import Retry
 from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
     AddExternalCredentialRequest,
     AddExternalRepositoriesRequest,
     AddExternalRepositoryRequest,
+    ExportJobStatus,
     ExternalResponse,
+    IngestionJobStatus,
     ListExternalCredentialsResponse,
-    Metadata,
     MetadataResponse,
-    Repository,
+    Plugin,
+    RepositoryIngestionJobStatusResponse,
     UpdateExternalCredentialRequest,
     UpdateExternalCredentialResponse,
     make_repositories,
+)
+from splitgraph.cloud.project.models import External, Metadata, Repository
+from splitgraph.cloud.queries import (
+    BULK_UPDATE_REPO_SOURCES,
+    BULK_UPSERT_REPO_PROFILES,
+    BULK_UPSERT_REPO_TOPICS,
+    CSV_URL,
+    EXPORT_JOB_STATUS,
+    FIND_REPO,
+    GET_PLUGIN,
+    GET_PLUGINS,
+    GET_REPO_METADATA,
+    GET_REPO_SOURCE,
+    INGESTION_JOB_STATUS,
+    JOB_LOGS,
+    PROFILE_UPSERT,
+    REPO_CONDITIONS,
+    REPO_PARAMS,
+    START_EXPORT,
+    START_LOAD,
 )
 from splitgraph.config import CONFIG, create_config_dict, get_singleton
 from splitgraph.config.config import (
@@ -53,6 +77,7 @@ from splitgraph.exceptions import (
     GQLRepoDoesntExistError,
     GQLUnauthenticatedError,
     GQLUnauthorizedError,
+    JSONSchemaValidationError,
 )
 
 
@@ -68,189 +93,9 @@ DEFAULT_REMOTES = {
         "SG_ENGINE_DB_NAME": "sgregistry",
         "SG_AUTH_API": "https://api.splitgraph.com/auth",
         "SG_QUERY_API": "https://data.splitgraph.com",
-        "SG_GQL_API": "https://api.splitgraph.com/gql/cloud/graphql",
+        "SG_GQL_API": "https://api.splitgraph.com/gql/cloud/unified/graphql",
     }
 }
-
-_BULK_UPSERT_REPO_PROFILES_QUERY = """mutation BulkUpsertRepoProfilesMutation(
-  $namespaces: [String!]
-  $repositories: [String!]
-  $descriptions: [String]
-  $readmes: [String]
-  $licenses: [String]
-  $metadata: [JSON]
-) {
-  __typename
-  bulkUpsertRepoProfiles(
-  input: {
-      namespaces: $namespaces
-      repositories: $repositories
-      descriptions: $descriptions
-      readmes: $readmes
-      licenses: $licenses
-      metadata: $metadata
-  }
-  ) {
-    clientMutationId
-    __typename
-  }
-}
-"""
-
-_BULK_UPDATE_REPO_SOURCES_QUERY = """mutation BulkUpdateRepoSourcesMutation(
-  $namespaces: [String!]
-  $repositories: [String!]
-  $sources: [DatasetSourceInput]
-) {
-  __typename
-  bulkUpdateRepoSources(
-  input: {
-      namespaces: $namespaces
-      repositories: $repositories
-      sources: $sources
-  }
-  ) {
-    clientMutationId
-    __typename
-  }
-}
-"""
-
-_BULK_UPSERT_REPO_TOPICS_QUERY = """mutation BulkUpsertRepoTopicsMutation(
-  $namespaces: [String!]
-  $repositories: [String!]
-  $topics: [String]
-) {
-  __typename
-  bulkUpsertRepoTopics(
-  input: {
-      namespaces: $namespaces
-      repositories: $repositories
-      topics: $topics
-  }
-  ) {
-    clientMutationId
-    __typename
-  }
-}
-"""
-
-_PROFILE_UPSERT_QUERY = """mutation UpsertRepoProfile(
-  $namespace: String!
-  $repository: String!
-  $description: String
-  $readme: String
-  $topics: [String]
-  $sources: [DatasetSourceInput]
-  $license: String
-  $metadata: JSON
-) {
-  __typename
-  upsertRepoProfileByNamespaceAndRepository(
-    input: {
-      repoProfile: {
-        namespace: $namespace
-        repository: $repository
-        description: $description
-        readme: $readme
-        sources: $sources
-        license: $license
-        metadata: $metadata
-      }
-      patch: {
-        namespace: $namespace
-        repository: $repository
-        description: $description
-        readme: $readme
-        sources: $sources
-        license: $license
-        metadata: $metadata
-      }
-    }
-  ) {
-    clientMutationId
-    __typename
-  }
-  __typename
-  createRepoTopicsAgg(
-  input: {
-    repoTopicsAgg: {
-      namespace: $namespace
-      repository: $repository
-      topics: $topics
-    }
-  }
-  ) {
-    clientMutationId
-    __typename
-  }
-}
-"""
-
-_FIND_REPO_QUERY = """query FindRepositories($query: String!, $limit: Int!) {
-  findRepository(query: $query, first: $limit) {
-    edges {
-      node {
-        namespace
-        repository
-        highlight
-      }
-    }
-    totalCount
-  }
-}"""
-
-_REPO_PARAMS = "($namespace: String!, $repository: String!)"
-_REPO_CONDITIONS = ", condition: {namespace: $namespace, repository: $repository}"
-
-_GET_REPO_METADATA_QUERY = """query GetRepositoryMetadata%s {
-  repositories(first: 1000%s) {
-    nodes {
-      namespace
-      repository
-      repoTopicsByNamespaceAndRepository {
-        nodes {
-          topic
-        }
-      }
-      repoProfileByNamespaceAndRepository {
-        description
-        license
-        metadata
-        readme
-        sources {
-          anchor
-          href
-          isCreator
-          isSameAs
-        }
-      }
-    }
-  }
-}"""
-
-_GET_REPO_SOURCE_QUERY = """query GetRepositoryDataSource%s {
-  repositoryDataSources(first: 1000%s) {
-    nodes {
-      namespace
-      repository
-      credentialId
-      dataSource
-      params
-      tableParams
-      externalImageByNamespaceAndRepository {
-        imageByNamespaceAndRepositoryAndImageHash {
-          tablesByNamespaceAndRepositoryAndImageHash {
-            nodes {
-              tableName
-              tableSchema
-            }
-          }
-        }
-      }
-    }
-  }
-}"""
 
 
 def get_remote_param(remote: str, key: str) -> str:
@@ -310,8 +155,8 @@ def expect_result(
 
 def _handle_gql_errors(response):
     logging.debug("GQL API status: %d, response: %s", response.status_code, response.text)
-    # GQL itself doesn't seem to return non-200 codes, so this catches HTTP-level errors.
-    response.raise_for_status()
+    if response.status_code not in (200, 400):
+        response.raise_for_status()
     response_j = response.json()
     if "errors" in response_j:
         message = response_j["errors"][0]["message"]
@@ -323,6 +168,8 @@ def _handle_gql_errors(response):
             raise GQLRepoDoesntExistError("Unknown repository!")
         else:
             raise GQLAPIError(message)
+    # Catch other HTTP-level errors
+    response.raise_for_status()
 
 
 def handle_gql_errors(func: Callable[..., Response]) -> Callable[..., Response]:
@@ -521,6 +368,16 @@ class RESTAPIClient:
         overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
         return new_access_token
 
+    @property
+    def maybe_access_token(self) -> Optional[str]:
+        """
+        Like access_token but returns None if the user isn't logged in.
+        """
+        try:
+            return self.access_token
+        except AuthAPIError:
+            return None
+
     def get_latest_version(self) -> Optional[str]:
         # Do a version check to see if updates are available. If the user is logged
         # into the registry, also send the user ID for metrics.
@@ -576,6 +433,7 @@ class RESTAPIClient:
         response_class: Optional[Type[T]] = None,
         endpoint=None,
         method: str = "post",
+        jsonschema_endpoint: bool = False,
     ) -> Optional[T]:
         endpoint = endpoint or self.endpoint
         response = requests.request(
@@ -586,6 +444,17 @@ class RESTAPIClient:
             data=request.json(by_alias=True, exclude_unset=True) if request else None,
         )
         logging.debug(response.text)
+
+        if response.status_code in (405, 400) and jsonschema_endpoint:
+            response_j = response.json()
+            if "errors" in response_j:
+                message = str(response_j["errors"])
+            elif "error" in response_j:
+                message = str(response_j["error"])
+            else:
+                message = response_j.text
+            raise JSONSchemaValidationError(message)
+
         response.raise_for_status()
 
         if response_class:
@@ -612,41 +481,62 @@ class RESTAPIClient:
 
         credentials = self.list_external_credentials()
 
-        for credential in credentials.credentials:
-            if (
-                credential.plugin_name == plugin_name
-                and credential.credential_name == credential_name
-            ):
-                self._perform_request(
-                    "/update_external_credential",
-                    access_token,
-                    UpdateExternalCredentialRequest(
-                        credential_id=credential.credential_id,
-                        credential_name=credential_name,
-                        credential_data=credential_data,
-                        plugin_name=plugin_name,
-                    ),
-                )
-                return credential.credential_id
+        try:
+            credential: Union[
+                Optional["ListExternalCredentialsResponse.ExternalCredential"],
+                Optional[UpdateExternalCredentialResponse],
+            ]
+            for credential in credentials.credentials:
+                if (
+                    credential.plugin_name == plugin_name
+                    and credential.credential_name == credential_name
+                ):
+                    self._perform_request(
+                        "/update_external_credential",
+                        access_token,
+                        UpdateExternalCredentialRequest(
+                            credential_id=credential.credential_id,
+                            credential_name=credential_name,
+                            credential_data=credential_data,
+                            plugin_name=plugin_name,
+                        ),
+                        jsonschema_endpoint=True,
+                    )
+                    return credential.credential_id
 
-        # Credential doesn't exist: create it.
-        credential = self._perform_request(
-            "/add_external_credential",
-            access_token,
-            AddExternalCredentialRequest(
-                credential_name=credential_name,
-                credential_data=credential_data,
-                plugin_name=plugin_name,
-            ),
-            UpdateExternalCredentialResponse,
-        )
-        assert credential
-        return credential.credential_id
+            # Credential doesn't exist: create it.
+            credential = self._perform_request(
+                "/add_external_credential",
+                access_token,
+                AddExternalCredentialRequest(
+                    credential_name=credential_name,
+                    credential_data=credential_data,
+                    plugin_name=plugin_name,
+                ),
+                UpdateExternalCredentialResponse,
+                jsonschema_endpoint=True,
+            )
+
+            assert credential
+            return credential.credential_id
+        except JSONSchemaValidationError:
+            if logging.getLogger().getEffectiveLevel() >= logging.INFO:
+                logging.error(
+                    "JSONSchema error validating the credentials. Not displaying the contents of "
+                    "the error, as it may contain the textual values of the credentials. "
+                    "Run sgr with --verbosity DEBUG to see the full error message."
+                )
+                raise JSONSchemaValidationError(message="[MASKED]")
+            raise
 
     def bulk_upsert_external(self, repositories: List[AddExternalRepositoryRequest]):
         request = AddExternalRepositoriesRequest(repositories=repositories)
         self._perform_request(
-            "/bulk-add", self.access_token, request, endpoint=self.externals_endpoint
+            "/bulk-add",
+            self.access_token,
+            request,
+            endpoint=self.externals_endpoint,
+            jsonschema_endpoint=True,
         )
 
 
@@ -672,14 +562,19 @@ class GQLAPIClient:
 
         if remote:
             self.endpoint = get_remote_param(remote, "SG_GQL_API")
+            if "/cloud/graphql" in self.endpoint:
+                self.endpoint = self.endpoint.replace("/cloud/graphql", "/cloud/unified/graphql")
+                logging.warning(
+                    "The unified Splitgraph API is now at /gql/cloud/unified/graphql. "
+                    "Using %s automatically. Replace SG_GQL_API to make this message go away. ",
+                    self.endpoint,
+                )
             self._auth_client: Optional[RESTAPIClient] = RESTAPIClient(remote)
             self._access_token: Optional[str] = access_token
         elif endpoint:
             self.endpoint = endpoint
             self._auth_client = None
             self._access_token = access_token
-
-        self.registry_endpoint = self.endpoint.replace("/cloud/", "/registry/")  # :eyes:
 
     @property
     def access_token(self) -> Optional[str]:
@@ -688,14 +583,37 @@ class GQLAPIClient:
         else:
             return self._access_token
 
-    def _gql(self, query: Dict, endpoint=None, handle_errors=False) -> requests.Response:
+    @property
+    def maybe_access_token(self) -> Optional[str]:
+        if self._auth_client:
+            return self._auth_client.maybe_access_token
+        else:
+            return self._access_token
+
+    def _gql(
+        self, query: Dict, endpoint=None, handle_errors=False, anonymous_ok=False
+    ) -> requests.Response:
         endpoint = endpoint or self.endpoint
-        access_token = self.access_token
+        access_token = self.access_token if not anonymous_ok else self.maybe_access_token
         headers = get_headers()
         if access_token:
             headers.update({"Authorization": "Bearer " + access_token})
 
-        result = requests.post(
+        # Add a retry strategy (difference from standard allowed_methods is that we also retry
+        # on POST, since that's how we communicate with GQL endpoints).
+        adapter = HTTPAdapter(
+            max_retries=Retry(
+                total=3,
+                backoff_factor=1,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"],
+            )
+        )
+        session = requests.session()
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+
+        result = session.post(
             endpoint, headers=headers, json=query, verify=os.environ.get("SSL_CERT_FILE", True)
         )
         if handle_errors:
@@ -742,19 +660,13 @@ class GQLAPIClient:
         return variables
 
     @staticmethod
-    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata, v1=False):
+    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata):
         variables = GQLAPIClient._validate_metadata(namespace, repository, metadata)
-
-        gql_query = _PROFILE_UPSERT_QUERY
-        if v1:
-            gql_query = gql_query.replace("createRepoTopicsAgg", "createRepoTopic").replace(
-                "repoTopicsAgg", "repoTopic"
-            )
 
         query = {
             "operationName": "UpsertRepoProfile",
             "variables": variables,
-            "query": gql_query,
+            "query": PROFILE_UPSERT,
         }
 
         logging.debug("Prepared GraphQL query: %s", json.dumps(query))
@@ -817,7 +729,7 @@ class GQLAPIClient:
         repo_profiles_query = {
             "operationName": "BulkUpsertRepoProfilesMutation",
             "variables": repo_profiles,
-            "query": _BULK_UPSERT_REPO_PROFILES_QUERY,
+            "query": BULK_UPSERT_REPO_PROFILES,
         }
         response = self._gql(repo_profiles_query)
         return response
@@ -827,7 +739,7 @@ class GQLAPIClient:
         repo_sources_query = {
             "operationName": "BulkUpdateRepoSourcesMutation",
             "variables": repo_sources,
-            "query": _BULK_UPDATE_REPO_SOURCES_QUERY,
+            "query": BULK_UPDATE_REPO_SOURCES,
         }
         response = self._gql(repo_sources_query)
         return response
@@ -837,7 +749,7 @@ class GQLAPIClient:
         repo_topics_query = {
             "operationName": "BulkUpsertRepoTopicsMutation",
             "variables": repo_topics,
-            "query": _BULK_UPSERT_REPO_TOPICS_QUERY,
+            "query": BULK_UPSERT_REPO_TOPICS,
         }
         response = self._gql(repo_topics_query)
         return response
@@ -860,7 +772,7 @@ class GQLAPIClient:
             {
                 "operationName": "FindRepositories",
                 "variables": {"query": query, "limit": limit},
-                "query": _FIND_REPO_QUERY,
+                "query": FIND_REPO,
             }
         )
 
@@ -880,7 +792,7 @@ class GQLAPIClient:
     def get_metadata(self, namespace: str, repository: str) -> Optional[MetadataResponse]:
         response = self._gql(
             {
-                "query": _GET_REPO_METADATA_QUERY % (_REPO_PARAMS, _REPO_CONDITIONS),
+                "query": GET_REPO_METADATA % (REPO_PARAMS, REPO_CONDITIONS),
                 "operationName": "GetRepositoryMetadata",
                 "variables": {"namespace": namespace, "repository": repository},
             },
@@ -893,14 +805,215 @@ class GQLAPIClient:
             return parsed_responses[0]
         return None
 
+    def get_latest_ingestion_job_status(
+        self, namespace: str, repository: str
+    ) -> Optional[IngestionJobStatus]:
+        response = self._gql(
+            {
+                "query": INGESTION_JOB_STATUS,
+                "operationName": "RepositoryIngestionJobStatus",
+                "variables": {"namespace": namespace, "repository": repository},
+            },
+            handle_errors=True,
+        )
+        parsed_response = RepositoryIngestionJobStatusResponse.from_response(response.json())
+        nodes = parsed_response.repositoryIngestionJobStatus.nodes
+        if not nodes:
+            return None
+        else:
+            assert len(nodes) == 1
+            node = nodes[0]
+            return IngestionJobStatus(
+                task_id=node.taskId,
+                started=node.started,
+                finished=node.finished,
+                is_manual=node.isManual,
+                status=node.status,
+            )
+
+    def get_export_job_status(self, task_id: str) -> Optional[ExportJobStatus]:
+        response = self._gql(
+            {
+                "query": EXPORT_JOB_STATUS,
+                "operationName": "ExportJobStatus",
+                "variables": {"taskId": task_id},
+            },
+            handle_errors=True,
+        )
+
+        data = response.json()["data"]["exportJobStatus"]
+        if not data:
+            return None
+        return ExportJobStatus(
+            task_id=data["taskId"],
+            started=data["started"],
+            finished=data["finished"],
+            status=data["status"],
+            user_id=data["userId"],
+            export_format=data["exportFormat"],
+            output=data["output"],
+        )
+
+    def start_export(self, query: str) -> str:
+        query = query.strip()
+        if query.endswith(";"):
+            logging.warning("The query ends with ';', automatically removing")
+            query = query[:-1]
+
+        response = self._gql(
+            {
+                "query": START_EXPORT,
+                "operationName": "StartExport",
+                "variables": {"query": query},
+            },
+            handle_errors=True,
+        )
+        return str(response.json()["data"]["exportQuery"]["id"])
+
+    def get_ingestion_job_logs(self, namespace: str, repository: str, task_id: str) -> str:
+        response = self._gql(
+            {
+                "query": JOB_LOGS,
+                "operationName": "JobLogs",
+                "variables": {"namespace": namespace, "repository": repository, "taskId": task_id},
+            },
+            handle_errors=True,
+        )
+
+        url = response.json()["data"]["jobLogs"]["url"]
+
+        if not url:
+            raise ValueError(
+                "Task ID %s not found for repository %s/%s!" % (task_id, namespace, repository)
+            )
+
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.text
+
+    def get_csv_upload_download_urls(self) -> Tuple[str, str]:
+        response = self._gql(
+            {
+                "query": CSV_URL,
+                "operationName": "CSVURLs",
+            },
+            handle_errors=True,
+        )
+        urls = response.json()["data"]["csvUploadDownloadUrls"]
+        return urls["upload"], urls["download"]
+
+    def _run_start_load_gql_with(self, variables: Dict[str, Any]) -> str:
+        response = self._gql(
+            {
+                "query": START_LOAD,
+                "operationName": "StartExternalRepositoryLoad",
+                "variables": variables,
+            },
+            handle_errors=True,
+        )
+        return str(response.json()["data"]["startExternalRepositoryLoad"]["taskId"])
+
+    def start_csv_load(
+        self, namespace: str, repository: str, download_urls: List[str], table_names: List[str]
+    ) -> str:
+        variables = {
+            "namespace": namespace,
+            "repository": repository,
+            "pluginName": "csv",
+            "params": json.dumps({"connection": {"connection_type": "http", "url": ""}}),
+            "tableParams": [
+                {
+                    "name": n,
+                    "options": json.dumps({"url": u}),
+                    "schema": [],
+                }
+                for n, u in zip(table_names, download_urls)
+            ],
+        }
+
+        return self._run_start_load_gql_with(variables)
+
+    @staticmethod
+    def _make_plugin(plugin_dict: Dict[str, Any]) -> Plugin:
+        return Plugin(
+            plugin_name=plugin_dict["pluginName"],
+            credentials_schema=plugin_dict["credentialsSchema"],
+            params_schema=plugin_dict["paramsSchema"],
+            table_params_schema=plugin_dict["tableParamsSchema"],
+            name=plugin_dict["name"],
+            description=plugin_dict["description"],
+            supports_load=plugin_dict["supportsLoad"],
+            supports_sync=plugin_dict["supportsSync"],
+            supports_mount=plugin_dict["supportsMount"],
+        )
+
+    def get_all_plugins(self) -> List[Plugin]:
+        response = self._gql(
+            {"query": GET_PLUGINS, "operationName": "ExternalPlugins"},
+            handle_errors=True,
+            anonymous_ok=True,
+        )
+        return [self._make_plugin(d) for d in response.json()["data"]["externalPlugins"]]
+
+    def get_plugin(self, plugin_name: str) -> Optional[Plugin]:
+        response = self._gql(
+            {
+                "query": GET_PLUGIN,
+                "operationName": "ExternalPlugin",
+                "variables": {"pluginName": plugin_name},
+            },
+            handle_errors=True,
+            anonymous_ok=True,
+        )
+        data = response.json()["data"]["externalPlugin"]
+        if data is None:
+            return None
+        return self._make_plugin(data)
+
+    def start_load_existing(self, namespace: str, repository: str, sync: bool = True) -> str:
+        variables = {"namespace": namespace, "repository": repository, "sync": sync}
+
+        return self._run_start_load_gql_with(variables)
+
+    def start_load_params(
+        self,
+        namespace: str,
+        repository: str,
+        external: External,
+        sync: bool = True,
+        credential_data: Optional[Dict[str, Any]] = None,
+        initial_private: bool = False,
+    ) -> str:
+        variables = {
+            "namespace": namespace,
+            "repository": repository,
+            "pluginName": external.plugin,
+            "params": json.dumps(external.params),
+            "tableParams": [
+                {
+                    "name": tn,
+                    "options": json.dumps(to.options),
+                    "schema": [{"name": tc.name, "pgType": tc.pg_type} for tc in to.schema_],
+                }
+                for tn, to in external.tables.items()
+            ],
+            "sync": sync,
+            "initialVisibility": ("PRIVATE" if initial_private else "PUBLIC"),
+        }
+
+        if credential_data:
+            variables["credentialData"] = json.dumps(credential_data)
+        elif external.credential_id:
+            variables["credentialId"] = external.credential_id
+        return self._run_start_load_gql_with(variables)
+
     def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:
         response = self._gql(
             {
-                "query": _GET_REPO_SOURCE_QUERY % (_REPO_PARAMS, _REPO_CONDITIONS),
+                "query": GET_REPO_SOURCE % (REPO_PARAMS, REPO_CONDITIONS),
                 "operationName": "GetRepositoryDataSource",
                 "variables": {"namespace": namespace, "repository": repository},
             },
-            endpoint=self.registry_endpoint,
             handle_errors=True,
         )
 
@@ -930,7 +1043,7 @@ class GQLAPIClient:
         else:
             metadata_r = self._gql(
                 {
-                    "query": _GET_REPO_METADATA_QUERY % ("", ""),
+                    "query": GET_REPO_METADATA % ("", ""),
                     "operationName": "GetRepositoryMetadata",
                 },
                 handle_errors=True,
@@ -938,10 +1051,9 @@ class GQLAPIClient:
 
             external_r = self._gql(
                 {
-                    "query": _GET_REPO_SOURCE_QUERY % ("", ""),
+                    "query": GET_REPO_SOURCE % ("", ""),
                     "operationName": "GetRepositoryDataSource",
                 },
-                endpoint=self.registry_endpoint,
                 handle_errors=True,
             )
             parsed_metadata = MetadataResponse.from_response(metadata_r.json())

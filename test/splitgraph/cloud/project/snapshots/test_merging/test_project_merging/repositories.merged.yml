@@ -1,0 +1,94 @@
+credentials:
+  my_credential:
+    data:
+      password: override_secret
+      username: my_override_username
+    plugin: plugin
+  my_new_credential:
+    data:
+      api_key: some_key
+      username: other_username
+    plugin: plugin_1
+  my_unused_credential:
+    data:
+      password: secret
+      username: my_username
+    plugin: plugin_3
+repositories:
+- external:
+    credential_id: 00000000-0000-0000-0000-000000000000
+    params:
+      params: here
+      plugin: specific
+    plugin: plugin
+    tables:
+      table_1:
+        options:
+          override_option: val_1
+        schema:
+        - name: id
+          type: text
+        - name: val
+          type: text
+      table_2:
+        options:
+          param_1: val_2
+        schema: []
+      table_3:
+        options: {}
+        schema:
+        - name: id
+          type: text
+        - name: val
+          type: text
+  metadata:
+    description: Repository Description 2
+    license: null
+    readme:
+      file: readme_2.md
+    sources:
+    - anchor: test data source
+      href: https://example.com
+    topics:
+    - topic_1
+    - topic_2
+  namespace: otheruser
+  repository: somerepo_2
+- external:
+    credential: my_other_credential
+    params: {}
+    plugin: plugin_2
+    tables: {}
+  metadata:
+    description: Altered description
+    license: Public Domain
+    readme:
+      file: readme_1.md
+    sources:
+    - anchor: test data source
+      href: https://example.com
+      isCreator: true
+      isSameAs: false
+    topics:
+    - different
+    - topic
+  namespace: someuser
+  repository: somerepo_1
+- external:
+    credential_id: 00000000-0000-0000-0000-000000000000
+    params: {}
+    plugin: plugin_3
+    tables: {}
+  metadata:
+    description: Another Repository
+  namespace: someuser
+  repository: somerepo_2
+- external:
+    credential_id: 00000000-0000-0000-0000-000000000000
+    params: {}
+    plugin: plugin_3
+    tables: {}
+  metadata:
+    description: New repository
+  namespace: someuser
+  repository: somerepo_3

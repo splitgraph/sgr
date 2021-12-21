@@ -1,12 +1,16 @@
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from importlib.resources import read_binary
 from random import getrandbits
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, cast
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
+from splitgraph.core.image_mounting import DefaultImageMounter, ImageMounter
+from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     Credentials,
     IntrospectionResult,
@@ -18,10 +22,10 @@ from splitgraph.core.types import (
 )
 from splitgraph.engine import ResultShape
 from splitgraph.ingestion.common import add_timestamp_tags
+from splitgraph.resources import icons
 
 if TYPE_CHECKING:
-    from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 INGESTION_STATE_TABLE = "_sg_ingestion_state"
 INGESTION_STATE_SCHEMA = [
@@ -38,6 +42,13 @@ class DataSource(ABC):
     supports_mount = False
     supports_sync = False
     supports_load = False
+    _icon_file: Optional[str] = None
+
+    @classmethod
+    def get_icon(cls) -> Optional[bytes]:
+        if cls._icon_file:
+            return read_binary(icons, cls._icon_file)
+        return None
 
     @classmethod
     @abstractmethod
@@ -51,7 +62,7 @@ class DataSource(ABC):
 
     def __init__(
         self,
-        engine: "PsycopgEngine",
+        engine: "PostgresEngine",
         credentials: Credentials,
         params: Params,
         tables: Optional[TableInfo] = None,
@@ -203,6 +214,45 @@ class SyncableDataSource(LoadableDataSource, DataSource, ABC):
 
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
         self._sync(schema, tables=tables, state=None)
+
+
+class TransformingDataSource(DataSource, ABC):
+    """
+    Data source that runs transformations between Splitgraph images. Takes in an extra
+    parameter, an ImageMounter instance to manage temporary image checkouts.
+    """
+
+    def __init__(
+        self,
+        engine: "PostgresEngine",
+        credentials: Credentials,
+        params: Params,
+        tables: Optional[TableInfo] = None,
+        image_mounter: Optional[ImageMounter] = None,
+    ):
+        super().__init__(engine, credentials, params, tables)
+        self._mounter = image_mounter or DefaultImageMounter(engine)
+
+    @abstractmethod
+    def get_required_images(self) -> List[Tuple[str, str, str]]:
+        """
+        Get images required by this data source.
+        :returns List of tuples (namespace, repository, hash_or_tag)
+        """
+        raise NotImplementedError
+
+    @contextmanager
+    def mount_required_images(self) -> Generator[Dict[Tuple[str, str, str], str], None, None]:
+        """
+        Mount all images required by this data source into temporary schemas. On exit from this
+        context manager, unmounts them.
+        :return: Map of (namespace, repository, hash_or_tag) -> schema where the image is mounted.
+        """
+        try:
+            schema_map = self._mounter.mount(self.get_required_images())
+            yield schema_map
+        finally:
+            self._mounter.unmount()
 
 
 def get_ingestion_state(repository: "Repository", image_hash: Optional[str]) -> Optional[SyncState]:

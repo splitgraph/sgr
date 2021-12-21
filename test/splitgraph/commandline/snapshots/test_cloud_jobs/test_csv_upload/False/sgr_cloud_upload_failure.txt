@@ -1,0 +1,5 @@
+Uploading the files...
+ (STARTED) Waiting for task ID ingest_task
+ (FAILURE) Waiting for task ID ingest_task
+
+Logs for /someuser/somerepo_1/ingest_task

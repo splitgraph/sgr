@@ -80,27 +80,38 @@ jobs:
         run: |
           source "$HOME"/.poetry/env
           poetry run coveralls --service=github
-      - name: "Build doc / Asciicast bundle and push out Docker engine (tags only)"
-        if: "startsWith(github.ref, 'refs/tags/')"
+      - name: "Push out Docker engine (tags only)"
+        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip engine]')"
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "Uploading engine image to Docker Hub"
+          ./.ci/push_engine.sh
+      - name: "Build doc / Asciicast bundle"
+        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip docs]')"
         env:
           SG_DEMO_KEY: ${{ secrets.SG_DEMO_KEY }}
           SG_DEMO_SECRET: ${{ secrets.SG_DEMO_SECRET }}
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        # We could split this out into a separate stage but it would mean installing Poetry, Compose and this package all over again.
         run: |
           echo "Building Asciicast/doc bundle"
           export PATH=$PATH:$(readlink -f $DBT_VENV/bin)
-          ./.ci/build_artifacts.sh
-          echo "Uploading engine image to Docker Hub"
-          ./.ci/push_engine.sh
+          ./.ci/build_docs.sh
           cp ./install.sh dist
-          # TODO figure out if we want to do poetry upload here
+          # TODO figure out if we want to do poetry upload here (can only do once, so will fail
+          # if we're retrying an upload)
           # "$HOME"/.poetry/bin/poetry build
-          # Currently upload is commented out since it's once-only and we love
-          # republishing v0.1.0 for now.
-          # "$HOME"/.poetry/bin/poetry publish -r testpypi
+      - name: "Build and publish wheel"
+        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip wheel]')"
+        env:
+          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        # We could split this out into a separate stage but it would mean installing Poetry, Compose and this package all over again.
+        run: |
+          ./.ci/build_wheel.sh
+          cp ./install.sh dist
+          # TODO figure out if we want to do poetry upload here (can only do once, so will fail
+          # if we're retrying an upload)
+          # "$HOME"/.poetry/bin/poetry build
       - name: "Upload release artifacts"
         uses: actions/upload-artifact@v2
         with:
@@ -214,60 +225,19 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           path: artifacts
-      - name: List artifacts
-        run: find artifacts
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rename artifacts
+        run:
+          - mv artifacts/sgr-windows/sgr.exe artifacts/sgr-windows-x86_64.exe
+          - mv artifacts/sgr-linux/sgr artifacts/sgr-linux-x86_64
+          - mv artifacts/sgr-linux/osx artifacts/sgr-osx-x86_64
+      - name: Release artifacts
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
+          files: |
+            artifacts/sgr-windows-x86_64.exe
+            artifacts/sgr-linux-x86_64
+            artifacts/sgr-osx-x86_64
+            artifacts/dist/sgr-docs-bin.tar.gz
+            artifacts/dist/install.sh
           draft: true
-          prerelease: false
-      - name: Upload doc bundle
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/dist/sgr-docs-bin.tar.gz
-          asset_name: sgr-docs-bin.tar.gz
-          asset_content_type: application/gzip
-      - name: Upload installation script
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/dist/install.sh
-          asset_name: install.sh
-          asset_content_type: application/x-sh
-      - name: Upload Windows binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/sgr-windows/sgr.exe
-          asset_name: sgr-windows-x86_64.exe
-          asset_content_type: application/octet-stream
-      - name: Upload Linux binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/sgr-linux/sgr
-          asset_name: sgr-linux-x86_64
-          asset_content_type: application/octet-stream
-      - name: Upload OSX binary
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/sgr-osx/sgr
-          asset_name: sgr-osx-x86_64
-          asset_content_type: application/octet-stream
+          fail_on_unmatched_files: false

@@ -60,6 +60,14 @@ splitgraph.config.keys module
    :undoc-members:
    :show-inheritance:
 
+splitgraph.config.management module
+-----------------------------------
+
+.. automodule:: splitgraph.config.management
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 splitgraph.config.system\_config module
 ---------------------------------------
 

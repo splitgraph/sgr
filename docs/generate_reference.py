@@ -22,6 +22,15 @@ from splitgraph.commandline.cloud import (
     dump_c,
     add_c,
     token_c,
+    status_c,
+    logs_c,
+    upload_c,
+    seed_c,
+    validate_c,
+    stub_c,
+    plugins_c,
+    sync_c,
+    download_c,
 )
 from splitgraph.commandline.engine import (
     add_engine_c,
@@ -68,6 +77,7 @@ STRUCTURE = [
             "cloud register",
             "cloud login",
             "cloud login-api",
+            "cloud token",
             "cloud sql",
             "cloud curl",
             "cloud readme",
@@ -76,7 +86,15 @@ STRUCTURE = [
             "cloud search",
             "cloud dump",
             "cloud load",
-            "cloud token",
+            "cloud sync",
+            "cloud status",
+            "cloud logs",
+            "cloud upload",
+            "cloud download",
+            "cloud plugins",
+            "cloud stub",
+            "cloud validate",
+            "cloud seed",
         ],
     ),
 ]
@@ -108,6 +126,15 @@ STRUCTURE_CMD_OVERRIDE = {
     "cloud dump": dump_c,
     "cloud load": load_c,
     "cloud token": token_c,
+    "cloud status": status_c,
+    "cloud logs": logs_c,
+    "cloud upload": upload_c,
+    "cloud download": download_c,
+    "cloud sync": sync_c,
+    "cloud plugins": plugins_c,
+    "cloud stub": stub_c,
+    "cloud validate": validate_c,
+    "cloud seed": seed_c,
 }
 
 
@@ -177,6 +204,10 @@ def _emit_command(command_name):
         command = getattr(cmd, command_name + "_c")
     short_help_str = command.get_short_help_str(limit=150)
     result = _emit_command_invocation(command, command_name)
+
+    if command.help is None:
+        raise ValueError("Command %s doesn't have help!" % command_name)
+
     # Future: move examples under options?
     result += "\n" + command.help.replace("Examples:", "### Examples")
     result += _emit_command_options(command)

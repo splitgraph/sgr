@@ -1,0 +1,59 @@
+credentials:
+  # New credential
+  my_new_credential:
+    plugin: plugin_1
+    data:
+      username: other_username
+      api_key: some_key
+  # Override my_credential's username
+  my_credential:
+    plugin: plugin
+    data:
+      username: my_override_username
+      password: override_secret
+
+repositories:
+  # Test overriding external settings
+- namespace: otheruser
+  repository: somerepo_2
+  external:
+    # Check that specifying credential_id overrides the "credential" field
+    credential_id: 00000000-0000-0000-0000-000000000000
+    # Check overriding a single table works
+    tables:
+      table_1:
+        options:
+          override_option: val_1
+        schema:
+          - name: id
+            type: text
+          - name: val
+            type: text
+
+    # NB/TODO: we need to repeat plugin params here since they're required (each override file
+    # still has to be a valid project file.
+    params:
+      plugin: specific
+      params: here
+    plugin: plugin
+
+  # Test overriding just the metadata
+- namespace: someuser
+  repository: somerepo_1
+  metadata:
+    # Check that we override metadata partially.
+    description: Altered description
+    topics:
+      - different
+      - topic
+
+  # Add new repository
+- namespace: someuser
+  repository: somerepo_3
+  metadata:
+    description: New repository
+  external:
+    credential_id: 00000000-0000-0000-0000-000000000000
+    plugin: plugin_3
+    params: { }
+    tables: { }

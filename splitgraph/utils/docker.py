@@ -1,8 +1,9 @@
 import os
+import tarfile
 import time
 from io import BytesIO
 from tarfile import TarFile, TarInfo
-from typing import TYPE_CHECKING, List, Optional
+from typing import IO, TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from docker.models.containers import Container
@@ -77,3 +78,18 @@ def copy_dir_to_container(
 
     stream.seek(0)
     container.put_archive(path="/", data=stream.read())
+
+
+def get_file_from_container(
+    container: "Container",
+    source_path: str,
+) -> IO[bytes]:
+    archive, stat = container.get_archive(source_path)
+    file_obj = BytesIO()
+    for chunk in archive:
+        file_obj.write(chunk)
+    file_obj.seek(0)
+    with tarfile.open(mode="r", fileobj=file_obj) as tar:
+        data = tar.extractfile(stat["name"])
+        assert data
+        return data

@@ -12,7 +12,7 @@ poetry install -E pandas
 # Needed to test the dbt example, not required by core sg
 python -m venv "$DBT_VENV"
 . "$DBT_VENV"/bin/activate
-pip install dbt==0.18.0
+pip install dbt-core==1.0.0 dbt-postgres==1.0.0
 
 # Singer tap integration test
 python -m venv "$TAP_MYSQL_VENV"

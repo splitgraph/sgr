@@ -1,0 +1,4 @@
+ID                Name                Description
+----------------  ------------------  ---------------------------------------------------------------------------------------------------------------
+postgres_fdw      PostgreSQL          Data source for PostgreSQL databases that supports live querying, based on postgres_fdw
+airbyte-postgres  Postgres (Airbyte)  Airbyte connector for Postgres. For more information, see https://docs.airbyte.io/integrations/sources/postgres

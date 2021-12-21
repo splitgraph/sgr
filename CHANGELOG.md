@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.3.1 (2021-12-20)
+
+Fix `sgr cloud sync` invocation issue (https://github.com/splitgraph/splitgraph/pull/589)
+
+## v0.3.0 (2021-12-17)
+
+Fleshing out the `splitgraph.yml` (aka `repositories.yml`) format that defines a Splitgraph Cloud "project" (datasets, their sources and metadata).
+
+Existing users of `repositories.yml` don't need to change anything, though note that `sgr cloud` commands using the YAML format will now default to `splitgraph.yml` unless explicitly set to `repositories.yml`.
+
+### New `sgr cloud` commands 
+
+See https://github.com/splitgraph/splitgraph/pull/582 and https://github.com/splitgraph/splitgraph/pull/587
+
+These let users manipulate Splitgraph Cloud and ingestion jobs from the CLI:
+
+  * `sgr cloud status`: view the status of ingestion jobs in the current project
+  * `sgr cloud logs`: view job logs
+  * `sgr cloud upload`: upload a CSV file to Splitgraph Cloud (without using the engine)
+  * `sgr cloud sync`: trigger a one-off load of a dataset
+  * `sgr cloud stub`: generate a `splitgraph.yml` file 
+  * `sgr cloud seed`: generate a Splitgraph Cloud project with a `splitgraph.yml`, GitHub Actions, dbt etc
+  * `sgr cloud validate`: merge multiple project files and output the result (like `docker-compose config`)
+  * `sgr cloud download`: download a query result from Splitgraph Cloud as a CSV file, bypassing time/query size limits.
+
+### `splitgraph.yml`
+
+Change various commands that use `repositories.yml` to default to `splitgraph.yml` instead. Allow "mixing in" multiple `.yml` files Docker Compose-style, useful for splitting credentials (and not checking them in) and data settings.
+
+Temporary location for the new full documentation on `splitgraph.yml`: https://github.com/splitgraph/splitgraph.com/blob/f7ac524cb5023091832e8bf51b277991c435f241/content/docs/0900_splitgraph-cloud/0500_splitgraph-yml.mdx
+
+### Miscellaneous
+
+  * Initial backend support for "transforming" Splitgraph plugins, including dbt (https://github.com/splitgraph/splitgraph/pull/574)
+  * Dump scheduled ingestion/transformation jobs with `sgr cloud dump` (https://github.com/splitgraph/splitgraph/pull/577)
+
+Full set of changes: [`v0.2.18...v0.3.0`](https://github.com/splitgraph/splitgraph/compare/v0.2.18...v0.3.0)
+
 ## v0.2.18 (2021-11-17)
 
   * Splitfile speedups (https://github.com/splitgraph/splitgraph/pull/567)

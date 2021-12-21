@@ -1,10 +1,10 @@
 import logging
 import os
+import re
 from contextlib import contextmanager
 from typing import Any, List, Tuple
 
 import docker.errors
-from docker import DockerClient
 from docker.models.containers import Container
 from splitgraph.exceptions import SplitGraphError
 from splitgraph.utils.docker import copy_to_container
@@ -69,7 +69,7 @@ def build_command(files: List[Tuple[str, Any]]) -> List[str]:
     return command
 
 
-def detect_network_mode(client: DockerClient) -> str:
+def detect_network_mode() -> str:
     # We want the receiver to connect to the same engine that we're connected to. If we're
     # running on the host, that means using our own connection parameters and running the
     # receiver with net:host. Inside Docker we have to use the host's Docker socket and
@@ -78,8 +78,10 @@ def detect_network_mode(client: DockerClient) -> str:
     # This also applies in case we're running a source against a database that's also running
     # in Docker -- we want to mimic sgr too.
     if os.path.exists("/.dockerenv"):
-        with open("/proc/1/cpuset", "r") as f:
-            our_container_id = os.path.basename(f.read().strip())
-        return f"container:{our_container_id}"
+        with open("/proc/1/cgroup", "r") as f:
+            match = re.search(r"^.*/docker/([0-9a-f]{64})$", f.read(), re.MULTILINE)
+            if not match:
+                raise AssertionError("Could not detect Docker container ID")
+        return f"container:{match.group(1)}"
     else:
         return "host"

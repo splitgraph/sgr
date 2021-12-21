@@ -1,1 +1,1 @@
-resources(sources=["**/*.sql", "**/*.py"])
+resources(sources=["**/*.sql", "**/*.py", "**/*.svg"])

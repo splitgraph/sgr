@@ -5,26 +5,36 @@ import os
 import shutil
 import string
 import subprocess
+import sys
 from copy import copy
 from glob import glob
-from typing import Dict, Optional, Tuple, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote, urlparse
 
 import click
 from click import wrap_text
-from splitgraph.cloud.models import (
-    AddExternalRepositoryRequest,
-    Metadata,
-    RepositoriesYAML,
+from splitgraph.cloud.models import AddExternalRepositoryRequest
+from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
+from splitgraph.commandline.common import (
+    ImageType,
+    RepositoryType,
+    download_file,
+    emit_sql_results,
+    upload_file,
+    wait_for_job,
 )
-from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
 from splitgraph.commandline.engine import inject_config_into_engines
-
-# Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.core.output import Color, pluralise
 
+if TYPE_CHECKING:
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.project.models import External, Repository
+    from splitgraph.core.repository import Repository as CoreRepository
+
+# Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 _DDN_DBNAME = "ddn"
 
 VALID_FILENAME_CHARACTERS = string.ascii_letters + string.digits + "-_."
@@ -477,10 +487,10 @@ def metadata_c(ctx, remote, repository, metadata_file):
         key_2_2: value_2_2
     ```
     """
-    import yaml
     from splitgraph.cloud import GQLAPIClient
+    from splitgraph.utils.yaml import safe_load
 
-    metadata = Metadata.parse_obj(yaml.safe_load(metadata_file))
+    metadata = Metadata.parse_obj(safe_load(metadata_file))
     metadata = _prepare_metadata(metadata)
 
     client = GQLAPIClient(remote)
@@ -563,29 +573,24 @@ def _normalise_filename(filename):
 @click.command("dump")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option("--readme-dir", default="./readmes", help="Directory to dump the data into")
-@click.option("--repositories-file", "-f", default="repositories.yml", type=click.File("w"))
+@click.option("--repositories-file", "-f", default="splitgraph.yml", type=click.File("w"))
 @click.argument("limit_repositories", type=str, nargs=-1)
 def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     """
     Dump a Splitgraph catalog to a YAML file.
 
-    This creates a repositories.yml file in the target directory as well as a subdirectory `readmes`
+    This creates a splitgraph.yml file in the target directory as well as a subdirectory `readmes`
     with all the repository readmes. This file can be used to recreate all catalog metadata
     and all external data source settings for a repository using `sgr cloud load`.
     """
-    import yaml
     from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.project.utils import dump_project
 
     client = GQLAPIClient(remote)
     repositories = client.load_all_repositories(limit_to=limit_repositories)
 
     _dump_readmes_to_dir(repositories, readme_dir)
-
-    yaml.dump(
-        {"repositories": [r.dict(by_alias=True, exclude_unset=True) for r in repositories]},
-        repositories_file,
-        sort_keys=False,
-    )
+    dump_project(SplitgraphYAML(repositories=repositories), repositories_file)
 
 
 @click.command("load")
@@ -593,96 +598,75 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
 @click.option(
     "--readme-dir", default="./readmes", help="Path to the directory with the README files"
 )
-@click.option("--repositories-file", "-f", default="repositories.yml", type=click.File("r"))
+@click.option(
+    "-p",
+    "--initial-private",
+    is_flag=True,
+    help="If the repository doesn't exist, create it as private.",
+)
+@click.option(
+    "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
+)
+@click.option(
+    "--skip-external",
+    is_flag=True,
+    help="Only set up the metadata, not the external data source settings",
+)
 @click.argument("limit_repositories", type=str, nargs=-1)
-def load_c(remote, readme_dir, repositories_file, limit_repositories):
+def load_c(
+    remote, readme_dir, skip_external, initial_private, repositories_file, limit_repositories
+):
     """
     Load a Splitgraph catalog from a YAML file.
 
-    This will load a repositories.yml file and the `readmes` subdirectory produced by
+    This will load a splitgraph.yml file and the `readmes` subdirectory produced by
     `sgr cloud dump` back into a remote Splitgraph catalog.
 
-    The format is an extension of the format accepted by `sgr cloud metadata` to include multiple
-    repositories. README files are read from the `readmes` subdirectory.
-
-    \b
-    ```
-    credentials:      # Optional credentials to access remote data sources
-      my_bucket:
-        plugin: csv
-        data:
-          s3_access_key: ...
-          s3_secret_key: ...
-    repositories:
-    - namespace: my_username
-      repository: repository
-      metadata:
-        readme: dataset-readme.md
-        description: Dataset description (160 characters max).
-        topics:
-          - topic_1
-          - topic_2
-        sources:
-          - anchor: Source
-            href: https://www.splitgraph.com
-            isCreator: true
-            isSameAs: false
-          - anchor: Source 2
-            href: https://www.splitgraph.com
-            isCreator: false
-            isSameAs: true
-        license: Public Domain
-        extra_metadata:
-          key_1:
-            key_1_1: value_1_1
-            key_1_2: value_1_2
-          key_2:
-            key_2_1: value_2_1
-            key_2_2: value_2_2
-      external:
-        credential: my_bucket
-        plugin: csv
-        params:
-          s3_bucket: my_bucket
-        tables:
-          table_1:
-            schema:
-            - name: column_1
-              type: text
-            - name: column_2
-              type: integer
-            options:
-              s3_object: some/s3_key.csv
-    ```
+    By default, if a repository doesn't yet exist, it will be public. Pass `--initial-private` to
+    this command to make it start off as private. This won't apply to existing repositories: use
+    the Splitgraph GUI to manage repository access settings.
     """
-    import yaml
     from splitgraph.cloud import GQLAPIClient, RESTAPIClient
+    from splitgraph.cloud.project.utils import load_project
 
-    repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(repositories_file))
-
-    # Set up and load credential IDs from the remote to allow users to refer to them by ID
-    # or by a name.
-    rest_client = RESTAPIClient(remote)
-    gql_client = GQLAPIClient(remote)
-    credential_map = _build_credential_map(rest_client, credentials=repo_yaml.credentials or {})
-
+    repo_yaml = load_project(repositories_file)
     repositories = repo_yaml.repositories
 
-    if limit_repositories:
-        repositories = [
-            r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
+    gql_client = GQLAPIClient(remote)
+
+    if not skip_external:
+        rest_client = RESTAPIClient(remote)
+        if limit_repositories:
+            repositories = [
+                r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
+            ]
+
+        filter_credential_names = [
+            r.external.credential for r in repositories if r.external and r.external.credential
         ]
 
-    logging.info("Uploading images...")
-    external_repositories = []
-    for repository in repositories:
-        if repository.external:
-            external_repository = AddExternalRepositoryRequest.from_external(
-                repository.namespace, repository.repository, repository.external, credential_map
-            )
-            external_repositories.append(external_repository)
-    rest_client.bulk_upsert_external(repositories=external_repositories)
-    logging.info(f"Uploaded images for {pluralise('repository', len(external_repositories))}")
+        # Set up and load credential IDs from the remote to allow users to refer to them by ID
+        # or by a name. Only include credentials for repositories that we're actually loading.
+        credential_map = _build_credential_map(
+            rest_client,
+            credentials=repo_yaml.credentials or {},
+            filter_credential_names=filter_credential_names,
+        )
+
+        logging.info("Uploading images...")
+        external_repositories = []
+        for repository in repositories:
+            if repository.external:
+                external_repository = AddExternalRepositoryRequest.from_external(
+                    repository.namespace,
+                    repository.repository,
+                    repository.external,
+                    credential_map=credential_map,
+                    initial_private=initial_private,
+                )
+                external_repositories.append(external_repository)
+        rest_client.bulk_upsert_external(repositories=external_repositories)
+        logging.info(f"Uploaded images for {pluralise('repository', len(external_repositories))}")
 
     logging.info("Updating metadata...")
     namespace_list = []
@@ -699,11 +683,15 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
     logging.info(f"Updated metadata for {pluralise('repository', len(repository_list))}")
 
 
-def _build_credential_map(auth_client, credentials=None):
+def _build_credential_map(
+    auth_client, credentials=None, filter_credential_names: Optional[List[str]] = None
+):
     credential_map = {}
     if credentials:
         logging.info("Setting up credentials on the remote...")
         for credential_name, credential in credentials.items():
+            if filter_credential_names and credential_name not in filter_credential_names:
+                continue
             credential_id = auth_client.ensure_external_credential(
                 credential_data=credential.data,
                 credential_name=credential_name,
@@ -716,13 +704,15 @@ def _build_credential_map(auth_client, credentials=None):
     # name in YAML files without redefining them)
     response = auth_client.list_external_credentials()
     for credential in response.credentials:
-        if credential.credential_name not in credential_map:
+        if credential.credential_name not in credential_map and (
+            not filter_credential_names or credential.credential_name in filter_credential_names
+        ):
             credential_map[credential.credential_name] = credential.credential_id
 
     return credential_map
 
 
-def _dump_readmes_to_dir(repositories, readme_dir):
+def _dump_readmes_to_dir(repositories: List["Repository"], readme_dir: str) -> None:
     """
     READMEs aren't rendering very nicely in YAML so we instead write them out to
     individual files and replace the README contents with their file paths.
@@ -796,7 +786,7 @@ def add_c(remote, skip_inject, domain_name):
         "SG_ENGINE_DB_NAME": "sgregistry",
         "SG_AUTH_API": f"https://api.{domain_name}/auth",
         "SG_QUERY_API": f"https://data.{domain_name}",
-        "SG_GQL_API": f"https://api.{domain_name}/gql/cloud/graphql",
+        "SG_GQL_API": f"https://api.{domain_name}/gql/cloud/unified/graphql",
     }
 
     click.echo("Adding remote %s to the config. Parameters: %s" % (remote, remote_params_patch))
@@ -819,9 +809,383 @@ def add_c(remote, skip_inject, domain_name):
     )
 
 
+@click.command("status")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option(
+    "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
+)
+@click.argument("repositories", type=RepositoryType(exists=False), nargs=-1)
+def status_c(remote, repositories_file, repositories):
+    """
+    Get job statuses for given repositories.
+
+    If this command is passed a list of repositories, it will get the latest job
+    statuses just for those repositories. Otherwise, it will use an existing splitgraph.yml
+    file and get job statuses for all repositories in this file.
+    """
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.project.utils import load_project
+    from tabulate import tabulate
+
+    client = GQLAPIClient(remote)
+
+    if repositories:
+        repo_list = [(r.namespace, r.repository) for r in repositories]
+    else:
+        repo_yaml = load_project(repositories_file)
+        repo_list = [(r.namespace, r.repository) for r in repo_yaml.repositories]
+
+    table: List[Tuple] = []
+    for namespace, repository in repo_list:
+        job_status = client.get_latest_ingestion_job_status(namespace, repository)
+        if job_status:
+            table.append(
+                (
+                    namespace + "/" + repository,
+                    job_status.task_id,
+                    job_status.started,
+                    job_status.finished,
+                    job_status.is_manual,
+                    job_status.status,
+                )
+            )
+        else:
+            table.append((namespace + "/" + repository, None, None, None, None, None))
+
+    click.echo(
+        tabulate(
+            table,
+            headers=[
+                "Repository",
+                "Task ID",
+                "Started",
+                "Finished",
+                "Manual",
+                "Status",
+            ],
+        )
+    )
+
+
+@click.command("logs")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("repository", type=RepositoryType(exists=False))
+@click.argument("task_id", type=str)
+def logs_c(remote, repository, task_id):
+    """
+    Get ingestion job logs.
+
+    Output the logs for an ingestion job into a repository on Splitgraph Cloud.
+    Use `sgr cloud status` to get a list of ingestion jobs and their recent task IDs.
+    """
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+
+    logs = client.get_ingestion_job_logs(
+        namespace=repository.namespace, repository=repository.repository, task_id=task_id
+    )
+    click.echo(logs)
+
+
+def _deduplicate_items(items: List[str]) -> List[str]:
+    """
+    Deduplicate items in a list by adding a numerical suffix to duplicates.
+    """
+    counts: Dict[str, int] = {}
+    positions: List[Tuple[str, int]] = []
+    for item in items:
+        count = counts.get(item, 0)
+        positions.append((item, count))
+        counts[item] = count + 1
+
+    result: List[str] = []
+    for (item, position) in positions:
+        if counts[item] > 1:
+            result.append(f"{item}_{position:03d}")
+        else:
+            result.append(item)
+    return result
+
+
+@click.command("upload")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--file-format", default="csv", type=click.Choice(["csv"]))
+@click.argument("repository", type=RepositoryType(exists=False))
+@click.argument("files", type=click.File("rb"), nargs=-1)
+def upload_c(remote, file_format, repository, files):
+    """
+    Upload files to Splitgraph.
+
+    This uses the upload API to add data like CSV files to a remote Splitgraph instance,
+    trigger a load and wait for the data to load into a repository.
+    """
+
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+
+    click.echo("Uploading the files...")
+
+    table_names = _deduplicate_items(
+        [os.path.splitext(os.path.basename(f.name))[0].lower() for f in files]
+    )
+
+    download_urls = []
+    for file in files:
+        upload, download = client.get_csv_upload_download_urls()
+        download_urls.append(download)
+        upload_file(file, upload)
+
+    task_id = client.start_csv_load(
+        repository.namespace, repository.repository, download_urls, table_names
+    )
+
+    wait_for_load(client, repository.namespace, repository.repository, task_id)
+
+    web_url = _construct_repo_url(gql_endpoint=client.endpoint, full_repo=repository) + "/-/tables"
+    click.echo()
+    click.echo(
+        "Success. See the repository at " + Color.BLUE + web_url + Color.END + " or query it with:"
+    )
+    click.echo(f'    sgr cloud sql \'SELECT * FROM "{repository}"."{table_names[0]}"\'')  # nosec
+
+
+def wait_for_load(client: "GQLAPIClient", namespace: str, repository: str, task_id: str) -> None:
+    final_status = wait_for_job(
+        task_id, lambda: client.get_latest_ingestion_job_status(namespace, repository)
+    )
+
+    if final_status.status == "FAILURE":
+        logs = client.get_ingestion_job_logs(
+            namespace=namespace, repository=repository, task_id=task_id
+        )
+        click.echo(logs)
+        raise ValueError("Error loading data")
+
+
+def wait_for_download(client: "GQLAPIClient", task_id: str) -> str:
+    final_status = wait_for_job(task_id, lambda: client.get_export_job_status(task_id))
+    if final_status.status == "SUCCESS":
+        assert final_status.output
+        return str(final_status.output["url"])
+    else:
+        raise ValueError(
+            "Error running query. This could be due to a syntax error. "
+            "Run the query interactively with `sgr cloud sql` to investigate the cause."
+        )
+
+
+@click.command("download")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--file-format", default="csv", type=click.Choice(["csv"]))
+@click.argument("query", type=str)
+@click.argument("output_path", type=str, default=None, required=False)
+def download_c(remote, file_format, query, output_path):
+    """
+    Download query results from Splitgraph.
+
+    This runs a query on Splitgraph Cloud and exports the results into a csv.gz format.
+    """
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+
+    task_id = client.start_export(query=query)
+    download_url = wait_for_download(client, task_id)
+    download_file(download_url, output_path)
+
+
+@click.command("sync")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option(
+    "-r",
+    "--full-refresh",
+    help="Trigger a full reload instead of an incremental load",
+    is_flag=True,
+)
+@click.option("-w", "--wait", help="Attach to the job and wait for it to finish", is_flag=True)
+@click.option(
+    "-p",
+    "--initial-private",
+    is_flag=True,
+    help="If the repository doesn't exist, create it as private.",
+)
+@click.option("-u", "--use-file", is_flag=True, help="Use a YAML file with repository settings")
+@click.option(
+    "-f", "--repositories-file", default=["splitgraph.yml"], type=click.Path(), multiple=True
+)
+@click.argument("repository", type=RepositoryType(exists=False))
+def sync_c(remote, full_refresh, wait, initial_private, use_file, repositories_file, repository):
+    """
+    Trigger an ingestion job for a repository.
+
+    This starts off a load job for an existing/new repository, optionally using a
+    splitgraph.yml file and waiting for the job to complete before exiting.
+
+    If the splitgraph.yml file is specified, it will use the settings for that repository
+    from there to override the existing parameters for a repository or to create a new repository.
+    Otherwise, it will use the existing parameters.
+
+    By default, if a repository doesn't yet exist, it will be public. Pass `--initial-private` to
+    this command to make it start off as private. This won't apply to existing repositories: use
+    the Splitgraph GUI to manage repository access settings.
+    """
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+
+    if not use_file:
+        if initial_private:
+            logging.warning(
+                "--initial-private is ignored when manipulating existing repositories. "
+                "Use the Splitgraph GUI to manage repository access settings."
+            )
+        task_id = client.start_load_existing(
+            namespace=repository.namespace, repository=repository.repository, sync=not full_refresh
+        )
+    else:
+        external, credential_data = _get_external_from_yaml(repositories_file, repository)
+
+        task_id = client.start_load_params(
+            namespace=repository.namespace,
+            repository=repository.repository,
+            external=external,
+            sync=not full_refresh,
+            credential_data=credential_data,
+            initial_private=initial_private,
+        )
+
+    if not wait:
+        click.echo("Started task %s" % task_id)
+    else:
+        wait_for_load(client, repository.namespace, repository.repository, task_id)
+
+
+def _get_external_from_yaml(
+    repositories_file: List[Path], repository: "CoreRepository"
+) -> Tuple["External", Optional[Dict[str, Any]]]:
+    from splitgraph.cloud.project.utils import load_project
+
+    repo_yaml = load_project(repositories_file)
+
+    for repo_settings in repo_yaml.repositories:
+        if (
+            repo_settings.namespace == repository.namespace
+            and repo_settings.repository == repository.repository
+        ):
+            break
+    else:
+        raise click.UsageError(
+            "Repository %s not found in the splitgraph.yml file" % repository.to_schema()
+        )
+    if not repo_settings.external:
+        raise click.UsageError(
+            "Repository %s doesn't have external settings" % repository.to_schema()
+        )
+    credential_data = None
+    if repo_settings.external.credential:
+        if (
+            not repo_yaml.credentials
+            or repo_settings.external.credential not in repo_yaml.credentials
+        ):
+            raise click.UsageError(
+                "Credential %s not defined in splitgraph.yml" % repo_settings.external.credential
+            )
+        credential_data = repo_yaml.credentials[repo_settings.external.credential].data
+    return repo_settings.external, credential_data
+
+
+@click.command("plugins")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option(
+    "-f",
+    "--filter",
+    "filter_plugins",
+    help="Filter for plugins with this string in name/description",
+    type=str,
+)
+def plugins_c(remote, filter_plugins):
+    """List all Splitgraph Cloud data plugins.
+
+    This command lists all plugins available on a remote Splitgraph Cloud instance.
+    """
+
+    import tabulate
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+
+    plugins = client.get_all_plugins()
+    if filter_plugins:
+        plugins = [
+            p
+            for p in plugins
+            if filter_plugins.lower() in " ".join([p.name, p.plugin_name, p.description]).lower()
+        ]
+
+    plugins = sorted(plugins, key=lambda p: p.name)
+    click.echo(
+        tabulate.tabulate(
+            [(p.plugin_name, p.name, p.description) for p in plugins],
+            headers=["ID", "Name", "Description"],
+        )
+    )
+
+
+@click.command("stub")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("plugin_name", type=str)
+@click.argument("repository", type=RepositoryType(exists=False))
+@click.argument("output_file", type=click.File("w"), default="-")
+def stub_c(remote, plugin_name, repository, output_file):
+    """Generate a splitgraph.yml stub file for a given plugin"""
+    import ruamel.yaml
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.project.generation import stub_plugin
+
+    client = GQLAPIClient(remote)
+
+    plugin = client.get_plugin(plugin_name)
+    if not plugin:
+        raise click.UsageError("Plugin %s not found on remote %s" % (plugin_name, remote))
+
+    yml = ruamel.yaml.YAML()
+    output = stub_plugin(plugin, repository.namespace, repository.repository)
+    yml.dump(output, output_file)
+
+
+@click.command("validate")
+@click.option(
+    "-f", "--repositories-file", default=["splitgraph.yml"], type=click.Path(), multiple=True
+)
+def validate_c(repositories_file):
+    """Validate, merge and output project file(s)"""
+    from splitgraph.cloud.project.utils import dump_project, load_project
+
+    project = load_project(repositories_file)
+    dump_project(project, sys.stdout)
+
+
+@click.command("seed")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--github-repository", help="Name of the GitHub repository")
+@click.argument("seed")
+@click.argument("directory", type=click.Path(file_okay=False), default=".")
+def seed_c(remote, seed, github_repository, directory):
+    """Generate a starter Splitgraph Cloud project from a seed."""
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud.project.generation import ProjectSeed, generate_project
+
+    client = GQLAPIClient(remote)
+
+    generate_project(client, ProjectSeed.decode(seed), directory, github_repo=github_repository)
+    click.echo(f"Splitgraph project generated in {os.path.abspath(directory)}.")
+
+
 @click.group("cloud")
 def cloud_c():
-    """Manage connections to Splitgraph Cloud."""
+    """Run actions on Splitgraph Cloud."""
 
 
 cloud_c.add_command(login_c)
@@ -837,3 +1201,12 @@ cloud_c.add_command(dump_c)
 cloud_c.add_command(load_c)
 cloud_c.add_command(token_c)
 cloud_c.add_command(add_c)
+cloud_c.add_command(status_c)
+cloud_c.add_command(logs_c)
+cloud_c.add_command(upload_c)
+cloud_c.add_command(download_c)
+cloud_c.add_command(sync_c)
+cloud_c.add_command(plugins_c)
+cloud_c.add_command(stub_c)
+cloud_c.add_command(validate_c)
+cloud_c.add_command(seed_c)

@@ -61,6 +61,14 @@ splitgraph.core.image\_manager module
    :undoc-members:
    :show-inheritance:
 
+splitgraph.core.image\_mounting module
+--------------------------------------
+
+.. automodule:: splitgraph.core.image_mounting
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 splitgraph.core.metadata\_manager module
 ----------------------------------------
 

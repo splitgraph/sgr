@@ -21,8 +21,7 @@ cp "$REPO_ROOT_DIR"/examples/import-from-mongo/.sgconfig "$ASCIINEMA_CONFIG"
 SG_CONFIG_FILE=$ASCIINEMA_CONFIG sgr --verbosity DEBUG cloud login-api --api-key "$SG_DEMO_KEY" --api-secret "$SG_DEMO_SECRET"
 
 # TODO the us-election asciicast requires scipy for the last part, consider replacing
-# dbt required by the dbt example
-pip install scipy dbt==0.18.0
+pip install scipy
 
 cd "$REPO_ROOT_DIR"/examples
 for dir in $ASCIINEMA_CASTS; do

@@ -1,0 +1,7 @@
+Uploading the files...
+ (STARTED) Waiting for task ID ingest_task
+ (SUCCESS) Waiting for task ID ingest_task
+
+
+Success. See the repository at http://www.example.com/someuser/somerepo_1/-/tables or query it with:
+    sgr cloud sql 'SELECT * FROM "someuser/somerepo_1"."base_df"'

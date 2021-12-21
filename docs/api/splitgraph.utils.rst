@@ -12,6 +12,14 @@ splitgraph.utils.docker module
    :undoc-members:
    :show-inheritance:
 
+splitgraph.utils.yaml module
+----------------------------
+
+.. automodule:: splitgraph.utils.yaml
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

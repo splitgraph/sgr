@@ -54,6 +54,7 @@ from .common import (
     set_head,
     set_tags_batch,
     slow_diff,
+    unmount_schema,
 )
 from .engine import get_engine, lookup_repository
 from .object_manager import ObjectManager
@@ -216,19 +217,7 @@ class Repository:
 
             # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists
             # (otherwise its connection won't be recycled and we can get deadlocked).
-            self.object_engine.run_sql(
-                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
-                    Identifier("%s_lq_checkout_server" % self.to_schema())
-                )
-            )
-            self.object_engine.run_sql(
-                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
-                    Identifier(self.to_schema() + "_server")
-                )
-            )
-            self.object_engine.run_sql(
-                SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema()))
-            )
+            unmount_schema(self.object_engine, self.to_schema())
         if unregister:
             # Use the API call in case we're deleting a remote repository.
             self.engine.run_sql(

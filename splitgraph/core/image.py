@@ -27,7 +27,7 @@ from splitgraph.config import (
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 
-from .common import manage_audit, set_head, set_tag
+from .common import manage_audit, set_head, set_tag, unmount_schema
 from .sql import POSTGRES_MAX_IDENTIFIER, prepare_splitfile_sql, select
 from .table import Table
 from .types import ProvenanceLine, TableColumn
@@ -236,11 +236,7 @@ class Image(NamedTuple):
                 self.object_engine.run_sql(lq_tuning)
             yield tmp_schema
         finally:
-            self.object_engine.run_sql(
-                SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
-                    Identifier(tmp_schema), Identifier(tmp_schema + "_lq_checkout_server")
-                )
-            )
+            unmount_schema(self.object_engine, tmp_schema)
 
     def tag(self, tag: str) -> None:
         """

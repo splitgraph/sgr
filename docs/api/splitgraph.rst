@@ -14,6 +14,7 @@ Subpackages
    splitgraph.engine
    splitgraph.hooks
    splitgraph.ingestion
+   splitgraph.resources
    splitgraph.splitfile
    splitgraph.utils
 
