@@ -166,7 +166,7 @@ def test_elasticsearch_gropuing_clauses_only(local_engine_empty):
 
 
 @pytest.mark.mounting
-def test_elasticsearch_gropuing_and_aggregations_bare(local_engine_empty):
+def test_elasticsearch_grouping_and_aggregations_bare(local_engine_empty):
     _mount_elasticsearch()
 
     # Aggregations functions and grouping bare combination
@@ -367,11 +367,6 @@ def test_elasticsearch_not_pushed_down(local_engine_empty):
     assert len(result) > 2
     assert _extract_query_from_explain(result) == _bare_filtering_query
 
-    # Grouping only post-aggregation filtering is not going to be pushed down either
-    result = get_engine().run_sql("EXPLAIN SELECT age FROM es.account GROUP BY age HAVING age > 30")
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_filtering_query
-
     # Aggregation and grouping filtering is not going to be pushed down
     result = get_engine().run_sql(
         "EXPLAIN SELECT age, min(balance) FROM es.account WHERE age > 30 GROUP BY age"
@@ -381,12 +376,29 @@ def test_elasticsearch_not_pushed_down(local_engine_empty):
 
     _bare_sequential_scan = {"query": {"bool": {"must": []}}}
 
-    # SELECT STAR is not going to be pushed down
-    result = get_engine().run_sql("EXPLAIN SELECT * FROM es.account")
+    # COUNT STAR is not going to be pushed down
+    result = get_engine().run_sql("EXPLAIN SELECT COUNT(*) FROM es.account")
     assert len(result) > 2
     assert _extract_query_from_explain(result) == _bare_sequential_scan
 
-    # DISTINCT queries are not going to be pushed down
+    # COUNT DISTINCT queries are not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT COUNT(DISTINCT city) FROM es.account")
+    assert len(result) > 2
+    assert _extract_query_from_explain(result) == _bare_sequential_scan
+
+    # SUM DISTINCT queries are not going to be pushed down
+    result = get_engine().run_sql("EXPLAIN SELECT SUM(DISTINCT age) FROM es.account")
+    assert len(result) > 2
+    assert _extract_query_from_explain(result) == _bare_sequential_scan
+
+    # AVG DISTINCT queries are not going to be pushed down
+    result = get_engine().run_sql("EXPLAIN SELECT AVG(DISTINCT balance) FROM es.account")
+    assert len(result) > 2
+    assert _extract_query_from_explain(result) == _bare_sequential_scan
+
+    # Queries with proper HAVING are not goint to be pushed down
+    result = get_engine().run_sql(
+        "EXPLAIN SELECT max(balance) FROM es.account HAVING max(balance) > 30"
+    )
     assert len(result) > 2
     assert _extract_query_from_explain(result) == _bare_sequential_scan
