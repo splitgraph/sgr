@@ -1,4 +1,5 @@
 import json
+import yaml
 import pytest
 from decimal import Decimal
 
@@ -6,7 +7,8 @@ from test.splitgraph.conftest import _mount_elasticsearch
 from splitgraph.engine import get_engine, ResultShape
 
 
-def _extract_query_from_explain(result):
+def _extract_queries_from_explain(result):
+    queries = []
     query_str = ""
 
     for o in result:
@@ -16,24 +18,29 @@ def _extract_query_from_explain(result):
             query_str = "{"
 
         if o == ("}",):
-            break
+            queries.append(json.loads(query_str))
+            query_str = ""
 
-    return json.loads(query_str)
+    return queries
+
+
+_bare_sequential_scan = {"query": {"bool": {"must": []}}}
+_bare_filtering_query = {"query": {"bool": {"must": [{"range": {"age": {"gt": 30}}}]}}}
 
 
 @pytest.mark.mounting
 def test_elasticsearch_aggregation_functions_only(local_engine_empty):
     _mount_elasticsearch()
 
-    query = """SELECT max(account_number), avg(balance), max(balance),
+    query = """
+    SELECT max(account_number), avg(balance), max(balance),
         sum(balance), min(age), avg(age)
-        FROM es.account
+    FROM es.account
     """
 
     # Ensure query is going to be aggregated on the foreign server
     result = get_engine().run_sql("EXPLAIN " + query)
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == {
+    assert _extract_queries_from_explain(result)[0] == {
         "aggs": {
             "max.account_number": {"max": {"field": "account_number"}},
             "avg.balance": {"avg": {"field": "balance"}},
@@ -53,7 +60,7 @@ def test_elasticsearch_aggregation_functions_only(local_engine_empty):
 
 
 @pytest.mark.mounting
-def test_elasticsearch_gropuing_clauses_only(local_engine_empty):
+def test_elasticsearch_gropuing_clauses_only(snapshot, local_engine_empty):
     _mount_elasticsearch()
 
     # Single column grouping
@@ -61,8 +68,7 @@ def test_elasticsearch_gropuing_clauses_only(local_engine_empty):
 
     # Ensure grouping is going to be pushed down
     result = get_engine().run_sql("EXPLAIN " + query)
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == {
+    assert _extract_queries_from_explain(result)[0] == {
         "aggs": {
             "group_buckets": {
                 "composite": {"sources": [{"state": {"terms": {"field": "state"}}}], "size": 5}
@@ -75,67 +81,14 @@ def test_elasticsearch_gropuing_clauses_only(local_engine_empty):
     assert len(result) == 51
 
     # Assert aggregation result
-    assert result == [
-        "AK",
-        "AL",
-        "AR",
-        "AZ",
-        "CA",
-        "CO",
-        "CT",
-        "DC",
-        "DE",
-        "FL",
-        "GA",
-        "HI",
-        "IA",
-        "ID",
-        "IL",
-        "IN",
-        "KS",
-        "KY",
-        "LA",
-        "MA",
-        "MD",
-        "ME",
-        "MI",
-        "MN",
-        "MO",
-        "MS",
-        "MT",
-        "NC",
-        "ND",
-        "NE",
-        "NH",
-        "NJ",
-        "NM",
-        "NV",
-        "NY",
-        "OH",
-        "OK",
-        "OR",
-        "PA",
-        "RI",
-        "SC",
-        "SD",
-        "TN",
-        "TX",
-        "UT",
-        "VA",
-        "VT",
-        "WA",
-        "WI",
-        "WV",
-        "WY",
-    ]
+    snapshot.assert_match(yaml.dump(result), "account_states.yml")
 
     # Multi-column grouping
     query = "SELECT gender, age FROM es.account GROUP BY age, gender"
 
     # Ensure grouping is going to be pushed down
     result = get_engine().run_sql("EXPLAIN " + query)
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == {
+    assert _extract_queries_from_explain(result)[0] == {
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -154,19 +107,11 @@ def test_elasticsearch_gropuing_clauses_only(local_engine_empty):
     assert len(result) == 42
 
     # Assert aggregation result
-    gender = "F"
-    age = 20
-    for row in result:
-        assert row == (gender, age)
-
-        age += 1
-        if age == 41:
-            age = 20
-            gender = "M"
+    snapshot.assert_match(yaml.dump(result), "account_genders_and_ages.yml")
 
 
 @pytest.mark.mounting
-def test_elasticsearch_grouping_and_aggregations_bare(local_engine_empty):
+def test_elasticsearch_grouping_and_aggregations_bare(snapshot, local_engine_empty):
     _mount_elasticsearch()
 
     # Aggregations functions and grouping bare combination
@@ -174,8 +119,7 @@ def test_elasticsearch_grouping_and_aggregations_bare(local_engine_empty):
 
     # Ensure query is going to be pushed down
     result = get_engine().run_sql("EXPLAIN " + query)
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == {
+    assert _extract_queries_from_explain(result)[0] == {
         "aggs": {
             "group_buckets": {
                 "composite": {"sources": [{"gender": {"terms": {"field": "gender"}}}], "size": 5},
@@ -199,17 +143,17 @@ def test_elasticsearch_grouping_and_aggregations_bare(local_engine_empty):
 
     # We support pushing down aggregation queries with sorting, with the caveat
     # that the sorting operation is performed on the PG side for now
-    query = "SELECT age, COUNT(account_number) FROM es.account GROUP BY age ORDER BY age DESC"
+    query = "SELECT age, COUNT(account_number), min(balance) FROM es.account GROUP BY age ORDER BY age DESC"
 
     # Ensure query is going to be pushed down
     result = get_engine().run_sql("EXPLAIN " + query)
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == {
+    assert _extract_queries_from_explain(result)[0] == {
         "aggs": {
             "group_buckets": {
                 "composite": {"sources": [{"age": {"terms": {"field": "age"}}}], "size": 5},
                 "aggregations": {
-                    "count.account_number": {"value_count": {"field": "account_number"}}
+                    "count.account_number": {"value_count": {"field": "account_number"}},
+                    "min.balance": {"min": {"field": "balance"}},
                 },
             }
         }
@@ -220,29 +164,7 @@ def test_elasticsearch_grouping_and_aggregations_bare(local_engine_empty):
     assert len(result) == 21
 
     # Assert aggregation result
-    assert result == [
-        (40, 45),
-        (39, 60),
-        (38, 39),
-        (37, 42),
-        (36, 52),
-        (35, 52),
-        (34, 49),
-        (33, 50),
-        (32, 52),
-        (31, 61),
-        (30, 47),
-        (29, 35),
-        (28, 51),
-        (27, 39),
-        (26, 59),
-        (25, 42),
-        (24, 42),
-        (23, 42),
-        (22, 51),
-        (21, 46),
-        (20, 44),
-    ]
+    snapshot.assert_match(yaml.dump(result), "account_count_by_age.yml")
 
 
 @pytest.mark.mounting
@@ -256,15 +178,16 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
     _mount_elasticsearch()
 
     # DISTINCT on a grouping clause from a subquery
-    query = """SELECT DISTINCT gender FROM(
+    query = """
+    SELECT DISTINCT gender FROM(
         SELECT state, gender, min(age), max(balance)
         FROM es.account GROUP BY state, gender
-    ) AS t"""
+    ) AS t
+    """
 
     # Ensure only the relevant part is pushed down (i.e. no aggregations as they are redundant)
     result = get_engine().run_sql("EXPLAIN " + query)
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == {
+    assert _extract_queries_from_explain(result)[0] == {
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -286,15 +209,16 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
     assert result == ["F", "M"]
 
     # DISTINCT on a aggregated column from a subquery
-    query = """SELECT DISTINCT min FROM(
+    query = """
+    SELECT DISTINCT min FROM(
         SELECT state, gender, min(age), max(balance)
         FROM es.account GROUP BY state, gender
-    ) AS t"""
+    ) AS t
+    """
 
     # Ensure only the relevant part is pushed down (no redundant aggregations, i.e. only min)
     result = get_engine().run_sql("EXPLAIN " + query)
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == {
+    assert _extract_queries_from_explain(result)[0] == {
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -317,16 +241,17 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
     assert result == [20, 21, 22, 23, 24, 25, 26, 28]
 
     # Aggregation of the sub-aggregation through a CTE
-    query = """WITH sub_agg AS (
+    query = """
+    WITH sub_agg AS (
         SELECT state, gender, min(age), max(balance) as max_balance
         FROM es.account GROUP BY state, gender
     )
-    SELECT min(max_balance), gender FROM sub_agg GROUP BY gender"""
+    SELECT min(max_balance), gender FROM sub_agg GROUP BY gender
+    """
 
     # Only the subquery is pushed-down, with no redundant aggregations
     result = get_engine().run_sql("EXPLAIN " + query)
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == {
+    assert _extract_queries_from_explain(result)[0] == {
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -350,55 +275,115 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
 
 
 @pytest.mark.mounting
+def test_elasticsearch_aggregations_join_combinations(snapshot, local_engine_empty):
+    # Sub-aggregations in a join are pushed down
+    query = """
+    SELECT t1.*, t2.min FROM (
+        SELECT age, max(balance) as max
+        FROM es.account
+        GROUP BY age
+    ) AS t1
+    JOIN (
+        SELECT age, min(balance) as min
+        FROM es.account
+        GROUP BY age
+    ) AS t2
+    ON t1.age = t2.age
+    """
+
+    # Only the subquery is pushed-down, with no redundant aggregations
+    result = get_engine().run_sql("EXPLAIN " + query)
+    queries = _extract_queries_from_explain(result)
+
+    assert queries[0] == {
+        "aggs": {
+            "group_buckets": {
+                "composite": {
+                    "sources": [{"age": {"terms": {"field": "age"}}}],
+                    "size": 5,
+                },
+                "aggregations": {"max.balance": {"max": {"field": "balance"}}},
+            }
+        }
+    }
+    assert queries[1] == {
+        "aggs": {
+            "group_buckets": {
+                "composite": {
+                    "sources": [{"age": {"terms": {"field": "age"}}}],
+                    "size": 5,
+                },
+                "aggregations": {"min.balance": {"min": {"field": "balance"}}},
+            }
+        }
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query)
+    assert len(result) == 21
+
+    # Assert aggregation result
+    snapshot.assert_match(yaml.dump(result), "account_join_sub_aggs.yml")
+
+    # However, aggregation of a joined table are not pushed down
+    result = get_engine().run_sql(
+        """
+        EXPLAIN SELECT t.state, AVG(t.balance) FROM (
+            SELECT l.state AS state, l.balance + r.balance AS balance
+            FROM es.account l
+            JOIN es.account r USING(state)
+        ) t GROUP BY state
+        """
+    )
+    queries = _extract_queries_from_explain(result)
+    assert queries[0] == _bare_sequential_scan
+    assert queries[1] == _bare_sequential_scan
+
+
+@pytest.mark.mounting
 def test_elasticsearch_not_pushed_down(local_engine_empty):
     _mount_elasticsearch()
-
-    _bare_filtering_query = {"query": {"bool": {"must": [{"range": {"age": {"gt": 30}}}]}}}
 
     # Aggregation only filtering is not going to be pushed down
     result = get_engine().run_sql(
         "EXPLAIN SELECT max(balance), avg(age) FROM es.account WHERE age > 30"
     )
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_filtering_query
+    assert _extract_queries_from_explain(result)[0] == _bare_filtering_query
 
     # Grouping only filtering is not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT age FROM es.account WHERE age > 30 GROUP BY age")
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_filtering_query
+    assert _extract_queries_from_explain(result)[0] == _bare_filtering_query
 
     # Aggregation and grouping filtering is not going to be pushed down
     result = get_engine().run_sql(
         "EXPLAIN SELECT age, min(balance) FROM es.account WHERE age > 30 GROUP BY age"
     )
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_filtering_query
-
-    _bare_sequential_scan = {"query": {"bool": {"must": []}}}
+    assert _extract_queries_from_explain(result)[0] == _bare_filtering_query
 
     # COUNT STAR is not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT COUNT(*) FROM es.account")
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_sequential_scan
+    assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # COUNT DISTINCT queries are not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT COUNT(DISTINCT city) FROM es.account")
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_sequential_scan
+    assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # SUM DISTINCT queries are not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT SUM(DISTINCT age) FROM es.account")
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_sequential_scan
+    assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # AVG DISTINCT queries are not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT AVG(DISTINCT balance) FROM es.account")
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_sequential_scan
+    assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # Queries with proper HAVING are not goint to be pushed down
     result = get_engine().run_sql(
         "EXPLAIN SELECT max(balance) FROM es.account HAVING max(balance) > 30"
     )
-    assert len(result) > 2
-    assert _extract_query_from_explain(result) == _bare_sequential_scan
+    assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
+
+    # Aggregation with a nested expression won't be pushed down
+    result = get_engine().run_sql(
+        "EXPLAIN SELECT avg(age * balance) FROM es.account GROUP BY state"
+    )
+    assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan

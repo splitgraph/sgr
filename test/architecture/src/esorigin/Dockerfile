@@ -9,7 +9,9 @@ RUN mkdir /data && \
     chown -R elasticsearch:elasticsearch /data && \
     echo 'path.data: /data' >> config/elasticsearch.yml && \
     echo 'discovery.type: "single-node"' >> config/elasticsearch.yml && \
-    echo "xpack.security.enabled: false" >> config/elasticsearch.yml
+    echo "xpack.security.enabled: false" >> config/elasticsearch.yml && \
+    echo 'cluster.routing.allocation.disk.watermark.flood_stage: "99%"' >> config/elasticsearch.yml && \
+    echo 'cluster.routing.allocation.disk.watermark.high: "99%"' >> config/elasticsearch.yml
 
 ADD https://raw.githubusercontent.com/vishnubob/wait-for-it/e1f115e4ca285c3c24e847c4dd4be955e0ed51c2/wait-for-it.sh /utils/wait-for-it.sh
 
