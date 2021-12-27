@@ -2,6 +2,9 @@
 
 # Multistage Dockerfile to build the Splitgraph engine with debugging capabilities.
 # For now does not include MySQL and Mongo FDWs
+# The underlying splitgraph/pg_debug:development image is built via
+# Dockerfile.pg_debug, and the reason for this separation is so that we don't
+# need to rebuild PG on every change in Multicorn/FDW instances.
 
 
 #####
@@ -94,7 +97,6 @@ COPY ./engine/init_scripts /docker-entrypoint-initdb.d/
 
 # We don't install Mongo/MySQL extensions in the debug image
 RUN sed -i '/\(mongo_fdw\|mysql_fdw\)/d' /docker-entrypoint-initdb.d/000_create_extensions.sql
-
 
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
