@@ -1,5 +1,10 @@
 from datetime import datetime as dt
-from test.splitgraph.conftest import _mount_mongo, _mount_mysql, _mount_postgres
+from test.splitgraph.conftest import (
+    _mount_mongo,
+    _mount_mysql,
+    _mount_postgres,
+    _mount_elasticsearch,
+)
 
 import pytest
 from splitgraph.core.repository import Repository
@@ -43,7 +48,7 @@ def test_mount_mysql(local_engine_empty):
         # Mount MySQL with a set schema instead of letting the FDW detect it
         _mount_mysql(MYSQL_MNT)
         result = get_engine().run_sql(
-            """SELECT mushroom_id, name, discovery, friendly, binary_data, varbinary_data 
+            """SELECT mushroom_id, name, discovery, friendly, binary_data, varbinary_data
             FROM "test/mysql_mount".mushrooms"""
         )
         assert len(result) == 2
@@ -52,6 +57,33 @@ def test_mount_mysql(local_engine_empty):
         assert sorted(result, key=lambda r: r[0])[0][5].hex() == "7f000001"
     finally:
         MYSQL_MNT.delete()
+
+
+@pytest.mark.mounting
+def test_mount_esorigin(local_engine_empty):
+    # Mount Elasticsearch with a set schema instead of letting the FDW detect it
+    _mount_elasticsearch()
+    result = get_engine().run_sql(
+        """SELECT account_number, balance, firstname, lastname, age, gender,
+        address, employer, email, city, state
+        FROM es.account"""
+    )
+    assert len(result) == 1000
+
+    # Assert random record matches
+    assert result[28] == (
+        140,
+        26696.0,
+        "Cotton",
+        "Christensen",
+        32,
+        "M",
+        "878 Schermerhorn Street",
+        "Prowaste",
+        "cottonchristensen@prowaste.com",
+        "Mayfair",
+        "LA",
+    )
 
 
 @pytest.mark.mounting
@@ -140,8 +172,8 @@ def test_cross_joins(local_engine_empty):
             """SELECT "test/pg_mount".fruits.fruit_id,
                  test_mg_mount.stuff.name,
                  "test/pg_mount".fruits.name as spirit_fruit
-           FROM "test/pg_mount".fruits 
-           JOIN test_mg_mount.stuff 
+           FROM "test/pg_mount".fruits
+           JOIN test_mg_mount.stuff
            ON "test/pg_mount".fruits.fruit_id = test_mg_mount.stuff.duration"""
         )
         == [(2, "James", "orange")]

@@ -6,3 +6,6 @@ services:
   ci_mongoorigin:
     image: splitgraphci/mongoorigin
     build: ./src/mongoorigin
+  ci_esorigin:
+    image: splitgraphci/esorigin
+    build: ./src/esorigin

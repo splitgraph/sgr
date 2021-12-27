@@ -38,3 +38,7 @@ services:
       - 3306
     volumes:
       - ./data/mysqlorigin/setup.sql:/docker-entrypoint-initdb.d/setup.sql:ro
+  esorigin:
+    image: splitgraphci/esorigin
+    expose:
+      - 9200

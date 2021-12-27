@@ -138,6 +138,38 @@ def _mount_mysql(repository):
     )
 
 
+def _mount_elasticsearch():
+    mount(
+        "es",
+        "elasticsearch",
+        {
+            "host": "esorigin",
+            "port": 9200,
+            "tables": {
+                "account": {
+                    "options": {
+                        "index": "account",
+                        "scroll_size": 5,
+                    },
+                    "schema": {
+                        "account_number": "integer",
+                        "balance": "double precision",
+                        "firstname": "character varying (20)",
+                        "lastname": "character varying (20)",
+                        "age": "smallint",
+                        "gender": "character varying (1)",
+                        "address": "text",
+                        "employer": "character varying (10)",
+                        "email": "text",
+                        "city": "character varying (10)",
+                        "state": "character varying (5)",
+                    },
+                }
+            },
+        },
+    )
+
+
 TEST_MOUNTPOINTS = [
     PG_MNT,
     PG_MNT_PULL,
@@ -165,6 +197,7 @@ def healthcheck_mounting():
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
     _mount_mysql(MYSQL_MNT)
+    _mount_elasticsearch()
     try:
         assert (
             get_engine().run_sql(
@@ -183,6 +216,13 @@ def healthcheck_mounting():
         assert (
             get_engine().run_sql(
                 'SELECT COUNT(*) FROM "test/mysql_mount".mushrooms',
+                return_shape=ResultShape.ONE_ONE,
+            )
+            is not None
+        )
+        assert (
+            get_engine().run_sql(
+                "SELECT COUNT(*) FROM es.account",
                 return_shape=ResultShape.ONE_ONE,
             )
             is not None

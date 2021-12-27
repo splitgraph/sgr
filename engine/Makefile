@@ -15,11 +15,13 @@ SHELL=/bin/bash
 .DEFAULT_GOAL := build
 
 with_postgis ?= ""
+use_valgrind ?= ""
 
 
 build.pg_debug:
 	cd .. && docker build \
 	--build-arg BUILDKIT_INLINE_CACHE=1 \
+	--build-arg use_valgrind=$(use_valgrind) \
 	-t splitgraph/pg_debug:development \
 	-f engine/Dockerfile.pg_debug .
 
