@@ -7,7 +7,6 @@ from test.splitgraph.conftest import (
 )
 
 import pytest
-
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import get_engine
