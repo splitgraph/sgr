@@ -30,6 +30,7 @@ jobs:
           key: pip_cache
       - name: "Run pre-commit hooks (typechecks and the formatter)"
         run: |
+          pip install -U pip
           pip install pre-commit
           # NB this uses mypy in .pre-commit-config.yaml
           pre-commit run --all-files
