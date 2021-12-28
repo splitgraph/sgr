@@ -19,6 +19,8 @@ from typing import (
 )
 
 from psycopg2.sql import SQL, Composable, Identifier
+from tqdm import tqdm
+
 from splitgraph.config import (
     SG_CMD_ASCII,
     SPLITGRAPH_API_SCHEMA,
@@ -33,7 +35,6 @@ from splitgraph.core.types import Quals, TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import get_change_key
 from splitgraph.exceptions import ObjectIndexingError
-from tqdm import tqdm
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image

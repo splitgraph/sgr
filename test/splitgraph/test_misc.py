@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from psycopg2.errors import CheckViolation
+
 from splitgraph.cloud.models import ExternalTableRequest
 from splitgraph.core.common import Tracer, adapt, coerce_val_to_json
 from splitgraph.core.engine import lookup_repository

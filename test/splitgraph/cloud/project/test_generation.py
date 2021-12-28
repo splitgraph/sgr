@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import httpretty
 from click.testing import CliRunner
+
 from splitgraph.cloud import GQLAPIClient
 from splitgraph.cloud.project.generation import ProjectSeed, generate_project
 from splitgraph.commandline.cloud import validate_c

@@ -1,5 +1,4 @@
 from dbt.adapters.base import AdapterPlugin
-
 from dbt.adapters.splitgraph.connections import SplitgraphCredentials
 from dbt.adapters.splitgraph.impl import SplitgraphAdapter
 from dbt.include import splitgraph

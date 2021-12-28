@@ -5,6 +5,7 @@ from test.splitgraph.conftest import OUTPUT
 from unittest import mock
 
 import pytest
+
 from splitgraph.core.indexing.bloom import (
     _prepare_bloom_quals,
     describe,

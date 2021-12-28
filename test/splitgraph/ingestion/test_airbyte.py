@@ -8,6 +8,7 @@ from unittest import mock
 
 import pytest
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn, TableParams
 from splitgraph.engine import ResultShape

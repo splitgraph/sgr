@@ -2,6 +2,7 @@ import os
 import subprocess
 
 from click.testing import CliRunner
+
 from splitgraph.commandline import init_c
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.engine import init_engine

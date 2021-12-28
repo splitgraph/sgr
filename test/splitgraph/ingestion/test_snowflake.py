@@ -3,6 +3,7 @@ from unittest import mock
 from unittest.mock import Mock
 
 import pytest
+
 from splitgraph.cloud.models import ExternalTableRequest
 from splitgraph.core.types import Credentials, Params, dict_to_table_schema_params
 from splitgraph.ingestion.snowflake import SnowflakeDataSource

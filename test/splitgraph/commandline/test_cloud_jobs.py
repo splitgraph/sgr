@@ -22,6 +22,7 @@ import httpretty
 import pytest
 import requests
 from click.testing import CliRunner
+
 from splitgraph.commandline.cloud import (
     _deduplicate_items,
     _get_external_from_yaml,

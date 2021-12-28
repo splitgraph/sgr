@@ -6,6 +6,7 @@ import sys
 from typing import Optional
 
 import click
+
 from splitgraph.commandline.common import ImageType, JsonType, RepositoryType
 from splitgraph.config import CONFIG, REMOTES
 from splitgraph.config.config import get_from_subsection

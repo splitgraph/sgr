@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import Digest
 from splitgraph.core.metadata_manager import OBJECT_COLS

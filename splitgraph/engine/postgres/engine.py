@@ -33,6 +33,8 @@ from psycopg2.errors import InvalidSchemaName, UndefinedTable
 from psycopg2.extras import Json
 from psycopg2.pool import AbstractConnectionPool, ThreadedConnectionPool
 from psycopg2.sql import SQL, Composed, Identifier
+from tqdm import tqdm
+
 from splitgraph.__version__ import __version__
 from splitgraph.config import (
     CONFIG,
@@ -61,7 +63,6 @@ from splitgraph.exceptions import (
 )
 from splitgraph.hooks.mount_handlers import mount_postgres
 from splitgraph.resources import static
-from tqdm import tqdm
 
 if TYPE_CHECKING:
     # Import the connection object under a different name as it shadows

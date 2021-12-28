@@ -23,6 +23,7 @@ from typing import (
 )
 
 from psycopg2.sql import SQL, Composed, Identifier
+
 from splitgraph.config import (
     CONFIG,
     FDW_CLASS,

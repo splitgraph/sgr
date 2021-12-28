@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Set, cast
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import IMAGE_COLS, Image

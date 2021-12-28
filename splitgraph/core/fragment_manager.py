@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union, 
 from psycopg2._json import Json
 from psycopg2.errors import UniqueViolation
 from psycopg2.sql import SQL, Composable, Identifier
+from tqdm import tqdm
+
 from splitgraph.config import CONFIG, SG_CMD_ASCII, SPLITGRAPH_API_SCHEMA, get_singleton
 from splitgraph.core.indexing.bloom import filter_bloom_index, generate_bloom_index
 from splitgraph.core.indexing.range import filter_range_index, generate_range_index
@@ -30,7 +32,6 @@ from splitgraph.engine.postgres.engine import (
     get_change_key,
 )
 from splitgraph.exceptions import SplitGraphError
-from tqdm import tqdm
 
 from .common import SPLITGRAPH_META_SCHEMA, adapt, get_temporary_table_id
 from .sql import select

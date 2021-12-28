@@ -3,6 +3,7 @@ from test.splitgraph.conftest import OUTPUT
 from unittest import mock
 
 from click.testing import CliRunner
+
 from splitgraph.commandline import (
     commit_c,
     diff_c,

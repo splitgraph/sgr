@@ -20,6 +20,7 @@ from typing import (
 )
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA, get_singleton
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.types import Quals

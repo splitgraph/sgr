@@ -6,6 +6,7 @@ from typing import Any, List, Tuple
 
 import docker.errors
 from docker.models.containers import Container
+
 from splitgraph.exceptions import SplitGraphError
 from splitgraph.utils.docker import copy_to_container
 

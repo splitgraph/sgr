@@ -1,6 +1,7 @@
 from test.splitgraph.conftest import OUTPUT
 
 import pytest
+
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import import_table_from_remote
 from splitgraph.engine import get_engine

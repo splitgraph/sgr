@@ -27,6 +27,7 @@ from requests import HTTPError
 from requests.adapters import HTTPAdapter
 from requests.models import Response
 from requests.packages.urllib3.util import Retry
+
 from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
     AddExternalCredentialRequest,

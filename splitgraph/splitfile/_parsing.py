@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, TypeVar
 
 from parsimonious import Grammar
 from parsimonious.nodes import Node, RegexNode
+
 from splitgraph.exceptions import SplitfileError
 
 if TYPE_CHECKING:

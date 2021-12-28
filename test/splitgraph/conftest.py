@@ -6,6 +6,7 @@ import docker.errors
 import pytest
 from minio.deleteobjects import DeleteObject
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import META_TABLES
 from splitgraph.core.engine import get_current_repositories

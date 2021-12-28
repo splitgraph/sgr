@@ -4,6 +4,7 @@ from test.splitgraph.conftest import INGESTION_RESOURCES
 from unittest.mock import MagicMock
 
 from click.testing import CliRunner
+
 from splitgraph.commandline.ingestion import csv_import
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import Credentials, Params

@@ -25,6 +25,7 @@ import httpretty
 import pytest
 from click.testing import CliRunner
 from httpretty.core import HTTPrettyRequest
+
 from splitgraph.__version__ import __version__
 from splitgraph.commandline import cli
 from splitgraph.commandline.cloud import (

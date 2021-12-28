@@ -3,6 +3,7 @@ from unittest import mock
 from unittest.mock import call
 
 from click.testing import CliRunner
+
 from splitgraph.commandline import build_c, dependents_c, provenance_c, rebuild_c
 from splitgraph.core.repository import Repository
 

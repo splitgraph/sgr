@@ -10,6 +10,7 @@ import httpretty
 import pytest
 from click import ClickException
 from click.testing import CliRunner
+
 from splitgraph.commandline import (
     cli,
     config_c,

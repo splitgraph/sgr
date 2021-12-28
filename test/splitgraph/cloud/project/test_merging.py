@@ -1,10 +1,10 @@
 import os
 from io import StringIO
+from test.splitgraph.conftest import RESOURCES
 
 from splitgraph.cloud.project.models import SplitgraphYAML
 from splitgraph.cloud.project.utils import merge_project_files
 from splitgraph.utils.yaml import safe_dump, safe_load
-from test.splitgraph.conftest import RESOURCES
 
 
 def test_project_merging(snapshot):

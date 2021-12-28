@@ -7,6 +7,7 @@ import docker
 import psycopg2
 import pytest
 from packaging.version import Version
+
 from splitgraph.__version__ import __version__
 from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import ensure_metadata_schema

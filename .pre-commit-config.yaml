@@ -20,9 +20,16 @@ repos:
           - types-tabulate
           - types-PyYAML
         exclude: "^(examples|test|docs)/"
-#
-#  - repo: https://github.com/pycqa/isort
-#    rev: 5.9.3
-#    hooks:
-#      - id: isort
-#        args: ["--profile", "black", "--filter-files"]
+
+  - repo: local
+    hooks:
+      - id: isort
+        name: isort
+        entry: isort
+        require_serial: true
+        language: python
+        language_version: python3
+        types_or: [cython, pyi, python]
+        args: ["--profile", "black", "--filter-files"]
+        minimum_pre_commit_version: '2.9.2'
+        additional_dependencies: ['isort==5.10.1']

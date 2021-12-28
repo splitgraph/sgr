@@ -30,8 +30,9 @@ def log_c(image_spec, tree):
     If ``-t`` or ``--tree`` is passed, this instead renders the full image tree. The repository doesn't need to have
     been checked out in this case.
     """
-    from splitgraph.core._drawing import render_tree
     from tabulate import tabulate
+
+    from splitgraph.core._drawing import render_tree
 
     from ..core.output import truncate_line
 
@@ -407,8 +408,9 @@ def sql_c(sql, schema, image, show_all, json, no_transaction):
 
 
 def _emit_repository_data(repositories, engine):
-    from splitgraph.engine import ResultShape
     from tabulate import tabulate
+
+    from splitgraph.engine import ResultShape
 
     from ..core.output import pretty_size
 

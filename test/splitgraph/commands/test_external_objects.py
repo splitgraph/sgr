@@ -2,6 +2,7 @@ from test.splitgraph.conftest import PG_MNT
 from unittest.mock import patch
 
 import pytest
+
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import clone
 from splitgraph.engine import ResultShape

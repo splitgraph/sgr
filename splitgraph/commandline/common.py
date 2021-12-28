@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 
 import click
 from click.core import Context, Parameter
+
 from splitgraph.cloud.models import JobStatus
 from splitgraph.config import REMOTES
 from splitgraph.exceptions import RepositoryNotFoundError

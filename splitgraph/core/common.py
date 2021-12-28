@@ -21,6 +21,7 @@ from typing import (
 )
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.migration import set_installed_version, source_files_to_apply
 from splitgraph.core.output import parse_date, parse_dt

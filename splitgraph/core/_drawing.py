@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, List
 
 import click
+
 from splitgraph.config import SG_CMD_ASCII
 from splitgraph.core.output import Color
 
@@ -56,6 +57,7 @@ def render_tree(repository: "Repository") -> None:
     """Draws the repository's commit graph as a Git-like tree."""
 
     import asciitree
+
     from splitgraph.core.output import truncate_line
 
     # Get all commits in ascending time order

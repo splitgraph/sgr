@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
+
 from splitgraph.config import CONFIG, create_config_dict, keys
 from splitgraph.config.argument_config import get_arg_tuples, get_argument_config_value
 from splitgraph.config.config_file_config import hoist_section
