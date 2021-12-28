@@ -1,10 +1,11 @@
 import json
-import yaml
-import pytest
 from decimal import Decimal
-
 from test.splitgraph.conftest import _mount_elasticsearch
-from splitgraph.engine import get_engine, ResultShape
+
+import pytest
+import yaml
+
+from splitgraph.engine import ResultShape, get_engine
 
 
 def _extract_queries_from_explain(result):

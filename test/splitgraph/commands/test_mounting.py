@@ -1,12 +1,13 @@
 from datetime import datetime as dt
 from test.splitgraph.conftest import (
+    _mount_elasticsearch,
     _mount_mongo,
     _mount_mysql,
     _mount_postgres,
-    _mount_elasticsearch,
 )
 
 import pytest
+
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import get_engine
