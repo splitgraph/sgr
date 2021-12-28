@@ -8,6 +8,8 @@ from itertools import islice
 from typing import Optional
 
 import requests
+from urllib3 import HTTPResponse
+
 import splitgraph.config
 from splitgraph.config import get_singleton
 from splitgraph.exceptions import get_exception_name
@@ -21,7 +23,6 @@ from splitgraph.ingestion.csv.common import (
     pad_csv_row,
 )
 from splitgraph.ingestion.inference import infer_sg_schema
-from urllib3 import HTTPResponse
 
 try:
     from multicorn import ANY, ColumnDefinition, ForeignDataWrapper, TableDefinition

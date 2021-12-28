@@ -4,6 +4,7 @@ from hashlib import sha256
 from test.splitgraph.conftest import OUTPUT, PG_DATA, load_splitfile
 
 import pytest
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import Digest
 from splitgraph.core.repository import Repository

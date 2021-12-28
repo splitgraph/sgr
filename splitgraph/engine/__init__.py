@@ -24,6 +24,7 @@ from typing import (
 )
 
 from psycopg2.sql import SQL, Composed, Identifier
+
 from splitgraph.config import CONFIG
 from splitgraph.config.config import ConfigDict, get_all_in_section, get_singleton
 from splitgraph.core.types import TableColumn, TableSchema

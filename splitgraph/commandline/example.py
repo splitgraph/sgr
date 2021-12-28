@@ -5,6 +5,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 
 import click
+
 from splitgraph.commandline.common import RepositoryType
 from splitgraph.core.types import TableColumn
 
@@ -75,6 +76,7 @@ def alter_table(
     :param rows_updated: Number of rows to update
     """
     from psycopg2.sql import SQL, Identifier
+
     from splitgraph.core.sql import select
     from splitgraph.engine import ResultShape
 

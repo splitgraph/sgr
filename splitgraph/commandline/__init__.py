@@ -10,6 +10,7 @@ import traceback
 import click
 import click_log
 from click_log import ColorFormatter
+
 from splitgraph.__version__ import __version__
 from splitgraph.commandline.cloud import cloud_c
 from splitgraph.commandline.engine import engine_c
@@ -87,6 +88,7 @@ def _patch_wrap_text():
 def _do_version_check():
     """Do a pre-flight version check -- by default we only do it once a day"""
     from packaging.version import Version
+
     from splitgraph.cloud import RESTAPIClient
     from splitgraph.config import CONFIG, get_singleton
 
@@ -113,6 +115,7 @@ class WithExceptionHandler(click.Group):
     def invoke(self, ctx):
         import psycopg2.extensions
         import psycopg2.extras
+
         from splitgraph.engine import get_engine
 
         # Allow users to send SIGINT to quickly terminate sgr (instead of waiting for a PG

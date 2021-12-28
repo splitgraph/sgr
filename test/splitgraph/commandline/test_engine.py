@@ -10,6 +10,7 @@ import docker
 import pytest
 import requests
 from click.testing import CliRunner
+
 from splitgraph.__version__ import __version__
 from splitgraph.commandline.engine import (
     _convert_source_path,

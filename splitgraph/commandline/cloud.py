@@ -14,6 +14,7 @@ from urllib.parse import quote, urlparse
 
 import click
 from click import wrap_text
+
 from splitgraph.cloud.models import AddExternalRepositoryRequest
 from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
 from splitgraph.commandline.common import (
@@ -823,9 +824,10 @@ def status_c(remote, repositories_file, repositories):
     statuses just for those repositories. Otherwise, it will use an existing splitgraph.yml
     file and get job statuses for all repositories in this file.
     """
+    from tabulate import tabulate
+
     from splitgraph.cloud import GQLAPIClient
     from splitgraph.cloud.project.utils import load_project
-    from tabulate import tabulate
 
     client = GQLAPIClient(remote)
 
@@ -1112,6 +1114,7 @@ def plugins_c(remote, filter_plugins):
     """
 
     import tabulate
+
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
@@ -1141,6 +1144,7 @@ def plugins_c(remote, filter_plugins):
 def stub_c(remote, plugin_name, repository, output_file):
     """Generate a splitgraph.yml stub file for a given plugin"""
     import ruamel.yaml
+
     from splitgraph.cloud import GQLAPIClient
     from splitgraph.cloud.project.generation import stub_plugin
 

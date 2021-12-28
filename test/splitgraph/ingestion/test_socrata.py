@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, Mock, call
 
 import pytest
 from sodapy import Socrata
+
 from splitgraph.core.types import TableColumn
 from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.mount_handlers import mount

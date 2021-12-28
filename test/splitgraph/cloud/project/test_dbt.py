@@ -1,7 +1,10 @@
 import os
 from tempfile import TemporaryDirectory
 
-from splitgraph.cloud.project.dbt import generate_dbt_plugin_params, generate_dbt_project
+from splitgraph.cloud.project.dbt import (
+    generate_dbt_plugin_params,
+    generate_dbt_project,
+)
 
 
 def test_generate_dbt_plugin_params():

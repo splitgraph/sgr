@@ -15,6 +15,7 @@ from typing import (
 
 from packaging.version import Version
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.core.sql import insert, select
 from splitgraph.engine import ResultShape
 

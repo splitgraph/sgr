@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple
 
+from target_postgres.db_sync import column_type
+
 from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
@@ -11,7 +13,6 @@ from splitgraph.core.types import (
     get_table_params,
 )
 from splitgraph.exceptions import TableNotFoundError
-from target_postgres.db_sync import column_type
 
 from .models import (
     AirbyteCatalog,

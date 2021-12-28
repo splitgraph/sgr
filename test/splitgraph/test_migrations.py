@@ -2,6 +2,7 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
+
 from splitgraph.core.migration import source_files_to_apply
 from splitgraph.engine.postgres.engine import PsycopgEngine
 

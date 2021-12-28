@@ -1,5 +1,6 @@
 """Command line tools for building Splitgraph images from Singer taps, including using Splitgraph as a Singer target."""
 import click
+
 from splitgraph.commandline.common import ImageType
 from splitgraph.hooks.data_source.base import prepare_new_image
 

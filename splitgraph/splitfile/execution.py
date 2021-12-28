@@ -10,6 +10,7 @@ from random import getrandbits
 from typing import Callable, Dict, List, Optional, Tuple, cast
 
 from parsimonious.nodes import Node
+
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section, get_singleton
 from splitgraph.core.engine import lookup_repository, repository_exists

@@ -9,12 +9,13 @@ from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 from pandas.io.sql import get_schema
 from psycopg2.sql import SQL, Identifier
+from sqlalchemy import create_engine
+from sqlalchemy.engine.base import Engine
+
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
 from splitgraph.ingestion.common import IngestionAdapter
 from splitgraph.ingestion.csv import copy_csv_buffer
-from sqlalchemy import create_engine
-from sqlalchemy.engine.base import Engine
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine

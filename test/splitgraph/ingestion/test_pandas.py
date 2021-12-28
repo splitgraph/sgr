@@ -4,6 +4,7 @@ from datetime import datetime as dt
 from io import StringIO
 
 import pytest
+
 from splitgraph.core.types import TableColumn
 
 with contextlib.suppress(ImportError):
@@ -11,6 +12,7 @@ with contextlib.suppress(ImportError):
 
     # If Pandas isn't installed, pytest will skip these tests
     # (see pytest.importorskip).
+
 from test.splitgraph.conftest import INGESTION_RESOURCES_CSV, load_csv
 
 pd = pytest.importorskip("pandas")

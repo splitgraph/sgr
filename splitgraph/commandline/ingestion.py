@@ -4,6 +4,7 @@ import logging
 from itertools import islice
 
 import click
+
 from splitgraph.commandline.common import ImageType, RepositoryType
 from splitgraph.core.output import ResettableStream
 

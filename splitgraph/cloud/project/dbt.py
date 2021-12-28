@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import ruamel.yaml
+
 from splitgraph.cloud.project.templates import (
     DBT_PROJECT_TEMPLATE,
     SOURCE_TEMPLATE_NOCOM,

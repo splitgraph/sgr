@@ -9,6 +9,7 @@ import ruamel.yaml
 from pydantic import BaseModel
 from ruamel.yaml import CommentedMap as CM
 from ruamel.yaml import CommentedSeq as CS
+
 from splitgraph.cloud import GQLAPIClient, Plugin
 from splitgraph.cloud.project.dbt import (
     generate_dbt_plugin_params,

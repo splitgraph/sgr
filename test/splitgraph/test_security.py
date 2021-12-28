@@ -4,6 +4,7 @@ import psycopg2
 import pytest
 from psycopg2._psycopg import ProgrammingError
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import META_TABLES
 from splitgraph.core.repository import Repository, clone

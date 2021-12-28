@@ -17,6 +17,7 @@ from typing import (
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import (
     CONFIG,
     FDW_CLASS,

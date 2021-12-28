@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     import _csv
 
 import chardet
+
 from splitgraph.core.output import ResettableStream
 
 try:

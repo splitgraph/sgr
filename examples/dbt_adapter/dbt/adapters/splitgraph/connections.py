@@ -6,10 +6,10 @@ import agate
 from dbt.adapters.postgres import PostgresConnectionManager, PostgresCredentials
 from psycopg2.pool import AbstractConnectionPool
 
+from splitgraph.core.image_mounting import ImageMapper
 from splitgraph.core.repository import Repository
 from splitgraph.engine import switch_engine
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.core.image_mounting import ImageMapper
 
 
 @dataclass

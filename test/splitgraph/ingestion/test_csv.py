@@ -5,6 +5,7 @@ from test.splitgraph.conftest import INGESTION_RESOURCES_CSV
 from unittest import mock
 
 import pytest
+
 from splitgraph.core.types import MountError, Params, TableColumn, unwrap
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO

@@ -1,6 +1,7 @@
 from test.splitgraph.utils import drop_comments, reassign_ordinals
 
 import pytest
+
 from splitgraph.core.types import TableColumn
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 

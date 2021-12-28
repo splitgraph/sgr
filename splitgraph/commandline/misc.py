@@ -15,6 +15,7 @@ from typing import Optional, Tuple
 
 import click
 from packaging.version import Version
+
 from splitgraph.__version__ import __version__
 from splitgraph.exceptions import CheckoutError
 
@@ -366,6 +367,7 @@ def eval_c(i_know_what_im_doing, command, arg):
 
 def _get_binary_url_for(system, release: str = "latest") -> Tuple[str, str]:
     import requests
+
     from splitgraph.cloud import get_headers
 
     if release == "latest":
@@ -405,9 +407,10 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     by `sgr engine`.
     """
     import requests
+    from tqdm import tqdm
+
     from splitgraph.cloud import get_headers
     from splitgraph.config import CONFIG, SG_CMD_ASCII
-    from tqdm import tqdm
 
     # Detect if we're running from a Pyinstaller binary
     if not hasattr(sys, "frozen") and not force and not path:

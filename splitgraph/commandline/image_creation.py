@@ -5,6 +5,7 @@ import sys
 from collections import defaultdict
 
 import click
+
 from splitgraph.commandline.common import (
     ImageType,
     JsonType,

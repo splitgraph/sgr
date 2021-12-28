@@ -4,6 +4,7 @@ from test.splitgraph.conftest import _mount_elasticsearch
 
 import pytest
 import yaml
+
 from splitgraph.engine import ResultShape, get_engine
 
 

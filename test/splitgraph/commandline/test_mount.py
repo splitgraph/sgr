@@ -7,6 +7,7 @@ from unittest import mock
 
 import pytest
 from click.testing import CliRunner
+
 from splitgraph.commandline import cleanup_c, import_c, init_c, mount_c, rm_c, status_c
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository

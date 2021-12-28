@@ -7,6 +7,7 @@ from unittest import mock
 from unittest.mock import call
 
 import pytest
+
 from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import META_TABLES
 from splitgraph.core.fragment_manager import get_chunk_groups

@@ -9,6 +9,7 @@ from unittest import mock
 import psycopg2
 import pytest
 from click.testing import CliRunner
+
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape

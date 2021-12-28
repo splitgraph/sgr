@@ -9,44 +9,46 @@ import click
 
 import splitgraph.commandline as cmd
 from splitgraph.commandline.cloud import (
-    register_c,
-    login_c,
-    curl_c,
-    login_api_c,
-    sql_c as cloud_sql_c,
-    readme_c,
-    description_c,
-    metadata_c,
-    search_c,
-    load_c,
-    dump_c,
     add_c,
-    token_c,
-    status_c,
-    logs_c,
-    upload_c,
-    seed_c,
-    validate_c,
-    stub_c,
-    plugins_c,
-    sync_c,
+    curl_c,
+    description_c,
     download_c,
+    dump_c,
+    load_c,
+    login_api_c,
+    login_c,
+    logs_c,
+    metadata_c,
+    plugins_c,
+    readme_c,
+    register_c,
+    search_c,
+    seed_c,
+)
+from splitgraph.commandline.cloud import sql_c as cloud_sql_c
+from splitgraph.commandline.cloud import (
+    status_c,
+    stub_c,
+    sync_c,
+    token_c,
+    upload_c,
+    validate_c,
 )
 from splitgraph.commandline.engine import (
     add_engine_c,
+    configure_engine_c,
     delete_engine_c,
     list_engines_c,
+    log_engine_c,
     start_engine_c,
     stop_engine_c,
-    log_engine_c,
-    configure_engine_c,
     upgrade_engine_c,
     version_engine_c,
 )
 from splitgraph.commandline.ingestion import csv_export, csv_import
 
 # Map category to Click commands -- maybe eventually we'll read this dynamically...
-from splitgraph.config.keys import KEYS, KEY_DOCS, DEFAULTS
+from splitgraph.config.keys import DEFAULTS, KEY_DOCS, KEYS
 from splitgraph.ingestion.singer.commandline import singer_target
 
 STRUCTURE = [

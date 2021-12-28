@@ -1,10 +1,6 @@
 from typing import Dict, Optional
 
-from splitgraph.core.types import (
-    TableColumn,
-    TableInfo,
-    IntrospectionResult,
-)
+from splitgraph.core.types import IntrospectionResult, TableColumn, TableInfo
 
 # Define the schema of the foreign table we wish to create
 # We're only going to be fetching stories, so limit the columns to the ones that

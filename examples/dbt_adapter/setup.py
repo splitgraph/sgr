@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-from setuptools import find_namespace_packages
-from setuptools import setup
+from setuptools import find_namespace_packages, setup
 
 package_name = "dbt-splitgraph"
 package_version = "0.0.1"

@@ -4,6 +4,7 @@ import re
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from psycopg2.sql import SQL, Composed, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.sql._validation import (
     IMPORT_SQL_PERMITTED_STATEMENTS,

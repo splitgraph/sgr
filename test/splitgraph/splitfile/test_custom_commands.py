@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitfileError
 from splitgraph.hooks.splitfile_commands import PluginCommand

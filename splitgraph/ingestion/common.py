@@ -3,6 +3,7 @@ from datetime import datetime as dt
 from typing import Dict, List, Optional, Tuple, Union
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
 from splitgraph.core.sql import POSTGRES_MAX_IDENTIFIER

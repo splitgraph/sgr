@@ -4,6 +4,7 @@ from unittest.mock import Mock, PropertyMock, sentinel
 import pytest
 from click import UsageError
 from click.testing import CliRunner
+
 from splitgraph.commandline import clone_c, pull_c, push_c, reindex_c
 from splitgraph.commandline.push_pull import _determine_push_target
 from splitgraph.core.engine import repository_exists

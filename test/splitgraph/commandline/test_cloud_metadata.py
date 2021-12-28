@@ -24,6 +24,7 @@ from unittest.mock import PropertyMock, patch
 import httpretty
 import pytest
 from click.testing import CliRunner
+
 from splitgraph.commandline.cloud import (
     description_c,
     dump_c,

@@ -4,7 +4,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 import requests
 
 try:
-    from multicorn import ForeignDataWrapper, ANY
+    from multicorn import ANY, ForeignDataWrapper
 except ImportError:
     # Multicorn not installed (don't crash the import in this case if we want to unit test this.).
     ForeignDataWrapper = object

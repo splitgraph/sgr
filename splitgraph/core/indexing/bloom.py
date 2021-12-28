@@ -8,6 +8,7 @@ from math import ceil, exp, log
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.output import pretty_size
 from splitgraph.core.types import Changeset

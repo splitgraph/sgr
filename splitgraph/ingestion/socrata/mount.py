@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.core.types import Credentials, MountError, TableInfo
 from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.data_source.fdw import (

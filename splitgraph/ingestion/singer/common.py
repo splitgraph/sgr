@@ -5,6 +5,7 @@ from functools import wraps
 from typing import Any, Dict, Optional
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine import validate_type

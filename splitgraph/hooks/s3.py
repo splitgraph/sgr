@@ -5,6 +5,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, List, Tuple
 
+from tqdm import tqdm
+
 from splitgraph.config import CONFIG, SG_CMD_ASCII, get_singleton
 from splitgraph.engine import ResultShape, get_engine
 from splitgraph.exceptions import (
@@ -12,7 +14,6 @@ from splitgraph.exceptions import (
     IncompleteObjectUploadError,
 )
 from splitgraph.hooks.external_objects import ExternalObjectHandler
-from tqdm import tqdm
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine

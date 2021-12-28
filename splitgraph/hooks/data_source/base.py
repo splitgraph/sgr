@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, c
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image

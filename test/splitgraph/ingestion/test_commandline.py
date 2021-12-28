@@ -6,6 +6,7 @@ from test.splitgraph.conftest import INGESTION_RESOURCES, INGESTION_RESOURCES_CS
 
 import pytest
 from click.testing import CliRunner
+
 from splitgraph.commandline.ingestion import csv_export, csv_import
 from splitgraph.core.types import TableColumn
 

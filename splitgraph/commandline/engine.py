@@ -6,12 +6,13 @@ from typing import Any, Dict, Optional, cast
 from urllib.parse import urlparse
 
 import click
+from tqdm import tqdm
+
 from splitgraph.__version__ import __version__
 from splitgraph.config import CONFIG, SG_CMD_ASCII, get_singleton
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.exceptions import DockerUnavailableError, EngineSetupError
 from splitgraph.utils.docker import copy_to_container, get_docker_client
-from tqdm import tqdm
 
 DEFAULT_ENGINE = "default"
 
@@ -103,8 +104,9 @@ def list_engines_c(include_all):
     (whose names start with `splitgraph_engine_`. To manage other engines,
     use Docker CLI directly.
     """
-    from splitgraph.config import CONFIG
     from tabulate import tabulate
+
+    from splitgraph.config import CONFIG
 
     containers = list_engines(include_all=include_all, prefix=CONFIG["SG_ENGINE_PREFIX"])
     if containers:
@@ -227,6 +229,7 @@ def add_engine_c(
     """
     import docker
     from docker.types import Mount
+
     from splitgraph.config import CONFIG
     from splitgraph.engine.postgres.engine import PostgresEngine
 

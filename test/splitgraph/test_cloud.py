@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import httpretty
 import pytest
 from requests import HTTPError
+
 from splitgraph.cloud import RESTAPIClient
 from splitgraph.config import create_config_dict
 from splitgraph.exceptions import AuthAPIError

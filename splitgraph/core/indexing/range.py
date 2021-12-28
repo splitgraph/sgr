@@ -12,6 +12,7 @@ from typing import (
 )
 
 from psycopg2.sql import SQL, Composable, Composed, Identifier
+
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import adapt, coerce_val_to_json
 from splitgraph.core.sql import select

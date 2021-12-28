@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, cas
 
 import psycopg2
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.core.types import (
     Credentials,
     IntrospectionResult,
@@ -164,6 +165,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         # Local import here since this data source gets imported by the commandline entry point
         import jsonschema
+
         from splitgraph.core.common import get_temporary_table_id
 
         tmp_schema = get_temporary_table_id()
