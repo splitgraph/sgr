@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.2 (2021-12-30)
+
+ * Fix various issues with the dbt project and GitHub Actions that `sgr cloud seed` generates (https://github.com/splitgraph/splitgraph/pull/602, https://github.com/splitgraph/splitgraph/pull/591)
+ * Initial support for aggregation pushdown with Multicorn-backed FDWs (currently implemented in our fork of postgres-elasticsearch-fdw)
+   * https://github.com/splitgraph/splitgraph/pull/581
+   * https://github.com/splitgraph/Multicorn/pull/1
+   * https://github.com/splitgraph/postgres-elasticsearch-fdw/pull/1
+
 ## v0.3.1 (2021-12-20)
 
 Fix `sgr cloud sync` invocation issue (https://github.com/splitgraph/splitgraph/pull/589)
