@@ -18,8 +18,8 @@ jobs:
       env:
         CREDENTIALS_YML: ${{secrets.SPLITGRAPH_CREDENTIALS_YML}}
     - name: Run sgr cloud load to set up metadata and data source settings
-      run: sgr cloud load --remote splitgraph -f splitgraph.yml -f splitgraph.credentials.yml
-        myns/postgres_fdw
+      run: sgr cloud load --remote splitgraph --initial-private -f splitgraph.yml
+        -f splitgraph.credentials.yml myns/postgres_fdw
       shell: bash
   myns_airbyte_postgres:
     name: Build myns/airbyte-postgres

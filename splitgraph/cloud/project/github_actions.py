@@ -54,7 +54,7 @@ def generate_job(
         steps.append(
             {
                 "name": "Run sgr cloud load to set up metadata and data source settings",
-                "run": "sgr cloud load --remote splitgraph "
+                "run": "sgr cloud load --remote splitgraph --initial-private "
                 f"-f splitgraph.yml -f splitgraph.credentials.yml {repository}",
                 "shell": "bash",
             }
