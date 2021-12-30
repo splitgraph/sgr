@@ -67,7 +67,7 @@ models:
     # Here as a starting point. You can reference these models downstream in models that actually
     # materialize as tables.
     staging:
-      +materialized: cte
+      +materialized: ephemeral
 """
 
 SOURCES_YML_TEMPLATE = """# This file defines all data sources referenced by this model. The mapping
