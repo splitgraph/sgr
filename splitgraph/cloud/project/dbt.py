@@ -78,6 +78,7 @@ def generate_dbt_plugin_params(repositories: List[str]) -> Tuple[Dict[str, Any],
     # the Git pull URL at action runtime (using GITHUB_TOKEN).
     credentials = {"git_url": "$THIS_REPO_URL"}
 
-    params = {"sources": [_make_source(r) for r in repositories]}
+    # Same with the branch: we want to inject the current SHA we're running the action for.
+    params = {"sources": [_make_source(r) for r in repositories], "git_branch": "$THIS_SHA"}
 
     return params, credentials

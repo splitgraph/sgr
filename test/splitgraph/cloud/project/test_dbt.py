@@ -12,6 +12,7 @@ def test_generate_dbt_plugin_params():
         ["some-data/source", "some-other/data-raw", "and-third/data"]
     ) == (
         {
+            "git_branch": "$THIS_SHA",
             "sources": [
                 {
                     "dbt_source_name": "some_data_source",
@@ -31,7 +32,7 @@ def test_generate_dbt_plugin_params():
                     "repository": "data",
                     "hash_or_tag": "latest",
                 },
-            ]
+            ],
         },
         {"git_url": "$THIS_REPO_URL"},
     )
