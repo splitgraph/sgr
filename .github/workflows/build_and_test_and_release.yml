@@ -230,7 +230,7 @@ jobs:
         run: |
           mv artifacts/sgr-windows/sgr.exe artifacts/sgr-windows-x86_64.exe
           mv artifacts/sgr-linux/sgr artifacts/sgr-linux-x86_64
-          mv artifacts/sgr-linux/osx artifacts/sgr-osx-x86_64
+          mv artifacts/sgr-linux/sgr artifacts/sgr-osx-x86_64
       - name: Release artifacts
         uses: softprops/action-gh-release@v1
         with:
