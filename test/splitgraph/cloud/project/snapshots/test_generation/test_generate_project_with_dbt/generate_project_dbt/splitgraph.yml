@@ -96,6 +96,7 @@ repositories:
         namespace: myns
         repository: airbyte-postgres
         hash_or_tag: latest
+      git_branch: $THIS_SHA
     is_live: false
     tables: {}
   metadata:

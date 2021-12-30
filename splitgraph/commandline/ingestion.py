@@ -142,7 +142,9 @@ def csv_import(
         sample = [[str(i) for i in range(len(sample))]] + sample
 
     type_overrides = dict(override_type or [])
-    sg_schema = infer_sg_schema(sample, override_types=type_overrides, primary_keys=primary_key)
+    sg_schema = infer_sg_schema(
+        sample, override_types=type_overrides, primary_keys=primary_key, ignore_empty_strings=False
+    )
     logging.debug("Using Splitgraph schema: %r", sg_schema)
 
     # Reset the stream and pass it to COPY FROM STDIN

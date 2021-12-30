@@ -30,7 +30,8 @@ def generate_job(
             {
                 "name": "Set up dbt Git URL",
                 "run": 'echo "$CREDENTIALS_YML" > splitgraph.credentials.yml && '
-                'sed -i "s|\\$THIS_REPO_URL|https://$GITHUB_ACTOR:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY|g" splitgraph.credentials.yml',
+                'sed -i "s|\\$THIS_REPO_URL|https://$GITHUB_ACTOR:$GITHUB_TOKEN@github.com/$GITHUB_REPOSITORY|g" splitgraph.credentials.yml && '
+                'sed -i "s|\\$THIS_SHA|$GITHUB_SHA|g" splitgraph.yml',
                 "shell": "bash",
                 "env": {
                     "CREDENTIALS_YML": "${{secrets.SPLITGRAPH_CREDENTIALS_YML}}",
@@ -54,7 +55,7 @@ def generate_job(
         steps.append(
             {
                 "name": "Run sgr cloud load to set up metadata and data source settings",
-                "run": "sgr cloud load --remote splitgraph "
+                "run": "sgr cloud load --remote splitgraph --initial-private "
                 f"-f splitgraph.yml -f splitgraph.credentials.yml {repository}",
                 "shell": "bash",
             }

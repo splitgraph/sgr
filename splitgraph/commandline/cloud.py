@@ -632,15 +632,15 @@ def load_c(
 
     repo_yaml = load_project(repositories_file)
     repositories = repo_yaml.repositories
+    if limit_repositories:
+        repositories = [
+            r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
+        ]
 
     gql_client = GQLAPIClient(remote)
 
     if not skip_external:
         rest_client = RESTAPIClient(remote)
-        if limit_repositories:
-            repositories = [
-                r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
-            ]
 
         filter_credential_names = [
             r.external.credential for r in repositories if r.external and r.external.credential

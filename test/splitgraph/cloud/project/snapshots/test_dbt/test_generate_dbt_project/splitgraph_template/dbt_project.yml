@@ -30,4 +30,4 @@ models:
     # Here as a starting point. You can reference these models downstream in models that actually
     # materialize as tables.
     staging:
-      +materialized: cte
+      +materialized: ephemeral
