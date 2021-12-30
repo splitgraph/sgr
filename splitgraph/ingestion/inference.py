@@ -48,12 +48,12 @@ _CONVERTERS: List[Tuple[str, Callable]] = [
 ]
 
 
-def _infer_column_schema(column_sample: Sequence[str]) -> str:
+def _infer_column_schema(column_sample: Sequence[str], ignore_empty_strings=True) -> str:
     for candidate, converter in _CONVERTERS:
         try:
             seen_value = False
             for c in column_sample:
-                if c == "" or c is None:
+                if (c == "" and ignore_empty_strings) or c is None:
                     continue
 
                 seen_value = True
@@ -73,6 +73,7 @@ def infer_sg_schema(
     sample: Sequence[List[str]],
     override_types: Optional[Dict[str, str]] = None,
     primary_keys: Optional[List[str]] = None,
+    ignore_empty_strings: bool = True,
 ):
     override_types = override_types or {}
     primary_keys = primary_keys or []
@@ -92,7 +93,9 @@ def infer_sg_schema(
         )
 
     for i, (c_name, c_sample) in enumerate(zip(header, columns)):
-        pg_type = override_types.get(c_name, _infer_column_schema(c_sample))
+        pg_type = override_types.get(
+            c_name, _infer_column_schema(c_sample, ignore_empty_strings=ignore_empty_strings)
+        )
 
         result.append(
             TableColumn(
