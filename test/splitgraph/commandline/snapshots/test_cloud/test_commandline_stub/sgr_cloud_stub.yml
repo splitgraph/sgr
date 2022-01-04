@@ -43,10 +43,8 @@ repositories:
       sample_table:
         # Plugin-specific table parameters matching the plugin's schema
         options:
-          airbyte_cursor_fields:  # Cursor field(s). Fields in this stream to be used as a cursor for incremental replication (overrides Airbyte configuration's cursor_field)
-          - ''
-          airbyte_primary_key_fields: # Primary key field(s). Fields in this stream to be used as a primary key for deduplication (overrides Airbyte configuration's primary_key)
-          - ''
+          airbyte_cursor_fields: []  # Cursor field(s). Fields in this stream to be used as a cursor for incremental replication (overrides Airbyte configuration's cursor_field)
+          airbyte_primary_key_fields: [] # Primary key field(s). Fields in this stream to be used as a primary key for deduplication (overrides Airbyte configuration's primary_key)
         # Schema of the table, a list of objects with `name` and `type`. If set to `[]`, will infer. 
         schema: []
     # Whether live querying is enabled for the plugin (creates a "live" tag in the
