@@ -76,14 +76,14 @@ class AirbyteDataSource(SyncableDataSource, ABC):
     table_params_schema = {
         "type": "object",
         "properties": {
-            "airbyte_cursor_fields": {
+            "airbyte_cursor_field": {
                 "type": "array",
                 "title": "Cursor field(s)",
                 "description": "Fields in this stream to be used as a cursor "
                 "for incremental replication (overrides Airbyte configuration's cursor_field)",
                 "items": {"type": "string"},
             },
-            "airbyte_primary_key_fields": {
+            "airbyte_primary_key_field": {
                 "type": "array",
                 "title": "Primary key field(s)",
                 "description": "Fields in this stream to be used as a primary key for deduplication "
