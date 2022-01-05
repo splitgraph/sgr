@@ -42,12 +42,15 @@ def get_comment(jsonschema_object: Any) -> str:
     return ". ".join(result).strip()
 
 
+_SCALARS = ("string", "integer", "boolean")
+
+
 def jsonschema_object_to_example(obj: Any, type_override=None) -> Any:
     """
     Get an example value for a JSONSchema property
     """
     obj_type = type_override or obj["type"]
-    if obj_type in ("string", "integer", "boolean"):
+    if obj_type in _SCALARS:
         if "examples" in obj:
             return obj["examples"][0]
         elif "default" in obj:
@@ -59,12 +62,16 @@ def jsonschema_object_to_example(obj: Any, type_override=None) -> Any:
         else:
             return {"string": "", "integer": 0, "boolean": False}.get(obj_type)
     elif obj_type == "array":
-        example = jsonschema_object_to_example(obj["items"])
-        seq = CS([example])
+        # For simple lists of scalars, don't drill down and just return an empty list
+        if obj["items"]["type"] in _SCALARS:
+            seq = CS([])
+        else:
+            example = jsonschema_object_to_example(obj["items"])
+            seq = CS([example])
         comment = get_comment(obj["items"])
         if comment:
             seq.yaml_set_start_comment(comment)
-        return [example]
+        return seq
     elif obj_type == "object":
         if "properties" in obj:
             return _get_object_example(obj)

@@ -155,6 +155,11 @@ class LoadableDataSource(DataSource, ABC):
                 schema=tmp_schema,
             )
             add_timestamp_tags(repository, image_hash)
+        except BaseException:
+            repository.rollback_engines()
+            repository.images.delete([image_hash])
+            repository.commit_engines()
+            raise
         finally:
             repository.object_engine.delete_schema(tmp_schema)
             repository.commit_engines()
