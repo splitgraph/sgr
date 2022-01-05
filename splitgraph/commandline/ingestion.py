@@ -97,6 +97,11 @@ def csv_export(image_spec, query, file, layered):
     is_flag=True,
     help="Skips checking that the dataframe is compatible with the target schema.",
 )
+@click.option(
+    "--ignore-empty-strings",
+    is_flag=True,
+    help="When doing schema inference, treat empty strings as NULLs",
+)
 def csv_import(
     repository,
     table,
@@ -108,6 +113,7 @@ def csv_import(
     separator,
     no_header,
     skip_schema_check,
+    ignore_empty_strings,
 ):
     """
     Import a CSV file into a checked-out Splitgraph repository. This doesn't create a new image, use `sgr commit`
@@ -143,7 +149,10 @@ def csv_import(
 
     type_overrides = dict(override_type or [])
     sg_schema = infer_sg_schema(
-        sample, override_types=type_overrides, primary_keys=primary_key, ignore_empty_strings=False
+        sample,
+        override_types=type_overrides,
+        primary_keys=primary_key,
+        ignore_empty_strings=ignore_empty_strings,
     )
     logging.debug("Using Splitgraph schema: %r", sg_schema)
 
