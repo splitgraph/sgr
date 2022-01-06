@@ -228,6 +228,7 @@ def compile_dbt_manifest(
         entrypoint = ["/bin/bash"]
         command = [
             "-c",
+            "dbt deps --project-dir /data/dbt_project && "
             "dbt compile --profiles-dir /data --project-dir /data/dbt_project --profile splitgraph",
         ]
         client.images.pull(dbt_image)
