@@ -175,6 +175,7 @@ def run_dbt_transformation_from_git(
         entrypoint = ["/bin/bash"]
         command = [
             "-c",
+            "dbt deps --project-dir /data/dbt_project && "
             "dbt run --profiles-dir /data --project-dir /data/dbt_project --profile splitgraph",
         ]
         if models is not None:
