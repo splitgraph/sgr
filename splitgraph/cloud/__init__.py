@@ -948,9 +948,9 @@ class GQLAPIClient:
             supports_mount=plugin_dict["supportsMount"],
         )
 
-    def get_all_plugins(self) -> List[Plugin]:
+    def get_all_plugins(self, seed: Optional[str] = None) -> List[Plugin]:
         response = self._gql(
-            {"query": GET_PLUGINS, "operationName": "ExternalPlugins"},
+            {"query": GET_PLUGINS, "operationName": "ExternalPlugins", "variables": {"seed": seed}},
             handle_errors=True,
             anonymous_ok=True,
         )

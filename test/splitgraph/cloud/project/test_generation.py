@@ -23,7 +23,9 @@ def test_generate_project_no_dbt(snapshot):
     ), TemporaryDirectory() as tmpdir:
         generate_project(
             GQLAPIClient("anyremote"),
-            seed=ProjectSeed(namespace="myns", plugins=["postgres_fdw", "airbyte-postgres"]),
+            seed=ProjectSeed(
+                namespace="myns", plugins=["postgres_fdw", "airbyte-postgres"]
+            ).encode(),
             basedir=tmpdir,
             github_repo="my/repo",
         )
@@ -63,7 +65,7 @@ def test_generate_project_with_dbt(snapshot):
             GQLAPIClient("anyremote"),
             seed=ProjectSeed(
                 namespace="myns", plugins=["postgres_fdw", "airbyte-postgres"], include_dbt=True
-            ),
+            ).encode(),
             basedir=tmpdir,
             github_repo="my/repo",
         )

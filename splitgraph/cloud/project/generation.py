@@ -172,11 +172,12 @@ class ProjectSeed(BaseModel):
 
 
 def generate_project(
-    api_client: GQLAPIClient, seed: ProjectSeed, basedir: Path, github_repo: Optional[str] = None
+    api_client: GQLAPIClient, seed: str, basedir: Path, github_repo: Optional[str] = None
 ) -> None:
-    all_plugins = {p.plugin_name: p for p in api_client.get_all_plugins()}
+    all_plugins = {p.plugin_name: p for p in api_client.get_all_plugins(seed)}
 
-    credentials, repositories, repository_info = generate_splitgraph_yml(all_plugins, seed)
+    decoded_seed = ProjectSeed.decode(seed)
+    credentials, repositories, repository_info = generate_splitgraph_yml(all_plugins, decoded_seed)
 
     yml = ruamel.yaml.YAML()
     with open(os.path.join(basedir, "splitgraph.credentials.yml"), "w") as f:
@@ -186,7 +187,7 @@ def generate_project(
         yml.dump(repositories, f)
 
     # Generate the dbt project
-    if seed.include_dbt:
+    if decoded_seed.include_dbt:
         dbt_repo, _, is_dbt = repository_info[-1]
         assert is_dbt
         dbt_sources = [r for r, _, is_dbt in repository_info if not is_dbt]

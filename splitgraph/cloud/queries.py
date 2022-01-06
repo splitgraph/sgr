@@ -244,8 +244,8 @@ START_LOAD = """mutation StartExternalRepositoryLoad(
 }
 """
 
-GET_PLUGINS = """query ExternalPlugins {
-  externalPlugins {
+GET_PLUGINS = """query ExternalPlugins($seed: String) {
+  externalPlugins(seed: $seed) {
     pluginName
     name
     description
