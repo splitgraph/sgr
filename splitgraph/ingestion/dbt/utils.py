@@ -127,7 +127,7 @@ def run_dbt_transformation_from_git(
     target_schema: str,
     repository_url: str,
     repository_ref: str = "master",
-    dbt_image: str = "airbyte/normalization:0.1.36",
+    dbt_image: str = "fishtownanalytics/dbt:1.0.0",
     source_schema_map: Optional[Dict[str, str]] = None,
     default_source_schema: Optional[str] = None,
     models: Optional[List[str]] = None,
@@ -200,7 +200,7 @@ def compile_dbt_manifest(
     engine: "PsycopgEngine",
     repository_url: str,
     repository_ref: str = "master",
-    dbt_image: str = "airbyte/normalization:0.1.36",
+    dbt_image: str = "fishtownanalytics/dbt:1.0.0",
 ) -> Dict[str, Any]:
 
     # Clone the repo into a temporary location and patch it to point to our staging schema
