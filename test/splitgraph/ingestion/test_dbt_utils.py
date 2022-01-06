@@ -59,14 +59,13 @@ def test_dbt_repo_build_manifest(local_engine_empty):
         "exposures",
         "macros",
         "metadata",
+        "metrics",
         "nodes",
         "parent_map",
         "selectors",
         "sources",
     ]
-    assert sorted(
-        [n["name"] for n in manifest["nodes"].values() if n["config"]["materialized"] == "table"]
-    ) == [
+    assert sorted([n["name"] for n in manifest["nodes"].values()]) == [
         "accepted_values_fct_orders_status__placed__shipped__completed__return_pending__returned",
         "accepted_values_stg_jaffle_shop__orders_status__placed__shipped__completed__return_pending__returned",
         "accepted_values_stg_jaffle_shop__payments_payment_method__credit_card__coupon__bank_transfer__gift_card",
@@ -95,6 +94,10 @@ def test_dbt_repo_build_manifest(local_engine_empty):
         "source_unique_raw_jaffle_shop_customers_customers_id",
         "source_unique_raw_jaffle_shop_orders_orders_id",
         "source_unique_raw_jaffle_shop_orders_payments_id",
+        "stg_jaffle_shop__customers",
+        "stg_jaffle_shop__orders",
+        "stg_jaffle_shop__payments",
+        "stg_stripe__payments",
         "unique_dim_customers_customer_id",
         "unique_fct_orders_order_id",
         "unique_stg_jaffle_shop__customers_customer_id",
