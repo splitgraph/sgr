@@ -1179,11 +1179,11 @@ def validate_c(repositories_file):
 def seed_c(remote, seed, github_repository, directory):
     """Generate a starter Splitgraph Cloud project from a seed."""
     from splitgraph.cloud import GQLAPIClient
-    from splitgraph.cloud.project.generation import ProjectSeed, generate_project
+    from splitgraph.cloud.project.generation import generate_project
 
     client = GQLAPIClient(remote)
 
-    generate_project(client, ProjectSeed.decode(seed), directory, github_repo=github_repository)
+    generate_project(client, seed, directory, github_repo=github_repository)
     click.echo(f"Splitgraph project generated in {os.path.abspath(directory)}.")
 
 
