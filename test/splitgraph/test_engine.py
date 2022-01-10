@@ -383,9 +383,8 @@ def test_object_storage_remounting(pg_repo_local):
         )
         is True
     )
-    # Commit again -- this should try to recreate the cstore foreign table but not do
-    # anything else since the object files and the table already exist.
-    with mock.patch("splitgraph.engine.postgres.engine.logging") as log:
+    # Commit again -- this should detect that the object has the same hash as an existing object
+    with mock.patch("splitgraph.core.fragment_manager.logging") as log:
         head = pg_repo_local.commit(snap_only=True)
         assert head.get_table("fruits").objects == [missing_object]
         assert any(
@@ -402,27 +401,21 @@ def test_object_storage_remounting(pg_repo_local):
     container = client.containers.get(SPLITGRAPH_ENGINE_CONTAINER)
     container.exec_run(["rm", "/var/lib/splitgraph/objects/%s.schema" % missing_object])
 
-    assert (
-        pg_repo_local.object_engine.run_sql(
-            "SELECT splitgraph_api.object_exists(%s)",
-            (missing_object,),
-            return_shape=ResultShape.ONE_ONE,
-        )
-        is False
-    )
-
+    assert pg_repo_local.object_engine.run_api_call("object_exists", missing_object) is False
     assert missing_object not in pg_repo_local.object_engine.run_sql(
         "SELECT splitgraph_api.list_objects()",
         return_shape=ResultShape.ONE_ONE,
     )
 
-    with mock.patch("splitgraph.engine.postgres.engine.logging") as log:
-        head = pg_repo_local.commit(snap_only=True)
-        assert head.get_table("fruits").objects == [missing_object]
-        assert any(
-            "no physical file, recreating" in c[1][0] and c[1][1] == missing_object
-            for c in log.info.mock_calls
-        )
+    # Do a commit and check the object is now back
+    head = pg_repo_local.commit(snap_only=True)
+    assert head.get_table("fruits").objects == [missing_object]
+
+    assert pg_repo_local.object_engine.run_api_call("object_exists", missing_object) is True
+    assert missing_object in pg_repo_local.object_engine.run_sql(
+        "SELECT splitgraph_api.list_objects()",
+        return_shape=ResultShape.ONE_ONE,
+    )
 
 
 def test_rename_object(pg_repo_local):

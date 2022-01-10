@@ -828,7 +828,11 @@ class FragmentManager(MetadataManager):
         )
         object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
         try:
-            if self.get_object_meta([object_id]):
+            # Check if the object metadata and the object files exist. Sometimes we might have
+            # one but not the other, in which case we want to get out of this invalid state.
+            if self.get_object_meta([object_id]) and self.object_engine.run_api_call(
+                "object_exists", object_id
+            ):
                 logging.info(
                     "Object %s already exists, continuing...",
                     object_id,
