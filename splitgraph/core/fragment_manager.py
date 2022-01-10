@@ -1084,8 +1084,8 @@ class FragmentManager(MetadataManager):
                 pbar.set_postfix(object=object_id[:10] + "...")
         finally:
             self.object_engine.run_sql(
-                SQL("DROP FUNCTION IF EXISTS {}._sg_tmp_read_cursor()").format(
-                    Identifier(source_schema)
+                SQL("CLOSE {};DROP FUNCTION IF EXISTS {}._sg_tmp_read_cursor()").format(
+                    Identifier(cursor_name), Identifier(source_schema)
                 )
             )
         return object_ids
