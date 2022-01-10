@@ -201,7 +201,7 @@ def test_commit_chunking_order(local_engine_empty):
     head = OUTPUT.commit(chunk_size=5)
     objects = head.get_table("test").objects
     # When queried without an order, we should get the natural order
-    # of values in the chunk (we copied from the original table, so they are in the same order)
+    # of values in the chunk (they were inserted in the same order as the key in this case)
     assert (
         local_engine_empty.run_sql(
             SQL("SELECT key FROM {}.{}").format(
@@ -209,7 +209,7 @@ def test_commit_chunking_order(local_engine_empty):
             ),
             return_shape=ResultShape.MANY_ONE,
         )
-        == list(range(5, 0, -1))
+        == list(range(1, 6))
     )
 
     # Commit again overwriting objects and changing the sort order
