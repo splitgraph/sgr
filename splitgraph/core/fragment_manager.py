@@ -827,43 +827,38 @@ class FragmentManager(MetadataManager):
             table_schema,
         )
         object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
+        try:
+            if self.get_object_meta([object_id]):
+                logging.info(
+                    "Object %s already exists, continuing...",
+                    object_id,
+                )
+                return object_id
 
-        with self.object_engine.savepoint("object_rename"):
-            try:
-                self.object_engine.rename_object(
-                    old_object_id=tmp_object_id,
-                    new_object_id=object_id,
-                )
-            except UniqueViolation:
-                # Someone registered this object (perhaps a concurrent pull) already.
-                logging.info(
-                    "Object %s for table %s/%s already exists, continuing...",
-                    object_id,
-                    source_schema,
-                    source_table,
-                )
-            finally:
-                self.object_engine.delete_objects([tmp_object_id])
-        with self.metadata_engine.savepoint("object_register"):
-            try:
-                self._register_object(
-                    object_id,
-                    namespace=namespace,
-                    insertion_hash=content_hash,
-                    deletion_hash="0" * 64,
-                    table_schema=table_schema,
-                    extra_indexes=extra_indexes,
-                    rows_inserted=rows_inserted,
-                    rows_deleted=0,
-                )
-            except UniqueViolation:
-                # Someone registered this object (perhaps a concurrent pull) already.
-                logging.info(
-                    "Object %s for table %s/%s already exists, continuing...",
-                    object_id,
-                    source_schema,
-                    source_table,
-                )
+            # Rename the object to its actual ID, index and register it.
+
+            # What if the object doesn't exist before the previous check but gets created on
+            # this line by a concurrent pull? The next two routines have upsert semantics. In the
+            # rare case of a race condition, we'll rename the existing object and overwrite it
+            # with the same file (since the hash is the same), then register it, overwriting object
+            # metadata with the same metadata.
+
+            self.object_engine.rename_object(
+                old_object_id=tmp_object_id,
+                new_object_id=object_id,
+            )
+            self._register_object(
+                object_id,
+                namespace=namespace,
+                insertion_hash=content_hash,
+                deletion_hash="0" * 64,
+                table_schema=table_schema,
+                extra_indexes=extra_indexes,
+                rows_inserted=rows_inserted,
+                rows_deleted=0,
+            )
+        finally:
+            self.object_engine.delete_objects([tmp_object_id])
 
         return object_id
 
