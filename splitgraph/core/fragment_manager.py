@@ -1015,52 +1015,52 @@ class FragmentManager(MetadataManager):
         cast_if_surrogate = SQL("::text" if surrogate_pk else "")
         object_ids = []
 
+        table_length = self.object_engine.run_sql(
+            SQL("SELECT COUNT(1) FROM {}.{}").format(
+                Identifier(source_schema), Identifier(source_table)
+            ),
+            return_shape=ResultShape.ONE_ONE,
+        )
+        total_chunks = int(ceil(table_length / chunk_size))
+        log_progress = total_chunks > 10
+        log_func = logging.info if log_progress else logging.debug
+
+        log_func("Storing and indexing the table")
+
+        # Declare a cursor that will read from the source table (with an order)
+        cursor_name = "_sg_commit_" + "".join(
+            random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits)
+            for _ in range(10)
+        )
+        cursor_query = (
+            SQL("DECLARE {} CURSOR FOR (SELECT").format(Identifier(cursor_name))
+            + SQL(",").join(Identifier(c.name) for c in table_schema)
+            + SQL("FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
+            + SQL(" ORDER BY (")
+            + pk_sql
+            + SQL(")")
+            + cast_if_surrogate
+            + SQL(");")
+        )
+
+        # Giant hack to work around the fact that we can't FETCH directly into a table.
+        # We create a function that returns a table with the same shape as ours, then get
+        # it to run the FETCH for us instead and call that.
+        # Thanks to https://stackoverflow.com/a/50855367
+        cursor_query += (
+            SQL("CREATE OR REPLACE FUNCTION {}._sg_tmp_read_cursor() RETURNS TABLE(").format(
+                Identifier(source_schema)
+            )
+            + SQL(",".join("{} %s " % col.pg_type for col in table_schema)).format(
+                *(Identifier(col.name) for col in table_schema)
+            )
+            + SQL(
+                ") AS 'BEGIN RETURN QUERY FETCH "
+                + str(int(chunk_size))
+                + " FROM {}; END' LANGUAGE plpgsql"
+            ).format(Identifier(cursor_name))
+        )
         try:
-            table_length = self.object_engine.run_sql(
-                SQL("SELECT COUNT(1) FROM {}.{}").format(
-                    Identifier(source_schema), Identifier(source_table)
-                ),
-                return_shape=ResultShape.ONE_ONE,
-            )
-            total_chunks = int(ceil(table_length / chunk_size))
-            log_progress = total_chunks > 10
-            log_func = logging.info if log_progress else logging.debug
-
-            log_func("Storing and indexing the table")
-
-            # Declare a cursor that will read from the source table (with an order)
-            cursor_name = "_sg_commit_" + "".join(
-                random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits)
-                for _ in range(10)
-            )
-            cursor_query = (
-                SQL("DECLARE {} CURSOR FOR (SELECT").format(Identifier(cursor_name))
-                + SQL(",").join(Identifier(c.name) for c in table_schema)
-                + SQL("FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
-                + SQL(" ORDER BY (")
-                + pk_sql
-                + SQL(")")
-                + cast_if_surrogate
-                + SQL(");")
-            )
-
-            # Giant hack to work around the fact that we can't FETCH directly into a table.
-            # We create a function that returns a table with the same shape as ours, then get
-            # it to run the FETCH for us instead and call that.
-            # Thanks to https://stackoverflow.com/a/50855367
-            cursor_query += (
-                SQL("CREATE OR REPLACE FUNCTION {}._sg_tmp_read_cursor() RETURNS TABLE(").format(
-                    Identifier(source_schema)
-                )
-                + SQL(",".join("{} %s " % col.pg_type for col in table_schema)).format(
-                    *(Identifier(col.name) for col in table_schema)
-                )
-                + SQL(
-                    ") AS 'BEGIN RETURN QUERY FETCH "
-                    + str(int(chunk_size))
-                    + " FROM {}; END' LANGUAGE plpgsql"
-                ).format(Identifier(cursor_name))
-            )
             self.object_engine.run_sql(cursor_query)
 
             pbar = tqdm(
