@@ -830,8 +830,10 @@ class FragmentManager(MetadataManager):
         try:
             # Check if the object metadata and the object files exist. Sometimes we might have
             # one but not the other, in which case we want to get out of this invalid state.
-            if self.get_object_meta([object_id]) and self.object_engine.run_api_call(
-                "object_exists", object_id
+            if (
+                self.get_object_meta([object_id])
+                and self.object_engine.run_api_call("object_exists", object_id)
+                and not overwrite
             ):
                 logging.info(
                     "Object %s already exists, continuing...",
