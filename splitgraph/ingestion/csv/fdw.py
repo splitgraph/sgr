@@ -200,6 +200,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 minio_response = self.s3_client.get_object(
                     bucket_name=self.s3_bucket, object_name=self.s3_object
                 )
+                assert minio_response
                 csv_options = self.csv_options
                 if csv_options.encoding == "" and not csv_options.autodetect_encoding:
                     csv_options = csv_options._replace(autodetect_encoding=True)
