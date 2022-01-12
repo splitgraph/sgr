@@ -1066,10 +1066,15 @@ class FragmentManager(MetadataManager):
                 pbar.set_postfix(object=object_id[:10] + "...")
         finally:
             self.object_engine.run_sql(
-                SQL("CLOSE {};DROP FUNCTION IF EXISTS {}._sg_tmp_read_cursor()").format(
-                    Identifier(cursor_name), Identifier(source_schema)
+                SQL("DROP FUNCTION IF EXISTS {}._sg_tmp_read_cursor()").format(
+                    Identifier(source_schema)
                 )
             )
+            # Drop the cursor if it exists
+            if self.object_engine.run_sql(
+                "SELECT 1 FROM pg_cursors WHERE name = %s", (cursor_name,)
+            ):
+                self.object_engine.run_sql(SQL("CLOSE ") + Identifier(cursor_name))
         return object_ids
 
     def filter_fragments(self, object_ids: List[str], table: "Table", quals: Any) -> List[str]:
