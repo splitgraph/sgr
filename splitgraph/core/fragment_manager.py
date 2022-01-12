@@ -758,29 +758,14 @@ class FragmentManager(MetadataManager):
         source_schema: Optional[str],
         source_table: Optional[str],
         namespace: str,
+        table_schema: TableSchema,
         source_function: Optional[Composable] = None,
-        chunk_condition_sql: Optional[Composable] = None,
-        chunk_condition_args: Optional[List[Any]] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
-        table_schema: Optional[TableSchema] = None,
     ) -> str:
-        if source_schema == "pg_temp" and not table_schema:
-            raise ValueError("Cannot infer the schema of temporary tables, pass in table_schema!")
         if not source_schema and not source_table and not source_function:
             raise ValueError("Pass either source_schema/table or source_function!")
-
-        # Fragments can't be reused in tables with different schemas
-        # even if the contents match (e.g. '1' vs 1). Hence, include the table schema
-        # in the object ID as well.
-        if not table_schema:
-            if not source_schema or not source_table:
-                raise ValueError(
-                    "Cannot infer the schema when querying from a function, pass in table_schema!"
-                )
-            table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
-
         schema_hash = self._calculate_schema_hash(table_schema)
 
         # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
@@ -803,10 +788,6 @@ class FragmentManager(MetadataManager):
                 Identifier(source_schema), Identifier(source_table)
             )
         source_query_args = None
-
-        if chunk_condition_sql:
-            source_query += SQL(" ") + chunk_condition_sql
-            source_query_args = chunk_condition_args
 
         if in_fragment_order:
             source_query += SQL(" ") + self._get_order_by_clause(in_fragment_order, table_schema)

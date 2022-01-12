@@ -1051,12 +1051,6 @@ def test_create_object_out_of_band(local_engine_empty):
     local_engine_empty.run_sql("INSERT INTO pg_temp.test VALUES (1, 'one'), (2, 'two')")
 
     object_manager = ObjectManager(object_engine=local_engine_empty)
-    with pytest.raises(ValueError):
-        # Test passing pg_temp without a schema fails (temporary tables aren't
-        # in information_schema and so we can't infer their schema)
-        object_manager.create_base_fragment(
-            source_schema="pg_temp", source_table="test", namespace="test"
-        )
 
     object_id = object_manager.create_base_fragment(
         source_schema="pg_temp", source_table="test", namespace="test", table_schema=table_schema
