@@ -7,11 +7,13 @@ import itertools
 import json
 import logging
 import operator
+import random
+import string
 import struct
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import reduce
 from hashlib import sha256
+from math import ceil
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 from psycopg2._json import Json
@@ -19,7 +21,7 @@ from psycopg2.errors import UniqueViolation
 from psycopg2.sql import SQL, Composable, Identifier
 from tqdm import tqdm
 
-from splitgraph.config import CONFIG, SG_CMD_ASCII, SPLITGRAPH_API_SCHEMA, get_singleton
+from splitgraph.config import SG_CMD_ASCII, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.indexing.bloom import filter_bloom_index, generate_bloom_index
 from splitgraph.core.indexing.range import filter_range_index, generate_range_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
@@ -753,98 +755,97 @@ class FragmentManager(MetadataManager):
 
     def create_base_fragment(
         self,
-        source_schema: str,
-        source_table: str,
+        source_schema: Optional[str],
+        source_table: Optional[str],
         namespace: str,
-        chunk_condition_sql: Optional[Composable] = None,
-        chunk_condition_args: Optional[List[Any]] = None,
+        table_schema: TableSchema,
+        source_function: Optional[Composable] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
-        table_schema: Optional[TableSchema] = None,
     ) -> str:
-        if source_schema == "pg_temp" and not table_schema:
-            raise ValueError("Cannot infer the schema of temporary tables, pass in table_schema!")
-
-        # Fragments can't be reused in tables with different schemas
-        # even if the contents match (e.g. '1' vs 1). Hence, include the table schema
-        # in the object ID as well.
-        table_schema = table_schema or self.object_engine.get_full_table_schema(
-            source_schema, source_table
-        )
-
+        if not source_schema and not source_table and not source_function:
+            raise ValueError("Pass either source_schema/table or source_function!")
         schema_hash = self._calculate_schema_hash(table_schema)
-        # Get content hash for this chunk.
-        content_hash, rows_inserted = self.calculate_content_hash(
-            source_schema,
-            source_table,
-            table_schema,
-            chunk_condition_sql=chunk_condition_sql,
-            chunk_condition_args=chunk_condition_args,
-        )
 
         # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
         # In addition, table names can't start with a number (they can but every invocation has to
         # be quoted) so we have to drop 2 characters from the 64-character hash and append an "o".
-        object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
 
-        with self.object_engine.savepoint("object_rename"):
-            # Store the object adding the extra update/delete column (always True in this case
-            # since we don't overwrite any rows) and filtering on the chunk ID.
+        # Store the object adding the extra update/delete column (always True in this case
+        # since we don't overwrite any rows) and filtering on the chunk ID.
 
-            source_query = (
-                SQL("SELECT ")
-                + SQL(",").join(Identifier(c.name) for c in table_schema)
-                + SQL(",TRUE AS ")
-                + Identifier(SG_UD_FLAG)
-                + SQL("FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
+        source_query = (
+            SQL("SELECT ")
+            + SQL(",").join(Identifier(c.name) for c in table_schema)
+            + SQL(",TRUE AS ")
+            + Identifier(SG_UD_FLAG)
+        )
+        if source_function:
+            source_query += SQL(" FROM ") + source_function
+        else:
+            source_query += SQL("FROM {}.{}").format(
+                Identifier(source_schema), Identifier(source_table)
             )
-            source_query_args = None
+        source_query_args = None
 
-            if chunk_condition_sql:
-                source_query += SQL(" ") + chunk_condition_sql
-                source_query_args = chunk_condition_args
+        if in_fragment_order:
+            source_query += SQL(" ") + self._get_order_by_clause(in_fragment_order, table_schema)
 
-            if in_fragment_order:
-                source_query += SQL(" ") + self._get_order_by_clause(
-                    in_fragment_order, table_schema
-                )
-            try:
-                self.object_engine.store_object(
-                    object_id=object_id,
-                    source_query=source_query,
-                    schema_spec=add_ud_flag_column(table_schema),
-                    source_query_args=source_query_args,
-                    overwrite=overwrite,
-                )
-            except UniqueViolation:
-                # Someone registered this object (perhaps a concurrent pull) already.
+        tmp_object_id = get_temporary_table_id()
+        self.object_engine.store_object(
+            object_id=tmp_object_id,
+            source_query=source_query,
+            schema_spec=add_ud_flag_column(table_schema),
+            source_query_args=source_query_args,
+            overwrite=overwrite,
+        )
+
+        # Get content hash for this chunk.
+        content_hash, rows_inserted = self.calculate_content_hash(
+            SPLITGRAPH_META_SCHEMA,
+            tmp_object_id,
+            table_schema,
+        )
+        object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
+        try:
+            # Check if the object metadata and the object files exist. Sometimes we might have
+            # one but not the other, in which case we want to get out of this invalid state.
+            if (
+                self.get_object_meta([object_id])
+                and self.object_engine.run_api_call("object_exists", object_id)
+                and not overwrite
+            ):
                 logging.info(
-                    "Object %s for table %s/%s already exists, continuing...",
+                    "Object %s already exists, continuing...",
                     object_id,
-                    source_schema,
-                    source_table,
                 )
-        with self.metadata_engine.savepoint("object_register"):
-            try:
-                self._register_object(
-                    object_id,
-                    namespace=namespace,
-                    insertion_hash=content_hash,
-                    deletion_hash="0" * 64,
-                    table_schema=table_schema,
-                    extra_indexes=extra_indexes,
-                    rows_inserted=rows_inserted,
-                    rows_deleted=0,
-                )
-            except UniqueViolation:
-                # Someone registered this object (perhaps a concurrent pull) already.
-                logging.info(
-                    "Object %s for table %s/%s already exists, continuing...",
-                    object_id,
-                    source_schema,
-                    source_table,
-                )
+                return object_id
+
+            # Rename the object to its actual ID, index and register it.
+
+            # What if the object doesn't exist before the previous check but gets created on
+            # this line by a concurrent pull? The next two routines have upsert semantics. In the
+            # rare case of a race condition, we'll rename the existing object and overwrite it
+            # with the same file (since the hash is the same), then register it, overwriting object
+            # metadata with the same metadata.
+
+            self.object_engine.rename_object(
+                old_object_id=tmp_object_id,
+                new_object_id=object_id,
+            )
+            self._register_object(
+                object_id,
+                namespace=namespace,
+                insertion_hash=content_hash,
+                deletion_hash="0" * 64,
+                table_schema=table_schema,
+                extra_indexes=extra_indexes,
+                rows_inserted=rows_inserted,
+                rows_deleted=0,
+            )
+        finally:
+            self.object_engine.delete_objects([tmp_object_id])
 
         return object_id
 
@@ -981,115 +982,99 @@ class FragmentManager(MetadataManager):
         # into a TEMPORARY table, then create an index on that partition key, then copy data
         # out of it into CStore. This still meant having to copy the table over twice.
         #
-        # Current incarnation: create a temporary table with partition boundaries and then
-        # use that as the chunking condition (lower <= pk < upper)
-        logging.info("Processing table %s", source_table)
-        temp_table = "_sg_tmp_partition_" + source_table
+        # Fifth attempt: create a temporary table with partition boundaries and then
+        # use that as the chunking condition (lower <= pk < upper). This led to poor performance
+        # for tables without a primary key, as well as foreign tables (lots of round trips).
+        #
+        # Current attempt: using a named cursor and FETCHing a certain number of rows into separate
+        # cstore_fdw tables to get this done in a single table scan.
 
+        logging.info("Processing table %s", source_table)
         pk_sql = SQL(",").join(Identifier(p) for p in table_pk)
 
         # If we don't have a PK, we cast the whole row to text when partitioning
-        # the table as well as selecting from it (add an _sg_surrogate_pk col)
+        # the table as well as selecting from it
         cast_if_surrogate = SQL("::text" if surrogate_pk else "")
-        # Compute the partition boundaries
-        tmp_table_query = (
-            SQL("CREATE TABLE {}.{} AS WITH _row_nums AS (SELECT").format(
-                Identifier(source_schema), Identifier(temp_table)
-            )
-            + SQL("(ROW_NUMBER() OVER (ORDER BY (")
+        object_ids = []
+
+        table_length = self.object_engine.run_sql(
+            SQL("SELECT COUNT(1) FROM {}.{}").format(
+                Identifier(source_schema), Identifier(source_table)
+            ),
+            return_shape=ResultShape.ONE_ONE,
+        )
+        total_chunks = int(ceil(table_length / chunk_size))
+        log_progress = total_chunks > 10
+        log_func = logging.info if log_progress else logging.debug
+
+        log_func("Storing and indexing the table")
+
+        # Declare a cursor that will read from the source table (with an order)
+        cursor_name = "_sg_commit_" + "".join(
+            random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits)
+            for _ in range(10)
+        )
+        cursor_query = (
+            SQL("DECLARE {} CURSOR FOR (SELECT").format(Identifier(cursor_name))
+            + SQL(",").join(Identifier(c.name) for c in table_schema)
+            + SQL("FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
+            + SQL(" ORDER BY (")
             + pk_sql
             + SQL(")")
             + cast_if_surrogate
-            + SQL(") - 1) _sg_tmp_row_num, ")
-            + (SQL("(") + pk_sql + SQL(")::text AS _sg_surrogate_pk") if surrogate_pk else pk_sql)
-            + SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
-            + SQL(") SELECT ")
-            + SQL("_sg_tmp_row_num / %s AS _sg_tmp_partition_id, ")
-            + (SQL("_sg_surrogate_pk") if surrogate_pk else pk_sql)
-            + SQL(" FROM _row_nums WHERE _sg_tmp_row_num %% %s = 0")
+            + SQL(");")
         )
-        object_ids = []
 
-        try:
-            self.object_engine.run_sql(tmp_table_query, (chunk_size, chunk_size))
-
-            all_chunks = self.object_engine.run_sql(
-                SQL("SELECT * FROM {}.{} ORDER BY _sg_tmp_partition_id").format(
-                    Identifier(source_schema), Identifier(temp_table)
-                )
+        # Giant hack to work around the fact that we can't FETCH directly into a table.
+        # We create a function that returns a table with the same shape as ours, then get
+        # it to run the FETCH for us instead and call that.
+        # Thanks to https://stackoverflow.com/a/50855367
+        cursor_query += (
+            SQL("CREATE OR REPLACE FUNCTION {}._sg_tmp_read_cursor() RETURNS TABLE(").format(
+                Identifier(source_schema)
             )
-            logging.debug("Chunk boundaries: %s", all_chunks)
+            + SQL(",".join("{} %s " % col.pg_type for col in table_schema)).format(
+                *(Identifier(col.name) for col in table_schema)
+            )
+            + SQL(
+                ") AS 'BEGIN RETURN QUERY FETCH "
+                + str(int(chunk_size))
+                + " FROM {}; END' LANGUAGE plpgsql"
+            ).format(Identifier(cursor_name))
+        )
+        try:
+            self.object_engine.run_sql(cursor_query)
 
-            log_progress = len(all_chunks) > 10
-            log_func = logging.info if log_progress else logging.debug
-
-            log_func("Storing and indexing the table")
-
-            worker_threads = int(get_singleton(CONFIG, "SG_ENGINE_POOL")) - 1
-
-            def _store_object(chunk_id: int):
-                # Build the condition for the chunk. For some reason, this:
-                #
-                #   WHERE [pk] >= (SELECT [pk] FROM [partition_table] WHERE partition_id = chunk_id)
-                #
-                # is 10x slower than plugging the PK in directly
-                # https://stackoverflow.com/questions/14987321/postgresql-in-operator-with-subquery-poor-performance ?
-
-                _pk_placeholder = (
-                    ",".join(itertools.repeat("%s", len(table_pk))) if not surrogate_pk else "%s"
-                )
-                chunk_condition = (
-                    SQL("WHERE (")
-                    + pk_sql
-                    + SQL(")")
-                    + cast_if_surrogate
-                    + SQL(" >= (" + _pk_placeholder + ")")
-                )
-                chunk_args = all_chunks[chunk_id][1:]
-                if chunk_id + 1 < len(all_chunks):
-                    chunk_condition += (
-                        SQL(" AND (")
-                        + pk_sql
-                        + SQL(")")
-                        + cast_if_surrogate
-                        + SQL(" < (" + _pk_placeholder + ")")
-                    )
-                    chunk_args = chunk_args + all_chunks[chunk_id + 1][1:]
-                logging.debug(
-                    "Storing chunk %s. Condition: %s. Boundaries: %s",
-                    chunk_id,
-                    chunk_condition.as_string(self.object_engine.connection),
-                    chunk_args,
-                )
-                new_fragment = self.create_base_fragment(
-                    source_schema,
-                    source_table,
+            pbar = tqdm(
+                range(total_chunks), unit="objs", ascii=SG_CMD_ASCII, disable=not log_progress
+            )
+            for _ in pbar:
+                object_id = self.create_base_fragment(
+                    None,
+                    None,
                     repository.namespace,
-                    chunk_condition_sql=chunk_condition,
-                    chunk_condition_args=chunk_args,
+                    source_function=SQL("{}._sg_tmp_read_cursor()").format(
+                        Identifier(source_schema)
+                    ),
                     extra_indexes=extra_indexes,
                     in_fragment_order=in_fragment_order,
                     overwrite=overwrite,
                     table_schema=table_schema,
                 )
-                self.object_engine.commit()
-                self.metadata_engine.commit()
-                return new_fragment
 
-            with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
-                pbar = tqdm(
-                    tpe.map(_store_object, range(0, len(all_chunks))),
-                    total=len(all_chunks),
-                    unit="objs",
-                    ascii=SG_CMD_ASCII,
-                    disable=not log_progress,
-                )
-                for object_id in pbar:
-                    object_ids.append(object_id)
-                    pbar.set_postfix(object=object_id[:10] + "...")
+                object_ids.append(object_id)
+                pbar.set_postfix(object=object_id[:10] + "...")
         finally:
-            self.object_engine.close_others()
-            self.object_engine.delete_table(source_schema, temp_table)
+            self.object_engine.run_sql(
+                SQL("DROP FUNCTION IF EXISTS {}._sg_tmp_read_cursor()").format(
+                    Identifier(source_schema)
+                )
+            )
+            # Drop the cursor if it exists
+            if self.object_engine.run_sql(
+                "SELECT 1 FROM pg_cursors WHERE name = %s", (cursor_name,)
+            ):
+                self.object_engine.run_sql(SQL("CLOSE ") + Identifier(cursor_name))
         return object_ids
 
     def filter_fragments(self, object_ids: List[str], table: "Table", quals: Any) -> List[str]:
