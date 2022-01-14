@@ -26,11 +26,10 @@ def _extract_queries_from_explain(result):
 
 
 _bare_sequential_scan = {"query": {"bool": {"must": []}}}
-_bare_filtering_query = {"query": {"bool": {"must": [{"range": {"age": {"gt": 30}}}]}}}
 
 
 @pytest.mark.mounting
-def test_elasticsearch_aggregation_functions_only(local_engine_empty):
+def test_simple_aggregation_functions(local_engine_empty):
     _mount_elasticsearch()
 
     query = """
@@ -62,7 +61,38 @@ def test_elasticsearch_aggregation_functions_only(local_engine_empty):
 
 
 @pytest.mark.mounting
-def test_elasticsearch_gropuing_clauses_only(snapshot, local_engine_empty):
+def test_simple_aggregation_functions_filtering(local_engine_empty):
+    _mount_elasticsearch()
+    query = """
+    SELECT avg(age), max(balance)
+    FROM es.account
+    WHERE balance > 20000 AND age < 30
+    """
+
+    # Ensure query is going to be aggregated on the foreign server
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {
+            "bool": {
+                "must": [{"range": {"balance": {"gt": "20000"}}}, {"range": {"age": {"lt": 30}}}]
+            }
+        },
+        "aggs": {
+            "avg.age": {"avg": {"field": "age"}},
+            "max.balance": {"max": {"field": "balance"}},
+        },
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query)
+    assert len(result) == 1
+
+    # Assert aggregation result
+    assert result[0] == (Decimal("24.439862542955325"), 49795.0)
+
+
+@pytest.mark.mounting
+def test_simple_grouping_clauses(snapshot, local_engine_empty):
     _mount_elasticsearch()
 
     # Single column grouping
@@ -115,7 +145,50 @@ def test_elasticsearch_gropuing_clauses_only(snapshot, local_engine_empty):
 
 
 @pytest.mark.mounting
-def test_elasticsearch_grouping_and_aggregations_bare(snapshot, local_engine_empty):
+def test_simple_grouping_clauses_filtering(snapshot, local_engine_empty):
+    _mount_elasticsearch()
+
+    # Single column grouping
+    query = "SELECT state, gender FROM es.account WHERE state IN ('TX', 'WA', 'CO') GROUP BY state, gender"
+
+    # Ensure grouping is going to be pushed down
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "bool": {
+                            "should": [
+                                {"term": {"state": "TX"}},
+                                {"term": {"state": "WA"}},
+                                {"term": {"state": "CO"}},
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "aggs": {
+            "group_buckets": {
+                "composite": {
+                    "sources": [
+                        {"state": {"terms": {"field": "state"}}},
+                        {"gender": {"terms": {"field": "gender"}}},
+                    ],
+                    "size": 5,
+                }
+            }
+        },
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query)
+    assert result == [("CO", "F"), ("CO", "M"), ("TX", "F"), ("TX", "M"), ("WA", "F"), ("WA", "M")]
+
+
+@pytest.mark.mounting
+def test_grouping_and_aggregations_bare(snapshot, local_engine_empty):
     _mount_elasticsearch()
 
     # Aggregations functions and grouping bare combination
@@ -174,7 +247,61 @@ def test_elasticsearch_grouping_and_aggregations_bare(snapshot, local_engine_emp
 
 
 @pytest.mark.mounting
-def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
+def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
+    _mount_elasticsearch()
+
+    # Aggregations functions and grouping bare combination
+    query = """
+    SELECT state, age, min(balance)
+    FROM es.account
+    WHERE gender = 'M' AND age = ANY(ARRAY[25, 35])
+    GROUP BY state, age
+    """
+
+    # Ensure query is going to be pushed down
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "bool": {
+                            "should": [
+                                {"term": {"age": 25}},
+                                {"term": {"age": 35}},
+                            ]
+                        }
+                    },
+                    {"term": {"gender": "M"}},
+                ]
+            }
+        },
+        "aggs": {
+            "group_buckets": {
+                "composite": {
+                    "sources": [
+                        {"state": {"terms": {"field": "state"}}},
+                        {"age": {"terms": {"field": "age"}}},
+                    ],
+                    "size": 5,
+                },
+                "aggregations": {
+                    "min.balance": {"min": {"field": "balance"}},
+                },
+            }
+        },
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query)
+    assert len(result) == 45
+
+    # Assert aggregation result
+    snapshot.assert_match(yaml.dump(result), "min_balance_state_age_filtered.yml")
+
+
+@pytest.mark.mounting
+def test_agg_subquery_pushdown(local_engine_empty):
     """
     Most of the magic in these examples is coming from PG, not our Multicorn code
     (i.e. discarding redundant targets from subqueries).
@@ -284,7 +411,7 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
 
 
 @pytest.mark.mounting
-def test_elasticsearch_aggregations_join_combinations(snapshot, local_engine_empty):
+def test_aggregations_join_combinations(snapshot, local_engine_empty):
     # Sub-aggregations in a join are pushed down
     query = """
     SELECT t1.*, t2.min FROM (
@@ -352,7 +479,7 @@ def test_elasticsearch_aggregations_join_combinations(snapshot, local_engine_emp
 
 
 @pytest.mark.mounting
-def test_elasticsearch_not_pushed_down(local_engine_empty):
+def test_not_pushed_down(local_engine_empty):
     _mount_elasticsearch()
 
     # COUNT STAR is not going to be pushed down
