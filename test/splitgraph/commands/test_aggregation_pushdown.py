@@ -42,6 +42,7 @@ def test_elasticsearch_aggregation_functions_only(local_engine_empty):
     # Ensure query is going to be aggregated on the foreign server
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "max.account_number": {"max": {"field": "account_number"}},
             "avg.balance": {"avg": {"field": "balance"}},
@@ -49,7 +50,7 @@ def test_elasticsearch_aggregation_functions_only(local_engine_empty):
             "sum.balance": {"sum": {"field": "balance"}},
             "min.age": {"min": {"field": "age"}},
             "avg.age": {"avg": {"field": "age"}},
-        }
+        },
     }
 
     # Ensure results are correct
@@ -70,11 +71,12 @@ def test_elasticsearch_gropuing_clauses_only(snapshot, local_engine_empty):
     # Ensure grouping is going to be pushed down
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {"sources": [{"state": {"terms": {"field": "state"}}}], "size": 5}
             }
-        }
+        },
     }
 
     # Ensure results are correct
@@ -90,6 +92,7 @@ def test_elasticsearch_gropuing_clauses_only(snapshot, local_engine_empty):
     # Ensure grouping is going to be pushed down
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -100,7 +103,7 @@ def test_elasticsearch_gropuing_clauses_only(snapshot, local_engine_empty):
                     "size": 5,
                 }
             }
-        }
+        },
     }
 
     # Ensure results are correct
@@ -121,6 +124,7 @@ def test_elasticsearch_grouping_and_aggregations_bare(snapshot, local_engine_emp
     # Ensure query is going to be pushed down
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {"sources": [{"gender": {"terms": {"field": "gender"}}}], "size": 5},
@@ -129,7 +133,7 @@ def test_elasticsearch_grouping_and_aggregations_bare(snapshot, local_engine_emp
                     "avg.age": {"avg": {"field": "age"}},
                 },
             }
-        }
+        },
     }
 
     # Ensure results are correct
@@ -149,6 +153,7 @@ def test_elasticsearch_grouping_and_aggregations_bare(snapshot, local_engine_emp
     # Ensure query is going to be pushed down
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {"sources": [{"age": {"terms": {"field": "age"}}}], "size": 5},
@@ -157,7 +162,7 @@ def test_elasticsearch_grouping_and_aggregations_bare(snapshot, local_engine_emp
                     "min.balance": {"min": {"field": "balance"}},
                 },
             }
-        }
+        },
     }
 
     # Ensure results are correct
@@ -189,6 +194,7 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
     # Ensure only the relevant part is pushed down (i.e. no aggregations as they are redundant)
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -199,7 +205,7 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
                     "size": 5,
                 }
             }
-        }
+        },
     }
 
     # Ensure results are correct
@@ -220,6 +226,7 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
     # Ensure only the relevant part is pushed down (no redundant aggregations, i.e. only min)
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -231,7 +238,7 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
                 },
                 "aggregations": {"min.age": {"min": {"field": "age"}}},
             }
-        }
+        },
     }
 
     # Ensure results are correct
@@ -253,6 +260,7 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
     # Only the subquery is pushed-down, with no redundant aggregations
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -264,7 +272,7 @@ def test_elasticsearch_agg_subquery_pushdown(local_engine_empty):
                 },
                 "aggregations": {"max.balance": {"max": {"field": "balance"}}},
             }
-        }
+        },
     }
 
     # Ensure results are correct
@@ -297,6 +305,7 @@ def test_elasticsearch_aggregations_join_combinations(snapshot, local_engine_emp
     queries = _extract_queries_from_explain(result)
 
     assert queries[0] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -305,9 +314,10 @@ def test_elasticsearch_aggregations_join_combinations(snapshot, local_engine_emp
                 },
                 "aggregations": {"max.balance": {"max": {"field": "balance"}}},
             }
-        }
+        },
     }
     assert queries[1] == {
+        "query": {"bool": {"must": []}},
         "aggs": {
             "group_buckets": {
                 "composite": {
@@ -316,7 +326,7 @@ def test_elasticsearch_aggregations_join_combinations(snapshot, local_engine_emp
                 },
                 "aggregations": {"min.balance": {"min": {"field": "balance"}}},
             }
-        }
+        },
     }
 
     # Ensure results are correct
@@ -344,22 +354,6 @@ def test_elasticsearch_aggregations_join_combinations(snapshot, local_engine_emp
 @pytest.mark.mounting
 def test_elasticsearch_not_pushed_down(local_engine_empty):
     _mount_elasticsearch()
-
-    # Aggregation only filtering is not going to be pushed down
-    result = get_engine().run_sql(
-        "EXPLAIN SELECT max(balance), avg(age) FROM es.account WHERE age > 30"
-    )
-    assert _extract_queries_from_explain(result)[0] == _bare_filtering_query
-
-    # Grouping only filtering is not going to be pushed down
-    result = get_engine().run_sql("EXPLAIN SELECT age FROM es.account WHERE age > 30 GROUP BY age")
-    assert _extract_queries_from_explain(result)[0] == _bare_filtering_query
-
-    # Aggregation and grouping filtering is not going to be pushed down
-    result = get_engine().run_sql(
-        "EXPLAIN SELECT age, min(balance) FROM es.account WHERE age > 30 GROUP BY age"
-    )
-    assert _extract_queries_from_explain(result)[0] == _bare_filtering_query
 
     # COUNT STAR is not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT COUNT(*) FROM es.account")
