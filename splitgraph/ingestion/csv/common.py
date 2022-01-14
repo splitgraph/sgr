@@ -171,12 +171,12 @@ def pad_csv_row(row: List[str], num_cols: int, row_number: int) -> List[str]:
     row_len = len(row)
     if row_len > num_cols:
         log_to_postgres(
-            "Row %d has %d column(s), truncating" % (row_number, row_len), level=logging.WARNING
+            "Row %d has %d column(s), truncating" % (row_number, row_len), level=logging.DEBUG
         )
         row = row[:num_cols]
     elif row_len < num_cols:
         log_to_postgres(
-            "Row %d has %d column(s), padding" % (row_number, row_len), level=logging.WARNING
+            "Row %d has %d column(s), padding" % (row_number, row_len), level=logging.DEBUG
         )
         row.extend([""] * (num_cols - row_len))
     return row
