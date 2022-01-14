@@ -445,17 +445,35 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
 
     credentials_schema = {
         "type": "object",
-        "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
+        "properties": {
+            "username": {
+                "type": "string",
+                "title": "Username",
+            },
+            "password": {
+                "type": "string",
+                "title": "Password",
+            },
+        },
         "required": ["username", "password"],
     }
 
     params_schema = {
         "type": "object",
         "properties": {
-            "host": {"type": "string", "description": "Remote hostname"},
-            "port": {"type": "integer", "description": "Port"},
-            "dbname": {"type": "string", "description": "Database name"},
-            "remote_schema": {"type": "string", "description": "Remote schema name"},
+            "host": {
+                "type": "string",
+                "title": "Host",
+                "description": "Hostname or IP address of the PostgreSQL instance",
+            },
+            "port": {"type": "integer", "title": "Port", "description": "Port of the database"},
+            "dbname": {"type": "string", "title": "Database", "description": "Database name"},
+            "remote_schema": {
+                "type": "string",
+                "title": "Schema name",
+                "description": "Schema name to import data from",
+                "default": "public",
+            },
         },
         "required": ["host", "port", "dbname", "remote_schema"],
     }
@@ -503,15 +521,18 @@ If a dictionary, must have the format
 class MongoDataSource(ForeignDataWrapperDataSource):
     credentials_schema = {
         "type": "object",
-        "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
+        "properties": {
+            "username": {"type": "string", "title": "Username"},
+            "password": {"type": "string", "title": "Password"},
+        },
         "required": ["username", "password"],
     }
 
     params_schema = {
         "type": "object",
         "properties": {
-            "host": {"type": "string"},
-            "port": {"type": "integer"},
+            "host": {"type": "string", "title": "Host"},
+            "port": {"type": "integer", "title": "Port"},
         },
         "required": ["host", "port"],
     }
@@ -519,8 +540,8 @@ class MongoDataSource(ForeignDataWrapperDataSource):
     table_params_schema = {
         "type": "object",
         "properties": {
-            "database": {"type": "string"},
-            "collection": {"type": "string"},
+            "database": {"type": "string", "title": "Database name"},
+            "collection": {"type": "string", "title": "Collection name"},
         },
         "required": ["database", "collection"],
     }
@@ -573,16 +594,19 @@ Mounts one or more collections on a remote Mongo database as a set of foreign ta
 class MySQLDataSource(ForeignDataWrapperDataSource):
     credentials_schema = {
         "type": "object",
-        "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
+        "properties": {
+            "username": {"type": "string", "title": "Username"},
+            "password": {"type": "string", "title": "Password"},
+        },
         "required": ["username", "password"],
     }
 
     params_schema = {
         "type": "object",
         "properties": {
-            "host": {"type": "string"},
-            "port": {"type": "integer"},
-            "dbname": {"type": "string"},
+            "host": {"type": "string", "title": "Host"},
+            "port": {"type": "integer", "title": "Port"},
+            "dbname": {"type": "string", "title": "Database name"},
         },
         "required": ["host", "port", "dbname"],
     }
@@ -634,16 +658,16 @@ class ElasticSearchDataSource(ForeignDataWrapperDataSource):
     credentials_schema = {
         "type": "object",
         "properties": {
-            "username": {"type": "string"},
-            "password": {"type": "string"},
+            "username": {"type": "string", "title": "Username"},
+            "password": {"type": "string", "title": "Password"},
         },
     }
 
     params_schema = {
         "type": "object",
         "properties": {
-            "host": {"type": "string"},
-            "port": {"type": "integer"},
+            "host": {"type": "string", "title": "Host"},
+            "port": {"type": "integer", "title": "Port"},
         },
         "required": ["host", "port"],
     }
@@ -653,27 +677,36 @@ class ElasticSearchDataSource(ForeignDataWrapperDataSource):
         "properties": {
             "index": {
                 "type": "string",
+                "title": "Index name or pattern",
                 "description": 'ES index name or pattern to use, for example, "events-*"',
             },
             "type": {
                 "type": "string",
+                "title": "doc_type (ES6 or earlier)",
                 "description": "Pre-ES7 doc_type, not required in ES7 or later",
             },
             "query_column": {
                 "type": "string",
-                "description": "Name of the column to use to pass queries in",
+                "title": "Query column name",
+                "description": "Allows you to do `WHERE query = '{" "match" ": ...}'`",
+                "default": "query",
             },
             "score_column": {
                 "type": "string",
+                "title": "Score column name",
                 "description": "Name of the column with the document score",
             },
             "scroll_size": {
                 "type": "integer",
+                "title": "Scroll size",
                 "description": "Fetch size, default 1000",
+                "default": 1000,
             },
             "scroll_duration": {
                 "type": "string",
+                "title": "Scroll duration",
                 "description": "How long to hold the scroll context open for, default 10m",
+                "default": "10m",
             },
         },
         "required": ["index"],

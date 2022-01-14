@@ -37,25 +37,39 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
     credentials_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
-            "username": {"type": "string", "description": "Username"},
+            "username": {"type": "string", "title": "Username", "description": "Username"},
             "secret": {
                 "type": "object",
+                "title": "Connection secret",
                 "oneOf": [
                     {
                         "type": "object",
                         "required": ["secret_type", "password"],
                         "properties": {
-                            "secret_type": {"type": "string", "const": "password"},
-                            "password": {"type": "string", "description": "Password"},
+                            "secret_type": {
+                                "type": "string",
+                                "const": "password",
+                                "title": "Secret type",
+                            },
+                            "password": {
+                                "type": "string",
+                                "title": "Password",
+                                "description": "Password",
+                            },
                         },
                     },
                     {
                         "type": "object",
                         "required": ["secret_type", "private_key"],
                         "properties": {
-                            "secret_type": {"type": "string", "const": "private_key"},
+                            "secret_type": {
+                                "type": "string",
+                                "const": "private_key",
+                                "title": "Secret type",
+                            },
                             "private_key": {
                                 "type": "string",
+                                "title": "Private key",
                                 "description": "Private key in PEM format",
                             },
                         },
@@ -73,16 +87,22 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
     params_schema = {
         "type": "object",
         "properties": {
-            "database": {"type": "string", "description": "Snowflake database name"},
-            "schema": {"type": "string", "description": "Snowflake schema"},
-            "warehouse": {"type": "string", "description": "Warehouse name"},
-            "role": {"type": "string", "description": "Role"},
+            "database": {
+                "type": "string",
+                "title": "Database",
+                "description": "Snowflake database name",
+            },
+            "schema": {"type": "string", "title": "Schema", "description": "Snowflake schema"},
+            "warehouse": {"type": "string", "title": "Warehouse", "description": "Warehouse name"},
+            "role": {"type": "string", "title": "Role", "description": "Role"},
             "batch_size": {
                 "type": "integer",
+                "title": "Batch size",
                 "description": "Default fetch size for remote queries",
             },
             "envvars": {
                 "type": "object",
+                "title": "Environment variables",
                 "description": "Environment variables to set on the engine side",
             },
         },
@@ -94,6 +114,7 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
         "properties": {
             "subquery": {
                 "type": "string",
+                "title": "Subquery",
                 "description": "Subquery for this table to run on the server side",
             }
         },

@@ -82,7 +82,10 @@ def query_to_csv(engine: "PsycopgEngine", query, buffer, schema: Optional[str] =
 class CSVDataSource(ForeignDataWrapperDataSource):
     credentials_schema: Dict[str, Any] = {
         "type": "object",
-        "properties": {"s3_access_key": {"type": "string"}, "s3_secret_key": {"type": "string"}},
+        "properties": {
+            "s3_access_key": {"type": "string", "title": "AWS Access Key"},
+            "s3_secret_key": {"type": "string", "title": "AWS Secret Access Key"},
+        },
     }
 
     params_schema: Dict[str, Any] = {
@@ -90,41 +93,60 @@ class CSVDataSource(ForeignDataWrapperDataSource):
         "properties": {
             "connection": {
                 "type": "object",
+                "title": "Connection",
                 "oneOf": [
                     {
                         "type": "object",
                         "required": ["connection_type", "url"],
                         "properties": {
-                            "connection_type": {"type": "string", "const": "http"},
-                            "url": {"type": "string", "description": "HTTP URL to the CSV file"},
+                            "connection_type": {
+                                "type": "string",
+                                "const": "http",
+                                "title": "Connection type",
+                            },
+                            "url": {
+                                "type": "string",
+                                "description": "HTTP URL to the CSV file",
+                                "title": "URL",
+                            },
                         },
                     },
                     {
                         "type": "object",
                         "required": ["connection_type", "s3_endpoint", "s3_bucket"],
                         "properties": {
-                            "connection_type": {"type": "string", "const": "s3"},
+                            "connection_type": {
+                                "type": "string",
+                                "const": "s3",
+                                "title": "Connection type",
+                            },
                             "s3_endpoint": {
                                 "type": "string",
+                                "title": "S3 endpoint",
                                 "description": "S3 endpoint (including port if required)",
                             },
                             "s3_region": {
                                 "type": "string",
+                                "title": "S3 region",
                                 "description": "Region of the S3 bucket",
                             },
                             "s3_secure": {
+                                "title": "Secure",
                                 "type": "boolean",
                                 "description": "Whether to use HTTPS for S3 access",
                             },
                             "s3_bucket": {
+                                "title": "Bucket name",
                                 "type": "string",
                                 "description": "Bucket the object is in",
                             },
                             "s3_object": {
+                                "title": "S3 Object name",
                                 "type": "string",
                                 "description": "Limit the import to a single object",
                             },
                             "s3_object_prefix": {
+                                "title": "S3 Object prefix",
                                 "type": "string",
                                 "description": "Prefix for object in S3 bucket",
                             },
@@ -134,36 +156,43 @@ class CSVDataSource(ForeignDataWrapperDataSource):
             },
             "autodetect_header": {
                 "type": "boolean",
+                "title": "Autodetect header",
                 "description": "Detect whether the CSV file has a header automatically",
                 "default": True,
             },
             "autodetect_dialect": {
                 "type": "boolean",
+                "title": "Autodetect dialect",
                 "description": "Detect the CSV file's dialect (separator, quoting characters etc) automatically",
                 "default": True,
             },
             "autodetect_encoding": {
                 "type": "boolean",
+                "title": "Autodetect encoding",
                 "description": "Detect the CSV file's encoding automatically",
                 "default": True,
             },
             "autodetect_sample_size": {
                 "type": "integer",
+                "title": "Sample size",
                 "description": "Sample size, in bytes, for encoding/dialect/header detection",
                 "default": 65536,
             },
             "schema_inference_rows": {
                 "type": "integer",
+                "title": "Schema inference rows",
                 "description": "Number of rows to use for schema inference",
                 "default": 100000,
             },
             "encoding": {
                 "type": "string",
+                "title": "Encoding",
                 "description": "Encoding of the CSV file",
                 "default": "utf-8",
             },
             "ignore_decode_errors": {
                 "type": "boolean",
+                "title": "Ignore decoding errors",
                 "description": "Ignore errors when decoding the file",
                 "default": False,
             },
@@ -173,11 +202,13 @@ class CSVDataSource(ForeignDataWrapperDataSource):
                 "default": True,
             },
             "delimiter": {
+                "title": "Delimiter",
                 "type": "string",
                 "description": "Character used to separate fields in the file",
                 "default": ",",
             },
             "quotechar": {
+                "title": "Quote character",
                 "type": "string",
                 "description": "Character used to quote fields",
                 "default": '"',
@@ -188,8 +219,12 @@ class CSVDataSource(ForeignDataWrapperDataSource):
     table_params_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
-            "url": {"type": "string", "description": "HTTP URL to the CSV file"},
-            "s3_object": {"type": "string", "description": "S3 object of the CSV file"},
+            "url": {"type": "string", "description": "HTTP URL to the CSV file", "title": "URL"},
+            "s3_object": {
+                "type": "string",
+                "description": "S3 object of the CSV file",
+                "title": "S3 object",
+            },
             # Add various CSV dialect overrides to the table params schema.
             **{k: v for k, v in params_schema["properties"].items() if k != "connection"},
         },
