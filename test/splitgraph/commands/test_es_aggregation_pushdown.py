@@ -59,6 +59,21 @@ def test_simple_aggregation_functions(local_engine_empty):
     # Assert aggregation result
     assert result[0] == (999, 25714.837, 49989, 25714837, 20, Decimal("30.171"))
 
+    # Test COUNT(*)
+    query = "SELECT COUNT(*) FROM es.account"
+
+    # Ensure query is going to be aggregated on the foreign server
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": []}},
+        "track_total_hits": True,
+        "aggs": {},
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query, return_shape=ResultShape.ONE_ONE)
+    assert result == 1000
+
 
 @pytest.mark.mounting
 def test_simple_aggregation_functions_filtering(local_engine_empty):
@@ -89,6 +104,26 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
 
     # Assert aggregation result
     assert result[0] == (Decimal("24.439862542955325"), 49795.0)
+
+    # Variant with COUNT(*)
+    query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE age >= 35"
+
+    # Ensure query is going to be aggregated on the foreign server
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": [{"range": {"age": {"gte": 35}}}]}},
+        "track_total_hits": True,
+        "aggs": {
+            "avg.balance": {"avg": {"field": "balance"}},
+        },
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query)
+    assert len(result) == 1
+
+    # Assert aggregation result
+    assert result[0] == (24827.05517241379, 290)
 
 
 @pytest.mark.mounting
@@ -252,7 +287,7 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
 
     # Aggregations functions and grouping bare combination
     query = """
-    SELECT state, age, min(balance)
+    SELECT state, age, min(balance), COUNT(*)
     FROM es.account
     WHERE gender = 'M' AND age = ANY(ARRAY[25, 35])
     GROUP BY state, age
@@ -481,10 +516,6 @@ def test_aggregations_join_combinations(snapshot, local_engine_empty):
 @pytest.mark.mounting
 def test_not_pushed_down(local_engine_empty):
     _mount_elasticsearch()
-
-    # COUNT STAR is not going to be pushed down
-    result = get_engine().run_sql("EXPLAIN SELECT COUNT(*) FROM es.account")
-    assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # COUNT DISTINCT queries are not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT COUNT(DISTINCT city) FROM es.account")
