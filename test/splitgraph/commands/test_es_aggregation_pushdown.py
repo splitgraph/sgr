@@ -106,12 +106,12 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     assert result[0] == (Decimal("24.439862542955325"), 49795.0)
 
     # Variant with COUNT(*)
-    query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE age >= 35"
+    query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE firstname ~~ 'Al%'"
 
     # Ensure query is going to be aggregated on the foreign server
     result = get_engine().run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
-        "query": {"bool": {"must": [{"range": {"age": {"gte": 35}}}]}},
+        "query": {"bool": {"must": [{"wildcard": {"age": ""}}]}},
         "track_total_hits": True,
         "aggs": {
             "avg.balance": {"avg": {"field": "balance"}},
@@ -123,7 +123,7 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     assert len(result) == 1
 
     # Assert aggregation result
-    assert result[0] == (24827.05517241379, 290)
+    assert result[0] == (26069.045454545456, 22)
 
 
 @pytest.mark.mounting
