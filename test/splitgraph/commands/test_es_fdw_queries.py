@@ -6,7 +6,7 @@ from test.splitgraph.conftest import _mount_elasticsearch
 import pytest
 import yaml
 
-from splitgraph.engine import ResultShape, get_engine
+from splitgraph.engine import ResultShape
 
 
 def _extract_queries_from_explain(result):
@@ -30,6 +30,19 @@ _bare_sequential_scan = {"query": {"bool": {"must": []}}}
 
 
 @pytest.mark.mounting
+def test_patern_matching_queries(local_engine_empty):
+    _mount_elasticsearch()
+
+    query = "SELECT * FROM es.account WHERE firstname ~~ 'abc%\%%123__\_test'"
+
+    # Ensure query is going to be aggregated on the foreign server
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": [{"wildcard": {"firstname": "abc*%*123??_test"}}]}}
+    }
+
+
+@pytest.mark.mounting
 def test_simple_aggregation_functions(local_engine_empty):
     _mount_elasticsearch()
 
@@ -40,7 +53,7 @@ def test_simple_aggregation_functions(local_engine_empty):
     """
 
     # Ensure query is going to be aggregated on the foreign server
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "aggs": {
@@ -54,7 +67,7 @@ def test_simple_aggregation_functions(local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 1
 
     # Assert aggregation result
@@ -64,7 +77,7 @@ def test_simple_aggregation_functions(local_engine_empty):
     query = "SELECT COUNT(*) FROM es.account"
 
     # Ensure query is going to be aggregated on the foreign server
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "track_total_hits": True,
@@ -72,7 +85,7 @@ def test_simple_aggregation_functions(local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query, return_shape=ResultShape.ONE_ONE)
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.ONE_ONE)
     assert result == 1000
 
 
@@ -86,7 +99,7 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     """
 
     # Ensure query is going to be aggregated on the foreign server
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {
             "bool": {
@@ -100,7 +113,7 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 1
 
     # Assert aggregation result
@@ -111,7 +124,7 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE firstname ~~ 'Al%'"
 
     # Ensure query is going to be aggregated on the foreign server
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": [{"wildcard": {"firstname": "Al*"}}]}},
         "track_total_hits": True,
@@ -121,7 +134,7 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 1
 
     # Assert aggregation result
@@ -137,7 +150,7 @@ def test_simple_grouping_clauses(snapshot, local_engine_empty):
     query = "SELECT state FROM es.account GROUP BY state"
 
     # Ensure grouping is going to be pushed down
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "aggs": {
@@ -148,7 +161,7 @@ def test_simple_grouping_clauses(snapshot, local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query, return_shape=ResultShape.MANY_ONE)
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 51
 
     # Assert aggregation result
@@ -158,7 +171,7 @@ def test_simple_grouping_clauses(snapshot, local_engine_empty):
     query = "SELECT gender, age FROM es.account GROUP BY age, gender"
 
     # Ensure grouping is going to be pushed down
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "aggs": {
@@ -175,7 +188,7 @@ def test_simple_grouping_clauses(snapshot, local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 42
 
     # Assert aggregation result
@@ -190,7 +203,7 @@ def test_simple_grouping_clauses_filtering(snapshot, local_engine_empty):
     query = "SELECT state, gender FROM es.account WHERE state IN ('TX', 'WA', 'CO') GROUP BY state, gender"
 
     # Ensure grouping is going to be pushed down
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {
             "bool": {
@@ -221,7 +234,7 @@ def test_simple_grouping_clauses_filtering(snapshot, local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert result == [("CO", "F"), ("CO", "M"), ("TX", "F"), ("TX", "M"), ("WA", "F"), ("WA", "M")]
 
 
@@ -233,7 +246,7 @@ def test_grouping_and_aggregations_bare(snapshot, local_engine_empty):
     query = "SELECT gender, avg(balance), avg(age) FROM es.account GROUP BY gender"
 
     # Ensure query is going to be pushed down
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "aggs": {
@@ -248,7 +261,7 @@ def test_grouping_and_aggregations_bare(snapshot, local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 2
     assert result[0][0] == "F"
     assert math.isclose(result[0][1], 25623.3468, rel_tol=1e-05)
@@ -262,7 +275,7 @@ def test_grouping_and_aggregations_bare(snapshot, local_engine_empty):
     query = "SELECT age, COUNT(account_number), min(balance) FROM es.account GROUP BY age ORDER BY age DESC"
 
     # Ensure query is going to be pushed down
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "aggs": {
@@ -277,7 +290,7 @@ def test_grouping_and_aggregations_bare(snapshot, local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 21
 
     # Assert aggregation result
@@ -297,7 +310,7 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
     """
 
     # Ensure query is going to be pushed down
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {
             "bool": {
@@ -331,7 +344,7 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 45
 
     # Assert aggregation result
@@ -347,7 +360,7 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
     """
 
     # Ensure query is going to be pushed down
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {
             "bool": {
@@ -383,7 +396,7 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
 
     # Assert aggregation result
     snapshot.assert_match(yaml.dump(result), "avg_age_state_gender_filter_by_having.yml")
@@ -408,7 +421,7 @@ def test_agg_subquery_pushdown(local_engine_empty):
     """
 
     # Ensure only the relevant part is pushed down (i.e. no aggregations as they are redundant)
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "aggs": {
@@ -425,7 +438,7 @@ def test_agg_subquery_pushdown(local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query, return_shape=ResultShape.MANY_ONE)
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 2
 
     # Assert aggregation result
@@ -440,7 +453,7 @@ def test_agg_subquery_pushdown(local_engine_empty):
     """
 
     # Ensure only the relevant part is pushed down (no redundant aggregations, i.e. only min)
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "aggs": {
@@ -458,7 +471,7 @@ def test_agg_subquery_pushdown(local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query, return_shape=ResultShape.MANY_ONE)
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 8
 
     # Assert aggregation result
@@ -474,7 +487,7 @@ def test_agg_subquery_pushdown(local_engine_empty):
     """
 
     # Only the subquery is pushed-down, with no redundant aggregations
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},
         "aggs": {
@@ -492,7 +505,7 @@ def test_agg_subquery_pushdown(local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 2
 
     # Assert aggregation result
@@ -517,7 +530,7 @@ def test_aggregations_join_combinations(snapshot, local_engine_empty):
     """
 
     # Only the subquery is pushed-down, with no redundant aggregations
-    result = get_engine().run_sql("EXPLAIN " + query)
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     queries = _extract_queries_from_explain(result)
 
     assert queries[0] == {
@@ -546,14 +559,14 @@ def test_aggregations_join_combinations(snapshot, local_engine_empty):
     }
 
     # Ensure results are correct
-    result = get_engine().run_sql(query)
+    result = local_engine_empty.run_sql(query)
     assert len(result) == 21
 
     # Assert aggregation result
     snapshot.assert_match(yaml.dump(result), "account_join_sub_aggs.yml")
 
     # However, aggregation of a joined table are not pushed down
-    result = get_engine().run_sql(
+    result = local_engine_empty.run_sql(
         """
         EXPLAIN SELECT t.state, AVG(t.balance) FROM (
             SELECT l.state AS state, l.balance + r.balance AS balance
@@ -572,29 +585,29 @@ def test_not_pushed_down(local_engine_empty):
     _mount_elasticsearch()
 
     # COUNT(1) not going to be pushed down, as 1 is treated like an expression (single T_Const node)
-    result = get_engine().run_sql("EXPLAIN SELECT COUNT(1) FROM es.account")
+    result = local_engine_empty.run_sql("EXPLAIN SELECT COUNT(1) FROM es.account")
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # COUNT DISTINCT queries are not going to be pushed down
-    result = get_engine().run_sql("EXPLAIN SELECT COUNT(DISTINCT city) FROM es.account")
+    result = local_engine_empty.run_sql("EXPLAIN SELECT COUNT(DISTINCT city) FROM es.account")
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # SUM DISTINCT queries are not going to be pushed down
-    result = get_engine().run_sql("EXPLAIN SELECT SUM(DISTINCT age) FROM es.account")
+    result = local_engine_empty.run_sql("EXPLAIN SELECT SUM(DISTINCT age) FROM es.account")
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # AVG DISTINCT queries are not going to be pushed down
-    result = get_engine().run_sql("EXPLAIN SELECT AVG(DISTINCT balance) FROM es.account")
+    result = local_engine_empty.run_sql("EXPLAIN SELECT AVG(DISTINCT balance) FROM es.account")
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # Queries with proper HAVING are not goint to be pushed down
-    result = get_engine().run_sql(
+    result = local_engine_empty.run_sql(
         "EXPLAIN SELECT max(balance) FROM es.account HAVING max(balance) > 30"
     )
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # Aggregation with a nested expression won't be pushed down
-    result = get_engine().run_sql(
+    result = local_engine_empty.run_sql(
         "EXPLAIN SELECT avg(age * balance) FROM es.account GROUP BY state"
     )
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
