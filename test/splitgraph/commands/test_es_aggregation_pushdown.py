@@ -1,4 +1,5 @@
 import json
+import math
 from decimal import Decimal
 from test.splitgraph.conftest import _mount_elasticsearch
 
@@ -103,7 +104,8 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     assert len(result) == 1
 
     # Assert aggregation result
-    assert result[0] == (Decimal("24.439862542955325"), 49795.0)
+    assert math.isclose(result[0][0], 24.4399, rel_tol=1e-05)
+    assert result[0][1] == 49795.0
 
     # Variant with COUNT(*)
     query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE firstname ~~ 'Al%'"
@@ -123,7 +125,8 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     assert len(result) == 1
 
     # Assert aggregation result
-    assert result[0] == (26069.045454545456, 22)
+    assert math.isclose(result[0][0], 26069.0454, rel_tol=1e-05)
+    assert result[0][1] == 22
 
 
 @pytest.mark.mounting
@@ -247,12 +250,12 @@ def test_grouping_and_aggregations_bare(snapshot, local_engine_empty):
     # Ensure results are correct
     result = get_engine().run_sql(query)
     assert len(result) == 2
-
-    # Assert aggregation result
-    assert result == [
-        ("F", 25623.34685598377, Decimal("30.3184584178499")),
-        ("M", 25803.800788954635, Decimal("30.027613412228796")),
-    ]
+    assert result[0][0] == "F"
+    assert math.isclose(result[0][1], 25623.3468, rel_tol=1e-05)
+    assert math.isclose(result[0][2], 30.3184, rel_tol=1e-05)
+    assert result[1][0] == "M"
+    assert math.isclose(result[1][1], 25803.8007, rel_tol=1e-05)
+    assert math.isclose(result[1][2], 30.0276, rel_tol=1e-05)
 
     # We support pushing down aggregation queries with sorting, with the caveat
     # that the sorting operation is performed on the PG side for now
@@ -383,7 +386,7 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
     result = get_engine().run_sql(query)
 
     # Assert aggregation result
-    snapshot.assert_match(yaml.dump(result), "avg_age_state,gender_filter_by_having.yml")
+    snapshot.assert_match(yaml.dump(result), "avg_age_state_gender_filter_by_having.yml")
 
 
 @pytest.mark.mounting
@@ -567,6 +570,10 @@ def test_aggregations_join_combinations(snapshot, local_engine_empty):
 @pytest.mark.mounting
 def test_not_pushed_down(local_engine_empty):
     _mount_elasticsearch()
+
+    # COUNT(1) not going to be pushed down, as 1 is treated like an expression (single T_Const node)
+    result = get_engine().run_sql("EXPLAIN SELECT COUNT(1) FROM es.account")
+    assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # COUNT DISTINCT queries are not going to be pushed down
     result = get_engine().run_sql("EXPLAIN SELECT COUNT(DISTINCT city) FROM es.account")
