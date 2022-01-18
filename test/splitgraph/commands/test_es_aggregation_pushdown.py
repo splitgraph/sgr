@@ -285,7 +285,7 @@ def test_grouping_and_aggregations_bare(snapshot, local_engine_empty):
 def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
     _mount_elasticsearch()
 
-    # Aggregations functions and grouping bare combination
+    # Aggregation functions and grouping with filtering
     query = """
     SELECT state, age, min(balance), COUNT(*)
     FROM es.account
@@ -333,6 +333,57 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
 
     # Assert aggregation result
     snapshot.assert_match(yaml.dump(result), "min_balance_state_age_filtered.yml")
+
+    # Aggregation functions and grouping with HAVING eligible to be translated
+    # to a WHERE by PG internally for performance reasons
+    query = """
+    SELECT state, gender, avg(age)
+    FROM es.account
+    GROUP BY gender, state
+    HAVING gender IS NOT NULL AND state <> ANY(ARRAY['MA', 'ME', 'MI', 'MO'])
+    """
+
+    # Ensure query is going to be pushed down
+    result = get_engine().run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {
+            "bool": {
+                "must": [
+                    {"exists": {"field": "gender"}},
+                    {
+                        "bool": {
+                            "should": [
+                                {"bool": {"must_not": {"term": {"state": "MA"}}}},
+                                {"bool": {"must_not": {"term": {"state": "ME"}}}},
+                                {"bool": {"must_not": {"term": {"state": "MI"}}}},
+                                {"bool": {"must_not": {"term": {"state": "MO"}}}},
+                            ]
+                        }
+                    },
+                ]
+            }
+        },
+        "aggs": {
+            "group_buckets": {
+                "composite": {
+                    "sources": [
+                        {"state": {"terms": {"field": "state"}}},
+                        {"gender": {"terms": {"field": "gender"}}},
+                    ],
+                    "size": 5,
+                },
+                "aggregations": {
+                    "avg.age": {"avg": {"field": "age"}},
+                },
+            }
+        },
+    }
+
+    # Ensure results are correct
+    result = get_engine().run_sql(query)
+
+    # Assert aggregation result
+    snapshot.assert_match(yaml.dump(result), "avg_age_state,gender_filter_by_having.yml")
 
 
 @pytest.mark.mounting
