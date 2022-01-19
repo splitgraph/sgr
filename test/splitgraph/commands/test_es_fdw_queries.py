@@ -33,13 +33,49 @@ _bare_sequential_scan = {"query": {"bool": {"must": []}}}
 def test_patern_matching_queries(local_engine_empty):
     _mount_elasticsearch()
 
-    # Test pattern matching conversion mechanism on generic example
-    query = "SELECT * FROM es.account WHERE firstname ~~ 'abc%\%%123__\_test'"
+    # Test pattern matching conversion mechanism on generic examples
+    query = r"""
+    SELECT *
+    FROM es.account
+    WHERE firstname ~~ 'any: %; percent: \%; backslash-and-any: \\%; backslash-and-percent: \\\%'
+    """
 
     # Ensure proper query translation
     result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
-        "query": {"bool": {"must": [{"wildcard": {"firstname": "abc*%*123??_test"}}]}}
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "wildcard": {
+                            r"firstname": "any: *; percent: %; backslash-and-any: \\*; backslash-and-percent: \\%"
+                        }
+                    }
+                ]
+            }
+        }
+    }
+
+    query = r"""
+    SELECT *
+    FROM es.account
+    WHERE firstname ~~ 'single-char: _; underscore: \_; backslash-and-single-char: \\_; backslash-and-underscore: \\\_'
+    """
+
+    # Ensure proper query translation
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "wildcard": {
+                            r"firstname": "single-char: ?; underscore: _; backslash-and-single-char: \\?; backslash-and-underscore: \\_"
+                        }
+                    }
+                ]
+            }
+        }
     }
 
     # Test meaningful pattern match query returns correct result
