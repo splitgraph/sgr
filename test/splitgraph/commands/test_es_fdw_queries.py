@@ -33,13 +33,28 @@ _bare_sequential_scan = {"query": {"bool": {"must": []}}}
 def test_patern_matching_queries(local_engine_empty):
     _mount_elasticsearch()
 
+    # Test pattern matching conversion mechanism on generic example
     query = "SELECT * FROM es.account WHERE firstname ~~ 'abc%\%%123__\_test'"
 
-    # Ensure query is going to be aggregated on the foreign server
+    # Ensure proper query translation
     result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": [{"wildcard": {"firstname": "abc*%*123??_test"}}]}}
     }
+
+    # Test meaningful pattern match query returns correct result
+    query = "SELECT * FROM es.account WHERE firstname ~~ 'Su_an%'"
+
+    # Ensure proper query translation
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": [{"wildcard": {"firstname": "Su?an*"}}]}}
+    }
+
+    # Ensure results are correct
+    result = local_engine_empty.run_sql(query, ResultShape.MANY_ONE)
+    assert len(result) == 4
+    assert set(result) == set(["Susan", "Susana", "Susanne", "Suzanne"])
 
 
 @pytest.mark.mounting
@@ -121,7 +136,7 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     assert result[0][1] == 49795.0
 
     # Variant with COUNT(*)
-    query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE firstname ~~ 'Al%'"
+    query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE firstname ~~ 'Ma%'"
 
     # Ensure query is going to be aggregated on the foreign server
     result = local_engine_empty.run_sql("EXPLAIN " + query)
@@ -138,8 +153,8 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     assert len(result) == 1
 
     # Assert aggregation result
-    assert math.isclose(result[0][0], 26069.0454, rel_tol=1e-05)
-    assert result[0][1] == 22
+    assert math.isclose(result[0][0], 26144.6041, rel_tol=1e-05)
+    assert result[0][1] == 48
 
 
 @pytest.mark.mounting
