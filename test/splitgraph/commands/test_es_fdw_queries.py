@@ -141,7 +141,7 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     # Ensure query is going to be aggregated on the foreign server
     result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
-        "query": {"bool": {"must": [{"wildcard": {"firstname": "Al*"}}]}},
+        "query": {"bool": {"must": [{"wildcard": {"firstname": "Ma*"}}]}},
         "track_total_hits": True,
         "aggs": {
             "avg.balance": {"avg": {"field": "balance"}},
