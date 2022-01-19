@@ -150,12 +150,12 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     assert result[0][1] == 49795.0
 
     # Variant with COUNT(*)
-    query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE firstname ~~ 'Ma%'"
+    query = "SELECT avg(balance), COUNT(*) FROM es.account WHERE firstname ~~ 'Su_an%'"
 
     # Ensure query is going to be aggregated on the foreign server
     result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
-        "query": {"bool": {"must": [{"wildcard": {"firstname": "Ma*"}}]}},
+        "query": {"bool": {"must": [{"wildcard": {"firstname": "Su?an*"}}]}},
         "track_total_hits": True,
         "aggs": {
             "avg.balance": {"avg": {"field": "balance"}},
@@ -167,8 +167,8 @@ def test_simple_aggregation_functions_filtering(local_engine_empty):
     assert len(result) == 1
 
     # Assert aggregation result
-    assert math.isclose(result[0][0], 26144.6041, rel_tol=1e-05)
-    assert result[0][1] == 48
+    assert math.isclose(result[0][0], 20321.7500, rel_tol=1e-05)
+    assert result[0][1] == 4
 
 
 @pytest.mark.mounting
@@ -613,13 +613,34 @@ def test_aggregations_join_combinations(snapshot, local_engine_empty):
 def test_not_pushed_down(local_engine_empty):
     _mount_elasticsearch()
 
+    # Unsupported qual operator
+    query = "SELECT COUNT(*) FROM es.account WHERE firstname !~~ 'Su_an%'"
+
+    # Ensure query is going to be aggregated on the foreign server
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": [{"match_all": {}}]}}
+    }
+
+    # Ensure results are correct
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.ONE_ONE)
+    assert result == 996
+
     # COUNT(1) not going to be pushed down, as 1 is treated like an expression (single T_Const node)
     result = local_engine_empty.run_sql("EXPLAIN SELECT COUNT(1) FROM es.account")
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
+    # Ensure results are correct
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.ONE_ONE)
+    assert result == 1000
+
     # COUNT DISTINCT queries are not going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN SELECT COUNT(DISTINCT city) FROM es.account")
+    result = local_engine_empty.run_sql("EXPLAIN SELECT COUNT(DISTINCT state) FROM es.account")
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
+
+    # Ensure results are correct
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.ONE_ONE)
+    assert result == 51
 
     # SUM DISTINCT queries are not going to be pushed down
     result = local_engine_empty.run_sql("EXPLAIN SELECT SUM(DISTINCT age) FROM es.account")
