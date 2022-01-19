@@ -43,7 +43,7 @@ def test_patern_matching_queries(local_engine_empty):
     }
 
     # Test meaningful pattern match query returns correct result
-    query = "SELECT * FROM es.account WHERE firstname ~~ 'Su_an%'"
+    query = "SELECT firstname FROM es.account WHERE firstname ~~ 'Su_an%'"
 
     # Ensure proper query translation
     result = local_engine_empty.run_sql("EXPLAIN " + query)
@@ -52,9 +52,23 @@ def test_patern_matching_queries(local_engine_empty):
     }
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, ResultShape.MANY_ONE)
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 4
     assert set(result) == set(["Susan", "Susana", "Susanne", "Suzanne"])
+
+    # Test meaningful pattern match query returns correct result
+    query = "SELECT firstname FROM es.account WHERE firstname !~~ 'Su_an%'"
+
+    # Ensure proper query translation
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {"bool": {"must": [{"match_all": {}}]}}
+    }
+
+    # Ensure results are correct
+    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
+    assert len(result) == 996
+    assert not set(["Susan", "Susana", "Susanne", "Suzanne"]).issubset(set(result))
 
 
 @pytest.mark.mounting
