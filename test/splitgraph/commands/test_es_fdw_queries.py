@@ -663,7 +663,9 @@ def test_not_pushed_down(local_engine_empty):
     assert result == 996
 
     # COUNT(1) not going to be pushed down, as 1 is treated like an expression (single T_Const node)
-    result = local_engine_empty.run_sql("EXPLAIN SELECT COUNT(1) FROM es.account")
+    query = "SELECT COUNT(1) FROM es.account"
+
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # Ensure results are correct
@@ -671,7 +673,9 @@ def test_not_pushed_down(local_engine_empty):
     assert result == 1000
 
     # COUNT DISTINCT queries are not going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN SELECT COUNT(DISTINCT state) FROM es.account")
+    query = "SELECT COUNT(DISTINCT state) FROM es.account"
+
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == _bare_sequential_scan
 
     # Ensure results are correct
