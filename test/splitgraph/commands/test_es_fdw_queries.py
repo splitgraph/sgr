@@ -30,7 +30,7 @@ _bare_sequential_scan = {"query": {"bool": {"must": []}}}
 
 
 @pytest.mark.mounting
-def test_patern_matching_queries(local_engine_empty):
+def test_pattern_matching_queries(local_engine_empty):
     _mount_elasticsearch()
 
     # Test pattern matching conversion mechanism on generic examples
@@ -71,6 +71,29 @@ def test_patern_matching_queries(local_engine_empty):
                     {
                         "wildcard": {
                             r"firstname": "single-char: ?; underscore: _; backslash-and-single-char: \\?; backslash-and-underscore: \\_"
+                        }
+                    }
+                ]
+            }
+        }
+    }
+
+    # Special ES pattern characters are escaped
+    query = r"""
+    SELECT *
+    FROM es.account
+    WHERE firstname ~~ 'star: *; question-mark: ?; multiple-stars-and-question-marks: ****??'
+    """
+
+    # Ensure proper query translation
+    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    assert _extract_queries_from_explain(result)[0] == {
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "wildcard": {
+                            r"firstname": "star: \*; question-mark: \?; multiple-stars-and-question-marks: \*\*\*\*\?\?"
                         }
                     }
                 ]
