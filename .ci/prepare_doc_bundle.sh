@@ -26,8 +26,9 @@ python generate_reference.py sgr "$TARGET_DIR"/sgr
 echo "Generating configuration reference"
 python generate_reference.py config "$TARGET_DIR"/0100_config-flag-reference.mdx
 
-echo "Building Asciinema casts"
-TARGET_DIR=$TARGET_DIR "$CI_DIR"/rebuild_asciicasts.sh
+# Temporarily disabled: these take way too much time and aren't used by the website.
+# echo "Building Asciinema casts"
+# TARGET_DIR=$TARGET_DIR "$CI_DIR"/rebuild_asciicasts.sh
 
 echo "Archiving the bundle $OUTPUT.tar.gz"
 cd "$TARGET_DIR"/..

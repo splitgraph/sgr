@@ -1,6 +1,7 @@
 """
 Definitions for responses from the cloud GQL/REST APIs
 """
+import enum
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -15,7 +16,7 @@ from splitgraph.cloud.project.models import (
     Source,
     Table,
 )
-from splitgraph.core.types import Params, TableSchema
+from splitgraph.core.types import MountError, Params, TableSchema
 
 
 class Plugin(BaseModel):
@@ -28,6 +29,16 @@ class Plugin(BaseModel):
     supports_mount: bool
     supports_load: bool
     supports_sync: bool
+
+
+class IntrospectionMode(str, enum.Enum):
+    """
+    Which tables to (re)introspect when adding an external.
+    """
+
+    NONE = "none"  # Don't reintrospect any tables
+    EMPTY = "empty"  # Introspect tables with an empty schema
+    ALL = "all"  # Reintrospect all tables
 
 
 # GQL response for the catalog metadata
@@ -289,3 +300,14 @@ class AddExternalRepositoryRequest(BaseModel):
 
 class AddExternalRepositoriesRequest(BaseModel):
     repositories: List[AddExternalRepositoryRequest]
+    introspection_mode: IntrospectionMode = IntrospectionMode.EMPTY
+
+
+class AddExternalRepositoriesResponse(BaseModel):
+    class RepositoryMountError(BaseModel):
+        namespace: str
+        repository: str
+        errors: List[MountError]
+
+    live_image_hashes: List[Optional[str]]
+    errors: Optional[List[RepositoryMountError]] = None

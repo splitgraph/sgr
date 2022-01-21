@@ -399,11 +399,12 @@ def add_external_credential(request, uri, response_headers):
     ]
 
 
-def add_external_repo(initial_private=False):
+def add_external_repo(initial_private=False, error=False):
     def cb(request, uri, response_headers):
         data = json.loads(request.body)
 
         assert data["repositories"] is not None
+        assert data["introspection_mode"] == "empty"
         assert data["repositories"] == [
             {
                 "credential_id": "98765432-aaaa-bbbb-a456-000000000000",
@@ -450,7 +451,26 @@ def add_external_repo(initial_private=False):
         return [
             200,
             response_headers,
-            json.dumps({"live_image_hashes": ["abcdef12" * 8, "ghijkl34" * 8, "mnoprs56" * 8]}),
+            json.dumps(
+                {
+                    "live_image_hashes": ["abcdef12" * 8, "ghijkl34" * 8, "mnoprs56" * 8],
+                    "errors": [
+                        {
+                            "namespace": "otheruser",
+                            "repository": "somerepo_2",
+                            "errors": [
+                                {
+                                    "table_name": "table_1",
+                                    "error": "SomeError",
+                                    "error_text": "Something bad happened",
+                                }
+                            ],
+                        }
+                    ]
+                    if not error
+                    else [],
+                }
+            ),
         ]
 
     return cb

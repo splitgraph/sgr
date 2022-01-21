@@ -15,7 +15,7 @@ from urllib.parse import quote, urlparse
 import click
 from click import wrap_text
 
-from splitgraph.cloud.models import AddExternalRepositoryRequest
+from splitgraph.cloud.models import AddExternalRepositoryRequest, IntrospectionMode
 from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
 from splitgraph.commandline.common import (
     ImageType,
@@ -613,9 +613,28 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     is_flag=True,
     help="Only set up the metadata, not the external data source settings",
 )
+@click.option(
+    "--introspection-mode",
+    type=click.Choice(IntrospectionMode),
+    default=IntrospectionMode.EMPTY,
+    help="Whether to reintrospect tables. none: never reintrospect. all: reintrospect all tables. "
+    "empty: only reintrospect tables with an empty schema.",
+)
+@click.option(
+    "--ignore-introspection-errors",
+    is_flag=True,
+    help="If set, will ignore errors when introspecting tables.",
+)
 @click.argument("limit_repositories", type=str, nargs=-1)
 def load_c(
-    remote, readme_dir, skip_external, initial_private, repositories_file, limit_repositories
+    remote,
+    readme_dir,
+    skip_external,
+    initial_private,
+    repositories_file,
+    limit_repositories,
+    introspection_mode,
+    ignore_introspection_errors,
 ):
     """
     Load a Splitgraph catalog from a YAML file.
@@ -666,7 +685,11 @@ def load_c(
                     initial_private=initial_private,
                 )
                 external_repositories.append(external_repository)
-        rest_client.bulk_upsert_external(repositories=external_repositories)
+        rest_client.bulk_upsert_external(
+            repositories=external_repositories,
+            introspection_mode=introspection_mode,
+            raise_errors=not ignore_introspection_errors,
+        )
         logging.info(f"Uploaded images for {pluralise('repository', len(external_repositories))}")
 
     logging.info("Updating metadata...")
