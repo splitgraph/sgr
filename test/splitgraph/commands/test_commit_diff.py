@@ -1068,15 +1068,15 @@ def test_create_object_out_of_band(local_engine_empty):
     )
 
 
-def test_unicode_columns(local_engine_empty):
+def test_unicode_columns_and_quotes_in_table_names(local_engine_empty):
     OUTPUT.init()
-    OUTPUT.run_sql("CREATE TABLE таблица (key INTEGER PRIMARY KEY, столбец VARCHAR)")
-    OUTPUT.run_sql("COMMENT ON COLUMN таблица.столбец IS 'комментарий';")
-    OUTPUT.run_sql("INSERT INTO таблица (key, столбец) VALUES (1, 'one'), (2, 'two')")
+    OUTPUT.run_sql('CREATE TABLE "таблица\'" (key INTEGER PRIMARY KEY, столбец VARCHAR)')
+    OUTPUT.run_sql("COMMENT ON COLUMN \"таблица'\".столбец IS 'комментарий';")
+    OUTPUT.run_sql("INSERT INTO \"таблица'\" (key, столбец) VALUES (1, 'one'), (2, 'two')")
 
     image = OUTPUT.commit()
 
-    assert image.get_table("таблица").table_schema == [
+    assert image.get_table("таблица'").table_schema == [
         TableColumn(ordinal=1, name="key", pg_type="integer", is_pk=True, comment=None),
         TableColumn(
             ordinal=2,
@@ -1087,10 +1087,10 @@ def test_unicode_columns(local_engine_empty):
         ),
     ]
     image.checkout()
-    assert OUTPUT.run_sql("SELECT * FROM таблица WHERE столбец = 'two'") == [(2, "two")]
+    assert OUTPUT.run_sql("SELECT * FROM \"таблица'\" WHERE столбец = 'two'") == [(2, "two")]
 
     image.checkout(layered=True)
-    assert OUTPUT.run_sql("SELECT * FROM таблица WHERE столбец = 'one'") == [(1, "one")]
+    assert OUTPUT.run_sql("SELECT * FROM \"таблица'\" WHERE столбец = 'one'") == [(1, "one")]
 
 
 def test_commit_diff_views(pg_repo_local):
