@@ -588,12 +588,16 @@ class PsycopgEngine(SQLEngine):
         return cast(
             List[Tuple[str, str]],
             self.run_sql(
-                SQL(
-                    """SELECT a.attname, format_type(a.atttypid, a.atttypmod)
-                               FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid
-                                                                      AND a.attnum = ANY(i.indkey)
-                               WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary"""
-                ).format(Identifier(schema), Identifier(table)),
+                """SELECT c.column_name, c.data_type
+FROM information_schema.table_constraints tc 
+JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) 
+JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
+  AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
+WHERE constraint_type = 'PRIMARY KEY'
+AND tc.constraint_schema = %s
+AND tc.table_name = %s
+""",
+                (schema, table),
                 return_shape=ResultShape.MANY_MANY,
             ),
         )
