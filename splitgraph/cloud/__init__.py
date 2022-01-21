@@ -36,6 +36,7 @@ from splitgraph.cloud.models import (
     ExportJobStatus,
     ExternalResponse,
     IngestionJobStatus,
+    IntrospectionMode,
     ListExternalCredentialsResponse,
     MetadataResponse,
     Plugin,
@@ -530,8 +531,14 @@ class RESTAPIClient:
                 raise JSONSchemaValidationError(message="[MASKED]")
             raise
 
-    def bulk_upsert_external(self, repositories: List[AddExternalRepositoryRequest]):
-        request = AddExternalRepositoriesRequest(repositories=repositories)
+    def bulk_upsert_external(
+        self,
+        repositories: List[AddExternalRepositoryRequest],
+        introspection_mode: IntrospectionMode = IntrospectionMode.EMPTY,
+    ):
+        request = AddExternalRepositoriesRequest(
+            repositories=repositories, introspection_mode=introspection_mode
+        )
         self._perform_request(
             "/bulk-add",
             self.access_token,

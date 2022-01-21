@@ -404,6 +404,7 @@ def add_external_repo(initial_private=False):
         data = json.loads(request.body)
 
         assert data["repositories"] is not None
+        assert data["introspection_mode"] == "empty"
         assert data["repositories"] == [
             {
                 "credential_id": "98765432-aaaa-bbbb-a456-000000000000",
