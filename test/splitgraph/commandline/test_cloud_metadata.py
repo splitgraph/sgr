@@ -273,8 +273,9 @@ def test_commandline_dump(snapshot):
 
 
 @pytest.mark.parametrize("initial_private", [True, False])
+@pytest.mark.parametrize("errors", [True, False])
 @httpretty.activate(allow_net_connect=False)
-def test_commandline_load(initial_private):
+def test_commandline_load(initial_private, errors):
     runner = CliRunner()
 
     httpretty.register_uri(
@@ -326,6 +327,7 @@ def test_commandline_load(initial_private):
                 os.path.join(RESOURCES, "splitgraph_yml", "readmes"),
                 "-f",
                 os.path.join(RESOURCES, "splitgraph_yml", "splitgraph.yml"),
+                "--ignore-introspection-errors",
             ],
             catch_exceptions=False,
         )
@@ -338,6 +340,12 @@ def test_commandline_load(initial_private):
         assert_repository_sources(reqs.pop())
         reqs.pop()  # discard duplicate request
         assert_repository_profiles(reqs.pop())
+
+        if errors:
+            assert (
+                "Error adding table otheruser/somerepo_2/table_1: "
+                "SomeError (Something bad happened)" in result.output
+            )
 
 
 def test_project_validate(snapshot):

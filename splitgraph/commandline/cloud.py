@@ -620,6 +620,11 @@ def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     help="Whether to reintrospect tables. none: never reintrospect. all: reintrospect all tables. "
     "empty: only reintrospect tables with an empty schema.",
 )
+@click.option(
+    "--ignore-introspection-errors",
+    is_flag=True,
+    help="If set, will ignore errors when introspecting tables.",
+)
 @click.argument("limit_repositories", type=str, nargs=-1)
 def load_c(
     remote,
@@ -629,6 +634,7 @@ def load_c(
     repositories_file,
     limit_repositories,
     introspection_mode,
+    ignore_introspection_errors,
 ):
     """
     Load a Splitgraph catalog from a YAML file.
@@ -680,7 +686,9 @@ def load_c(
                 )
                 external_repositories.append(external_repository)
         rest_client.bulk_upsert_external(
-            repositories=external_repositories, introspection_mode=introspection_mode
+            repositories=external_repositories,
+            introspection_mode=introspection_mode,
+            raise_errors=not ignore_introspection_errors,
         )
         logging.info(f"Uploaded images for {pluralise('repository', len(external_repositories))}")
 

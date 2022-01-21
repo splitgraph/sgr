@@ -16,7 +16,7 @@ from splitgraph.cloud.project.models import (
     Source,
     Table,
 )
-from splitgraph.core.types import Params, TableSchema
+from splitgraph.core.types import MountError, Params, TableSchema
 
 
 class Plugin(BaseModel):
@@ -301,3 +301,13 @@ class AddExternalRepositoryRequest(BaseModel):
 class AddExternalRepositoriesRequest(BaseModel):
     repositories: List[AddExternalRepositoryRequest]
     introspection_mode: IntrospectionMode = IntrospectionMode.EMPTY
+
+
+class AddExternalRepositoriesResponse(BaseModel):
+    class RepositoryMountError(BaseModel):
+        namespace: str
+        repository: str
+        errors: List[MountError]
+
+    live_image_hashes: List[Optional[str]]
+    errors: Optional[List[RepositoryMountError]] = None

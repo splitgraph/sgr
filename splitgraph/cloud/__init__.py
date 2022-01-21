@@ -32,6 +32,7 @@ from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
     AddExternalCredentialRequest,
     AddExternalRepositoriesRequest,
+    AddExternalRepositoriesResponse,
     AddExternalRepositoryRequest,
     ExportJobStatus,
     ExternalResponse,
@@ -75,6 +76,7 @@ from splitgraph.config.export import overwrite_config
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.exceptions import (
     AuthAPIError,
+    DataSourceError,
     GQLAPIError,
     GQLRepoDoesntExistError,
     GQLUnauthenticatedError,
@@ -535,17 +537,33 @@ class RESTAPIClient:
         self,
         repositories: List[AddExternalRepositoryRequest],
         introspection_mode: IntrospectionMode = IntrospectionMode.EMPTY,
-    ):
+        raise_errors: bool = False,
+    ) -> None:
         request = AddExternalRepositoriesRequest(
             repositories=repositories, introspection_mode=introspection_mode
         )
-        self._perform_request(
+        response = self._perform_request(
             "/bulk-add",
             self.access_token,
             request,
             endpoint=self.externals_endpoint,
             jsonschema_endpoint=True,
+            response_class=AddExternalRepositoriesResponse,
         )
+        assert response
+        if response.errors:
+            for repo_errors in response.errors:
+                for error in repo_errors.errors:
+                    logging.warning(
+                        "Error adding table %s/%s/%s: %s (%s)",
+                        repo_errors.namespace,
+                        repo_errors.repository,
+                        error.table_name,
+                        error.error,
+                        error.error_text,
+                    )
+            if raise_errors:
+                raise DataSourceError("Error introspecting some tables!")
 
 
 def AuthAPIClient(*args, **kwargs):
