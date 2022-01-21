@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.4 (2022-01-21)
+
+  * Further support for aggregation pushdown with Multicorn-backed FDWs
+    * https://github.com/splitgraph/Multicorn/pull/2
+    * https://github.com/splitgraph/splitgraph/pull/613
+    * https://github.com/splitgraph/postgres-elasticsearch-fdw/pull/2
+  * Speed up `sgr commit` chunking by about 1.5x-10x (https://github.com/splitgraph/splitgraph/pull/611)
+  * Various fixes to `sgr cloud seed` (https://github.com/splitgraph/splitgraph/pull/606)
+
 ## v0.3.3 (2022-01-05)
 
  * Minor fixes to `sgr cloud seed` (https://github.com/splitgraph/splitgraph/pull/604)
