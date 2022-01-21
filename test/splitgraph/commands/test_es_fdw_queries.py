@@ -48,7 +48,7 @@ def test_pattern_matching_queries(local_engine_empty):
                 "must": [
                     {
                         "wildcard": {
-                            r"firstname": "any: *; percent: %; backslash-and-any: \\*; backslash-and-percent: \\%"
+                            "firstname": r"any: *; percent: %; backslash-and-any: \*; backslash-and-percent: \%"
                         }
                     }
                 ]
@@ -70,7 +70,7 @@ def test_pattern_matching_queries(local_engine_empty):
                 "must": [
                     {
                         "wildcard": {
-                            r"firstname": "single-char: ?; underscore: _; backslash-and-single-char: \\?; backslash-and-underscore: \\_"
+                            "firstname": r"single-char: ?; underscore: _; backslash-and-single-char: \?; backslash-and-underscore: \_"
                         }
                     }
                 ]
@@ -93,7 +93,7 @@ def test_pattern_matching_queries(local_engine_empty):
                 "must": [
                     {
                         "wildcard": {
-                            r"firstname": "star: \*; question-mark: \?; multiple-stars-and-question-marks: \*\*\*\*\?\?"
+                            "firstname": r"star: \*; question-mark: \?; multiple-stars-and-question-marks: \*\*\*\*\?\?"
                         }
                     }
                 ]
@@ -113,7 +113,7 @@ def test_pattern_matching_queries(local_engine_empty):
     # Ensure results are correct
     result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 4
-    assert set(result) == set(["Susan", "Susana", "Susanne", "Suzanne"])
+    assert set(result) == {"Susan", "Susana", "Susanne", "Suzanne"}
 
     # Test meaningful pattern match query returns correct result
     query = "SELECT firstname FROM es.account WHERE firstname !~~ 'Su_an%'"
@@ -127,7 +127,7 @@ def test_pattern_matching_queries(local_engine_empty):
     # Ensure results are correct
     result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 996
-    assert not set(["Susan", "Susana", "Susanne", "Suzanne"]).issubset(set(result))
+    assert not {"Susan", "Susana", "Susanne", "Suzanne"}.issubset(set(result))
 
 
 @pytest.mark.mounting
