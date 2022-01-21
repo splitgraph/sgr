@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "splitgraph"
-version = "0.3.3"
+version = "0.3.4"
 description = "Command line library and Python client for Splitgraph, a version control system for data"
 license = "Apache 2.0 modified with Commons Clause"
 authors = ["Splitgraph Limited"]
@@ -21,7 +21,7 @@ click_log = ">=0.3.2"
 tqdm = ">=4.46.0"
 packaging = ">=20.1"
 tabulate = ">=0.8.7"
-asciitree = ">=0.3.3"
+asciitree = ">=0.3.4"
 "ruamel.yaml" = "^0.17.17"
 jsonschema = ">=3.1.0"
 cryptography = ">=3.4.0"
@@ -60,7 +60,7 @@ mypy = ">=0.720"
 bump2version = ">=1.0.0"
 types-tabulate = "^0.1.1"
 types-chardet = "^0.1.3"
-types-requests = "^2.25.0"
+types-requests = "^2.27.7"
 
 [tool.poetry.extras]
 pandas = ["pandas", "sqlalchemy"]
