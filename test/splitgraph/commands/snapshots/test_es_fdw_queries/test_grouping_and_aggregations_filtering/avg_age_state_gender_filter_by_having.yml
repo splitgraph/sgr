@@ -1,0 +1,510 @@
+- !!python/tuple
+  - AK
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.7'
+- !!python/tuple
+  - AK
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.416666666666668'
+- !!python/tuple
+  - AL
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '30.53846153846154'
+- !!python/tuple
+  - AL
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '27.666666666666668'
+- !!python/tuple
+  - AR
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.625'
+- !!python/tuple
+  - AR
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.2'
+- !!python/tuple
+  - AZ
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.75'
+- !!python/tuple
+  - AZ
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '29.333333333333332'
+- !!python/tuple
+  - CA
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.2'
+- !!python/tuple
+  - CA
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '29.571428571428573'
+- !!python/tuple
+  - CO
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.0'
+- !!python/tuple
+  - CO
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.285714285714285'
+- !!python/tuple
+  - CT
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.4'
+- !!python/tuple
+  - CT
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.545454545454547'
+- !!python/tuple
+  - DC
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '32.54545454545455'
+- !!python/tuple
+  - DC
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '27.46153846153846'
+- !!python/tuple
+  - DE
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '33.666666666666664'
+- !!python/tuple
+  - DE
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.636363636363637'
+- !!python/tuple
+  - FL
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.181818181818183'
+- !!python/tuple
+  - FL
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.857142857142858'
+- !!python/tuple
+  - GA
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '33.3'
+- !!python/tuple
+  - GA
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '26.333333333333332'
+- !!python/tuple
+  - HI
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '30.53846153846154'
+- !!python/tuple
+  - HI
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '32.55555555555556'
+- !!python/tuple
+  - IA
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '30.5'
+- !!python/tuple
+  - IA
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.636363636363637'
+- !!python/tuple
+  - ID
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '30.6'
+- !!python/tuple
+  - ID
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '32.1764705882353'
+- !!python/tuple
+  - IL
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '30.7'
+- !!python/tuple
+  - IL
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '27.75'
+- !!python/tuple
+  - IN
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.444444444444443'
+- !!python/tuple
+  - IN
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '29.833333333333332'
+- !!python/tuple
+  - KS
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.0'
+- !!python/tuple
+  - KS
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '27.363636363636363'
+- !!python/tuple
+  - KY
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.666666666666668'
+- !!python/tuple
+  - KY
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.833333333333332'
+- !!python/tuple
+  - LA
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '32.25'
+- !!python/tuple
+  - LA
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '32.111111111111114'
+- !!python/tuple
+  - MA
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '27.307692307692307'
+- !!python/tuple
+  - MA
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.0'
+- !!python/tuple
+  - MD
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.6'
+- !!python/tuple
+  - MD
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '32.22222222222222'
+- !!python/tuple
+  - ME
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.333333333333332'
+- !!python/tuple
+  - ME
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.25'
+- !!python/tuple
+  - MI
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '32.07142857142857'
+- !!python/tuple
+  - MI
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.8'
+- !!python/tuple
+  - MN
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.1'
+- !!python/tuple
+  - MN
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '27.88888888888889'
+- !!python/tuple
+  - MO
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '30.4'
+- !!python/tuple
+  - MO
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '29.615384615384617'
+- !!python/tuple
+  - MS
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '30.0'
+- !!python/tuple
+  - MS
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '32.54545454545455'
+- !!python/tuple
+  - MT
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '34.36363636363637'
+- !!python/tuple
+  - MT
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '24.0'
+- !!python/tuple
+  - NC
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.5'
+- !!python/tuple
+  - NC
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.8'
+- !!python/tuple
+  - ND
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.416666666666668'
+- !!python/tuple
+  - ND
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.583333333333332'
+- !!python/tuple
+  - NE
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.545454545454547'
+- !!python/tuple
+  - NE
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.4'
+- !!python/tuple
+  - NH
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '32.9'
+- !!python/tuple
+  - NH
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.181818181818183'
+- !!python/tuple
+  - NJ
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.22222222222222'
+- !!python/tuple
+  - NJ
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.0'
+- !!python/tuple
+  - NM
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '30.25'
+- !!python/tuple
+  - NM
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.333333333333332'
+- !!python/tuple
+  - NV
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.5'
+- !!python/tuple
+  - NV
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.2'
+- !!python/tuple
+  - NY
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.846153846153847'
+- !!python/tuple
+  - NY
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '26.714285714285715'
+- !!python/tuple
+  - OH
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.4'
+- !!python/tuple
+  - OH
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '32.111111111111114'
+- !!python/tuple
+  - OK
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.285714285714285'
+- !!python/tuple
+  - OK
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.466666666666665'
+- !!python/tuple
+  - OR
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.6'
+- !!python/tuple
+  - OR
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.818181818181817'
+- !!python/tuple
+  - PA
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '32.76923076923077'
+- !!python/tuple
+  - PA
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.5'
+- !!python/tuple
+  - RI
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.23076923076923'
+- !!python/tuple
+  - RI
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '32.6'
+- !!python/tuple
+  - SC
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.666666666666668'
+- !!python/tuple
+  - SC
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '36.0'
+- !!python/tuple
+  - SD
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '27.4'
+- !!python/tuple
+  - SD
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.666666666666668'
+- !!python/tuple
+  - TN
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.166666666666668'
+- !!python/tuple
+  - TN
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.46153846153846'
+- !!python/tuple
+  - TX
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.529411764705884'
+- !!python/tuple
+  - TX
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.615384615384617'
+- !!python/tuple
+  - UT
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.5'
+- !!python/tuple
+  - UT
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.25'
+- !!python/tuple
+  - VA
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.0'
+- !!python/tuple
+  - VA
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '26.75'
+- !!python/tuple
+  - VT
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '31.77777777777778'
+- !!python/tuple
+  - VT
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '27.545454545454547'
+- !!python/tuple
+  - WA
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.5'
+- !!python/tuple
+  - WA
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '31.846153846153847'
+- !!python/tuple
+  - WI
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '27.0'
+- !!python/tuple
+  - WI
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '28.76923076923077'
+- !!python/tuple
+  - WV
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '29.88888888888889'
+- !!python/tuple
+  - WV
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '33.125'
+- !!python/tuple
+  - WY
+  - F
+  - !!python/object/apply:decimal.Decimal
+    - '28.454545454545453'
+- !!python/tuple
+  - WY
+  - M
+  - !!python/object/apply:decimal.Decimal
+    - '30.857142857142858'
