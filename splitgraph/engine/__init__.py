@@ -420,10 +420,10 @@ class SQLEngine(ABC):
         results = self.run_sql(
             SQL(
                 "SELECT c.attnum, c.attname, "
-                "pg_catalog.format_type(c.atttypid, c.atttypmod), "
-                "col_description('{}.{}'::regclass, c.attnum) "
+                "pg_catalog.format_type(c.atttypid, c.atttypmod), pgd.description "
                 "FROM pg_attribute c JOIN pg_class t ON c.attrelid = t.oid "
                 "JOIN pg_namespace n ON t.relnamespace = n.oid "
+                "LEFT JOIN pg_description pgd ON pgd.objoid = t.oid AND pgd.objsubid = c.attnum "
                 "WHERE n.nspname = %s AND t.relname = %s AND NOT c.attisdropped "
                 "AND c.attnum >= 0 ORDER BY c.attnum "
             ).format(Identifier(schema), Identifier(table_name)),

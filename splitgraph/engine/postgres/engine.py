@@ -207,6 +207,10 @@ def get_conn_str(conn_params: Dict[str, Optional[str]]) -> str:
     return f"postgresql://{username}:{password}@{server}:{port}/{dbname}"
 
 
+def _quote_ident(val: str) -> str:
+    return '"%s"' % val.replace('"', '""')
+
+
 class PsycopgEngine(SQLEngine):
     """Postgres SQL engine backed by a Psycopg connection."""
 
@@ -832,11 +836,11 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
         """Install the audit trigger on the required tables"""
         self.run_sql(
             SQL(";").join(
-                SQL("SELECT {}.audit_table('{}.{}')").format(
-                    Identifier(_AUDIT_SCHEMA), Identifier(s), Identifier(t)
+                itertools.repeat(
+                    SQL("SELECT {}.audit_table(%s)").format(Identifier(_AUDIT_SCHEMA)), len(tables)
                 )
-                for s, t in tables
-            )
+            ),
+            ["{}.{}".format(_quote_ident(s), _quote_ident(t)) for s, t in tables],
         )
 
     def untrack_tables(self, tables: List[Tuple[str, str]]) -> None:
