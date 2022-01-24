@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, cast
 
 import psycopg2
-from psycopg2.sql import SQL, Identifier
+from psycopg2.sql import SQL, Composed, Identifier
 
 from splitgraph.core.types import (
     Credentials,
@@ -398,18 +398,26 @@ def import_foreign_schema(
     return import_errors
 
 
+def _identifier(c: str) -> Identifier:
+    """
+    Create a psycopg2 composable Identifier escaping percentage signs in column names. These
+    cause issues when using argument interpolation, as psycopg2 treats them as arguments.
+    """
+    return Identifier(c.replace("%", "%%").replace("{", "{{").replace("}", "}}"))
+
+
 def create_foreign_table(
     schema: str,
     server: str,
     table_name: str,
     schema_spec: TableSchema,
     extra_options: Optional[Dict[str, str]] = None,
-):
+) -> Tuple[Composed, List[str]]:
     table_options = extra_options or {}
 
     query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table_name))
     query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
-        *(Identifier(col.name) for col in schema_spec)
+        *(_identifier(col.name) for col in schema_spec)
     )
     query += SQL(") SERVER {}").format(Identifier(server))
 
@@ -417,7 +425,7 @@ def create_foreign_table(
     if table_options:
         table_opts, table_optvals = zip(*table_options.items())
         query += SQL(" OPTIONS(")
-        query += SQL(",").join(Identifier(o) + SQL(" %s") for o in table_opts) + SQL(");")
+        query += SQL(",").join(_identifier(o) + SQL(" %s") for o in table_opts) + SQL(");")
         args.extend(table_optvals)
 
     for col in schema_spec:
@@ -425,7 +433,7 @@ def create_foreign_table(
             query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
                 Identifier(schema),
                 Identifier(table_name),
-                Identifier(col.name),
+                _identifier(col.name),
             )
             args.append(col.comment)
     return query, args

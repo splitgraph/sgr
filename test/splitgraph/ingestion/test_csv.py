@@ -88,7 +88,7 @@ def test_csv_introspection_s3():
         restricts=[],
     )
 
-    assert len(schema) == 3
+    assert len(schema) == 4
     schema = sorted(schema, key=lambda s: s["table_name"])
 
     assert schema[0] == {
@@ -116,8 +116,10 @@ def test_csv_introspection_s3():
         "options": mock.ANY,
     }
     assert load_options(schema[1]["options"]) == _s3_fruits_opts
-    assert schema[2]["table_name"] == "rdu-weather-history.csv"
-    assert schema[2]["columns"][0] == {"column_name": "date", "type_name": "date"}
+    assert schema[2]["table_name"] == "percentage_sign.csv"
+    assert schema[2]["columns"][0] == {"column_name": "Id", "type_name": "integer"}
+    assert schema[3]["table_name"] == "rdu-weather-history.csv"
+    assert schema[3]["columns"][0] == {"column_name": "date", "type_name": "date"}
 
 
 def test_csv_introspection_http():
@@ -251,7 +253,7 @@ def test_csv_data_source_s3(local_engine_empty):
 
     schema = source.introspect()
 
-    assert len(schema.keys()) == 4
+    assert len(schema.keys()) == 5
     assert schema["fruits.csv"] == (
         [
             TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
@@ -302,6 +304,98 @@ def test_csv_data_source_s3(local_engine_empty):
         },
     )
     assert len(schema["rdu-weather-history.csv"][0]) == 28
+    assert schema["percentage_sign.csv"] == (
+        [
+            TableColumn(ordinal=1, name="Id", pg_type="integer", is_pk=False, comment=None),
+            TableColumn(
+                ordinal=2,
+                name="Submit time",
+                pg_type="character varying",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(
+                ordinal=3, name="Profile", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=4, name="Status", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=5,
+                name="Source currency",
+                pg_type="character varying",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(
+                ordinal=6, name="Amount paid by", pg_type="numeric", is_pk=False, comment=None
+            ),
+            TableColumn(ordinal=7, name="Fee", pg_type="numeric", is_pk=False, comment=None),
+            TableColumn(
+                ordinal=8, name="Amount converted", pg_type="numeric", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=9, name="Excess refund", pg_type="numeric", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=10,
+                name="Target currency",
+                pg_type="character varying",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(
+                ordinal=11,
+                name="Converted and sent to",
+                pg_type="numeric",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(
+                ordinal=12, name="Exchange rate", pg_type="numeric", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=13,
+                name="Exchange Rate Date",
+                pg_type="character varying",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(
+                ordinal=14,
+                name="Payout time",
+                pg_type="character varying",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(
+                ordinal=15, name="Name", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=16,
+                name="Account details",
+                pg_type="character varying",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(
+                ordinal=17, name="Reference", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=18, name="VAT (10%)", pg_type="character varying", is_pk=False, comment=None
+            ),
+        ],
+        {
+            "autodetect_dialect": False,
+            "autodetect_encoding": False,
+            "autodetect_header": False,
+            "delimiter": ",",
+            "encoding": "utf-8",
+            "header": True,
+            "quotechar": '"',
+            "s3_object": "some_prefix/percentage_sign.csv",
+        },
+    )
 
     assert schema["not_a_csv.txt"] == MountError(
         table_name="not_a_csv.txt",
@@ -323,10 +417,11 @@ def test_csv_data_source_s3(local_engine_empty):
     )
 
     preview = source.preview(schema)
-    assert len(preview.keys()) == 5
+    assert len(preview.keys()) == 6
     assert len(preview["fruits.csv"]) == 4
     assert len(preview["encoding-win-1252.csv"]) == 3
     assert len(preview["rdu-weather-history.csv"]) == 10
+    assert len(preview["percentage_sign.csv"]) == 1
     assert preview["doesnt_exist"] == MountError.construct(
         table_name="doesnt_exist", error="minio.error.S3Error", error_text=mock.ANY
     )
