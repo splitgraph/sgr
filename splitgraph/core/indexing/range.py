@@ -17,7 +17,7 @@ from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import adapt, coerce_val_to_json
 from splitgraph.core.sql import select
 from splitgraph.core.types import Changeset, Comparable, Quals, TableSchema
-from splitgraph.engine import ResultShape
+from splitgraph.engine import ResultShape, validate_type
 from splitgraph.engine.postgres.engine import PG_INDEXABLE_TYPES
 
 if TYPE_CHECKING:
@@ -130,7 +130,10 @@ def _quals_to_clause(
 
     def _internal_quals_to_clause(or_quals):
         clauses, args = zip(
-            *[qual_to_clause(q, _strip_type_mod(column_types[q[0]])) for q in or_quals]
+            *[
+                qual_to_clause(q, validate_type(_strip_type_mod(column_types[q[0]])))
+                for q in or_quals
+            ]
         )
         return (
             SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses),
@@ -231,7 +234,7 @@ def generate_range_index(
     object_pk = [c.name for c in table_schema if c.is_pk]
     if not object_pk:
         object_pk = [c.name for c in table_schema if c.pg_type in PG_INDEXABLE_TYPES]
-    column_types = {c.name: _strip_type_mod(c.pg_type) for c in table_schema}
+    column_types = {c.name: validate_type(_strip_type_mod(c.pg_type)) for c in table_schema}
     columns_to_index = [
         c.name
         for c in table_schema

@@ -19,6 +19,7 @@ from splitgraph.core.types import (
     TableSchema,
     dict_to_table_schema_params,
 )
+from splitgraph.engine import validate_type
 from splitgraph.exceptions import DataSourceError, get_exception_name
 from splitgraph.hooks.data_source.base import LoadableDataSource, MountableDataSource
 
@@ -416,7 +417,7 @@ def create_foreign_table(
     table_options = extra_options or {}
 
     query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table_name))
-    query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
+    query += SQL(",".join("{} %s " % validate_type(col.pg_type) for col in schema_spec)).format(
         *(_identifier(col.name) for col in schema_spec)
     )
     query += SQL(") SERVER {}").format(Identifier(server))

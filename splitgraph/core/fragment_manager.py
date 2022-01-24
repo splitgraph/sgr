@@ -26,7 +26,7 @@ from splitgraph.core.indexing.bloom import filter_bloom_index, generate_bloom_in
 from splitgraph.core.indexing.range import filter_range_index, generate_range_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.core.types import Changeset, TableSchema
-from splitgraph.engine import ResultShape
+from splitgraph.engine import ResultShape, validate_type
 from splitgraph.engine.postgres.engine import (
     SG_UD_FLAG,
     add_ud_flag_column,
@@ -374,8 +374,7 @@ class FragmentManager(MetadataManager):
         # Horror alert: we hash newly created tables by essentially calling digest(row::text) in Postgres and
         # we don't really know how it turns some types to strings. So instead we give Postgres all of its deleted
         # rows back and ask it to hash them for us in the same way.
-        # TODO we do not quote pg_type here
-        inner_tuple = "(" + ",".join("%s::" + c.pg_type for c in table_schema) + ")"
+        inner_tuple = "(" + ",".join("%s::" + validate_type(c.pg_type) for c in table_schema) + ")"
         query = (  # nosec
             "SELECT digest(o::text, 'sha256') FROM (VALUES "
             + ",".join(itertools.repeat(inner_tuple, len(rows)))
@@ -1033,7 +1032,7 @@ class FragmentManager(MetadataManager):
             SQL("CREATE OR REPLACE FUNCTION {}._sg_tmp_read_cursor() RETURNS TABLE(").format(
                 Identifier(source_schema)
             )
-            + SQL(",".join("{} %s " % col.pg_type for col in table_schema)).format(
+            + SQL(",".join("{} %s " % validate_type(col.pg_type) for col in table_schema)).format(
                 *(Identifier(col.name) for col in table_schema)
             )
             + SQL(
