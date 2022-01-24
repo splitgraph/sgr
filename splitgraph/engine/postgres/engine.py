@@ -52,6 +52,7 @@ from splitgraph.engine import (
     ResultShape,
     SQLEngine,
     switch_engine,
+    validate_type,
 )
 from splitgraph.exceptions import (
     APICompatibilityError,
@@ -994,7 +995,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = SQL(
             "CREATE FOREIGN TABLE " + ("IF NOT EXISTS " if if_not_exists else "") + "{}.{} ("
         ).format(Identifier(schema), Identifier(table))
-        query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
+        query += SQL(",".join("{} %s " % validate_type(col.pg_type) for col in schema_spec)).format(
             *(Identifier(col.name) for col in schema_spec)
         )
         # foreign tables/cstore don't support PKs
