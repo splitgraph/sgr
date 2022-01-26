@@ -444,7 +444,7 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
     SELECT state, gender, avg(age)
     FROM es.account
     GROUP BY gender, state
-    HAVING gender IS NOT NULL AND state <> ANY(ARRAY['MA', 'ME', 'MI', 'MO'])
+    HAVING gender IS NOT NULL AND state <> ALL(ARRAY['MA', 'ME', 'MI', 'MO'])
     """
 
     # Ensure query is going to be pushed down
@@ -456,7 +456,7 @@ def test_grouping_and_aggregations_filtering(snapshot, local_engine_empty):
                     {"exists": {"field": "gender"}},
                     {
                         "bool": {
-                            "should": [
+                            "must": [
                                 {"bool": {"must_not": {"term": {"state": "MA"}}}},
                                 {"bool": {"must_not": {"term": {"state": "ME"}}}},
                                 {"bool": {"must_not": {"term": {"state": "MI"}}}},
@@ -574,7 +574,7 @@ def test_agg_subquery_pushdown(local_engine_empty):
     SELECT min(max_balance), gender FROM sub_agg GROUP BY gender
     """
 
-    # Only the subquery is pushed-down, with no redundant aggregations
+    # Only the subqueries are pushed-down
     result = local_engine_empty.run_sql("EXPLAIN " + query)
     assert _extract_queries_from_explain(result)[0] == {
         "query": {"bool": {"must": []}},

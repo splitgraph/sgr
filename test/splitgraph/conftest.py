@@ -609,3 +609,20 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
             repo.commit(snap_only=snap_only)
     if not commit_after_every:
         repo.commit(snap_only=snap_only)
+
+
+@pytest.fixture
+def pgorigin_sqlalchemy_fdw(local_engine_empty):
+    local_engine_empty.run_sql(
+        """
+        CREATE SERVER pgorigin FOREIGN DATA WRAPPER multicorn OPTIONS (
+            wrapper 'multicorn.sqlalchemyfdw.SqlAlchemyFdw',
+            db_url 'postgresql://originro:originpass@pgorigin/origindb',
+            tablename 'account'
+        )
+        """
+    )
+    local_engine_empty.run_sql("CREATE SCHEMA pg")
+    local_engine_empty.run_sql(
+        "IMPORT FOREIGN SCHEMA public LIMIT TO (account) FROM SERVER pgorigin INTO pg"
+    )
