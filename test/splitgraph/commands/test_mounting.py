@@ -178,7 +178,7 @@ def test_mount_introspection_preview(local_engine_empty):
         ),
     }
 
-    # Discard the account table due to it's size
+    # Discard the account table due to its size
     tables.pop("account")
 
     preview = handler.preview(tables=tables)
