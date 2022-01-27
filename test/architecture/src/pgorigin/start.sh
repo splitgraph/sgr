@@ -16,6 +16,7 @@ if [ ! -e '/done_setup' ]; then
 
     if [ -e '/src/setup.sql' ]; then
         ${SU} "psql ${ORIGIN_PG_DB} < /src/setup.sql"
+        ${SU} "psql ${ORIGIN_PG_DB} < /src/load_account_data.sql"
     fi
 
     echo 1 > /done_setup

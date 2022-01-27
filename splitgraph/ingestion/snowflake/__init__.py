@@ -75,6 +75,7 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
                         },
                     },
                 ],
+                "description": "A password or a private key to be used for authentication",
             },
             "account": {
                 "type": "string",
@@ -132,10 +133,13 @@ This will mount a remote Snowflake schema or a table. You can also get a mounted
 $ sgr mount snowflake test_snowflake -o@- <<EOF
 {
     "username": "username",
-    "password": "password",
+    "secret": {
+		"secret_type": "password",
+		"password": "password"
+	},
     "account": "acc-id.west-europe.azure",
     "database": "SNOWFLAKE_SAMPLE_DATA",
-    "schema": "TPCH_SF100"
+    "schema": "TPCH_SF100",
     "envvars": {"HTTPS_PROXY": "http://proxy.company.com"}
 }
 EOF
@@ -143,7 +147,10 @@ EOF
 $ sgr mount snowflake test_snowflake_subquery -o@- <<EOF
 {
     "username": "username",
-    "private_key": "MIIEvQIBAD...",
+    "secret": {
+		"secret_type": "private_key",
+		"private_key": "MIIEvQIBAD..."
+	},
     "account": "acc-id.west-europe.azure",
     "database": "SNOWFLAKE_SAMPLE_DATA",
     "tables": {

@@ -15,4 +15,3 @@ INSERT INTO fruits (name) VALUES ('orange');
 
 INSERT INTO vegetables (name) VALUES ('potato');
 INSERT INTO vegetables (name) VALUES ('carrot');
-

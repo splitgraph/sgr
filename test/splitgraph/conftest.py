@@ -609,3 +609,28 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
             repo.commit(snap_only=snap_only)
     if not commit_after_every:
         repo.commit(snap_only=snap_only)
+
+
+@pytest.fixture(scope="session")
+def _esorigin_fdw():
+    _mount_elasticsearch()
+
+
+@pytest.fixture(scope="session")
+def _pgorigin_sqlalchemy_fdw(test_local_engine):
+    test_local_engine.run_sql("DROP SERVER IF EXISTS pgorigin CASCADE")
+    test_local_engine.run_sql(
+        """
+        CREATE SERVER pgorigin FOREIGN DATA WRAPPER multicorn OPTIONS (
+            wrapper 'multicorn.sqlalchemyfdw.SqlAlchemyFdw',
+            db_url 'postgresql://originro:originpass@pgorigin/origindb',
+            tablename 'account',
+            batch_size '5'
+        )
+        """
+    )
+    test_local_engine.run_sql("DROP SCHEMA IF EXISTS pg CASCADE")
+    test_local_engine.run_sql("CREATE SCHEMA pg")
+    test_local_engine.run_sql(
+        "IMPORT FOREIGN SCHEMA public LIMIT TO (account) FROM SERVER pgorigin INTO pg"
+    )

@@ -1,12 +1,12 @@
 - !!python/tuple
   - AK
-  - 25
-  - 31138.0
+  - 35
+  - 37707.0
   - 1
 - !!python/tuple
   - AK
-  - 35
-  - 37707.0
+  - 25
+  - 31138.0
   - 1
 - !!python/tuple
   - AR
@@ -55,14 +55,14 @@
   - 1
 - !!python/tuple
   - ID
-  - 25
-  - 36776.0
-  - 1
-- !!python/tuple
-  - ID
   - 35
   - 20455.0
   - 2
+- !!python/tuple
+  - ID
+  - 25
+  - 36776.0
+  - 1
 - !!python/tuple
   - KS
   - 35
@@ -70,13 +70,13 @@
   - 1
 - !!python/tuple
   - KY
-  - 25
-  - 35596.0
+  - 35
+  - 26581.0
   - 1
 - !!python/tuple
   - KY
-  - 35
-  - 26581.0
+  - 25
+  - 35596.0
   - 1
 - !!python/tuple
   - LA
@@ -90,23 +90,23 @@
   - 1
 - !!python/tuple
   - MD
-  - 25
-  - 47657.0
-  - 1
-- !!python/tuple
-  - MD
   - 35
   - 2028.0
   - 3
 - !!python/tuple
-  - ME
+  - MD
   - 25
-  - 21153.0
+  - 47657.0
   - 1
 - !!python/tuple
   - ME
   - 35
   - 22752.0
+  - 1
+- !!python/tuple
+  - ME
+  - 25
+  - 21153.0
   - 1
 - !!python/tuple
   - MI
@@ -115,13 +115,13 @@
   - 1
 - !!python/tuple
   - MN
-  - 25
-  - 27583.0
+  - 35
+  - 28044.0
   - 1
 - !!python/tuple
   - MN
-  - 35
-  - 28044.0
+  - 25
+  - 27583.0
   - 1
 - !!python/tuple
   - MO
@@ -130,13 +130,13 @@
   - 1
 - !!python/tuple
   - MS
-  - 25
-  - 49567.0
+  - 35
+  - 34708.0
   - 1
 - !!python/tuple
   - MS
-  - 35
-  - 34708.0
+  - 25
+  - 49567.0
   - 1
 - !!python/tuple
   - NE
@@ -160,23 +160,23 @@
   - 1
 - !!python/tuple
   - OK
-  - 25
-  - 8036.0
-  - 1
-- !!python/tuple
-  - OK
   - 35
   - 22575.0
   - 1
 - !!python/tuple
-  - OR
+  - OK
   - 25
-  - 13024.0
+  - 8036.0
   - 1
 - !!python/tuple
   - OR
   - 35
   - 1481.0
+  - 1
+- !!python/tuple
+  - OR
+  - 25
+  - 13024.0
   - 1
 - !!python/tuple
   - SC
@@ -200,13 +200,13 @@
   - 1
 - !!python/tuple
   - UT
-  - 25
-  - 38695.0
+  - 35
+  - 11422.0
   - 1
 - !!python/tuple
   - UT
-  - 35
-  - 11422.0
+  - 25
+  - 38695.0
   - 1
 - !!python/tuple
   - VA
