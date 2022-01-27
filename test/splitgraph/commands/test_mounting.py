@@ -120,7 +120,66 @@ def test_mount_introspection_preview(local_engine_empty):
             ],
             {"schema_name": "public", "table_name": "vegetables"},
         ),
+        "account": (
+            [
+                TableColumn(
+                    ordinal=1, name="account_number", pg_type="integer", is_pk=False, comment=None
+                ),
+                TableColumn(
+                    ordinal=2, name="balance", pg_type="integer", is_pk=False, comment=None
+                ),
+                TableColumn(
+                    ordinal=3,
+                    name="firstname",
+                    pg_type="character varying(20)",
+                    is_pk=False,
+                    comment=None,
+                ),
+                TableColumn(
+                    ordinal=4,
+                    name="lastname",
+                    pg_type="character varying(20)",
+                    is_pk=False,
+                    comment=None,
+                ),
+                TableColumn(ordinal=5, name="age", pg_type="integer", is_pk=False, comment=None),
+                TableColumn(
+                    ordinal=6,
+                    name="gender",
+                    pg_type="character varying(1)",
+                    is_pk=False,
+                    comment=None,
+                ),
+                TableColumn(ordinal=7, name="address", pg_type="text", is_pk=False, comment=None),
+                TableColumn(
+                    ordinal=8,
+                    name="employer",
+                    pg_type="character varying(20)",
+                    is_pk=False,
+                    comment=None,
+                ),
+                TableColumn(ordinal=9, name="email", pg_type="text", is_pk=False, comment=None),
+                TableColumn(
+                    ordinal=10,
+                    name="city",
+                    pg_type="character varying(20)",
+                    is_pk=False,
+                    comment=None,
+                ),
+                TableColumn(
+                    ordinal=11,
+                    name="state",
+                    pg_type="character varying(5)",
+                    is_pk=False,
+                    comment=None,
+                ),
+            ],
+            {"schema_name": "public", "table_name": "account"},
+        ),
     }
+
+    # Discard the account table due to it's size
+    tables.pop("account")
 
     preview = handler.preview(tables=tables)
     assert preview == {
