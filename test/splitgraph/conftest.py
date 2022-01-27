@@ -619,7 +619,8 @@ def pgorigin_sqlalchemy_fdw(local_engine_empty):
         CREATE SERVER pgorigin FOREIGN DATA WRAPPER multicorn OPTIONS (
             wrapper 'multicorn.sqlalchemyfdw.SqlAlchemyFdw',
             db_url 'postgresql://originro:originpass@pgorigin/origindb',
-            tablename 'account'
+            tablename 'account',
+            batch_size '5'
         )
         """
     )
