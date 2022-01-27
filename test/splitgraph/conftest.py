@@ -612,12 +612,12 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
 
 
 @pytest.fixture(scope="session")
-def esorigin_fdw():
+def _esorigin_fdw():
     _mount_elasticsearch()
 
 
 @pytest.fixture(scope="session")
-def pgorigin_sqlalchemy_fdw(test_local_engine):
+def _pgorigin_sqlalchemy_fdw(test_local_engine):
     test_local_engine.run_sql("DROP SERVER IF EXISTS pgorigin CASCADE")
     test_local_engine.run_sql(
         """

@@ -1,6 +1,5 @@
 import json
 import math
-from decimal import Decimal
 
 import pytest
 import yaml
@@ -46,7 +45,7 @@ _bare_es_sequential_scan = {"query": {"bool": {"must": []}}}
 
 
 @pytest.mark.mounting
-@pytest.mark.usefixtures("esorigin_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
 def test_es_specific_pattern_matching_queries(test_local_engine):
     # Test pattern matching conversion mechanism on generic examples
     query = r"""
@@ -119,8 +118,8 @@ def test_es_specific_pattern_matching_queries(test_local_engine):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_pattern_matching_queries(data_source, test_local_engine):
     # Test meaningful pattern match query returns correct result
     query = f"SELECT firstname FROM {data_source}.account WHERE firstname ~~ 'Su_an%'"
@@ -167,8 +166,8 @@ def test_pattern_matching_queries(data_source, test_local_engine):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_simple_aggregation_functions(data_source, test_local_engine):
     query = f"""
     SELECT max(account_number), avg(balance), max(balance),
@@ -260,8 +259,8 @@ def test_simple_aggregation_functions(data_source, test_local_engine):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_simple_aggregation_functions_filtering(data_source, test_local_engine):
     query = f"""
     SELECT avg(age), max(balance)
@@ -333,8 +332,8 @@ def test_simple_aggregation_functions_filtering(data_source, test_local_engine):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_simple_grouping_clauses(data_source, snapshot, test_local_engine):
     # Single column grouping
     query = f"SELECT state FROM {data_source}.account GROUP BY state ORDER BY state"
@@ -402,8 +401,8 @@ def test_simple_grouping_clauses(data_source, snapshot, test_local_engine):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_simple_grouping_clauses_filtering(data_source, snapshot, test_local_engine):
     # Single column grouping
     query = f"""
@@ -459,8 +458,8 @@ def test_simple_grouping_clauses_filtering(data_source, snapshot, test_local_eng
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_grouping_and_aggregations_bare(data_source, snapshot, test_local_engine):
     # Aggregations functions and grouping bare combination
     query = f"SELECT gender, avg(balance), avg(age) FROM {data_source}.account GROUP BY gender ORDER BY gender"
@@ -540,8 +539,8 @@ def test_grouping_and_aggregations_bare(data_source, snapshot, test_local_engine
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_grouping_and_aggregations_filtering(data_source, snapshot, test_local_engine):
     # Aggregation functions and grouping with filtering
     query = f"""
@@ -669,8 +668,8 @@ def test_grouping_and_aggregations_filtering(data_source, snapshot, test_local_e
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_agg_subquery_pushdown(data_source, test_local_engine):
     """
     Most of the magic in these examples is coming from PG, not our Multicorn code
@@ -804,8 +803,8 @@ def test_agg_subquery_pushdown(data_source, test_local_engine):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_aggregations_join_combinations(data_source, snapshot, test_local_engine):
     # Sub-aggregations in a join are pushed down
     query = f"""
@@ -899,8 +898,8 @@ def test_aggregations_join_combinations(data_source, snapshot, test_local_engine
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
-@pytest.mark.usefixtures("esorigin_fdw")
-@pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
+@pytest.mark.usefixtures("_esorigin_fdw")
+@pytest.mark.usefixtures("_pgorigin_sqlalchemy_fdw")
 def test_various_not_pushed_down(data_source, test_local_engine):
     # COUNT(1) not going to be pushed down, as 1 is treated like an expression (single T_Const node)
     query = f"SELECT COUNT(1) FROM {data_source}.account"
