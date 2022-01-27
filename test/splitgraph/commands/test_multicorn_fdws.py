@@ -1,7 +1,6 @@
 import json
 import math
 from decimal import Decimal
-from test.splitgraph.conftest import _mount_elasticsearch
 
 import pytest
 import yaml
@@ -47,9 +46,8 @@ _bare_es_sequential_scan = {"query": {"bool": {"must": []}}}
 
 
 @pytest.mark.mounting
-def test_es_specific_pattern_matching_queries(local_engine_empty):
-    _mount_elasticsearch()
-
+@pytest.mark.usefixtures("esorigin_fdw")
+def test_es_specific_pattern_matching_queries(test_local_engine):
     # Test pattern matching conversion mechanism on generic examples
     query = r"""
     SELECT *
@@ -58,7 +56,7 @@ def test_es_specific_pattern_matching_queries(local_engine_empty):
     """
 
     # Ensure proper query translation
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
     assert _extract_es_queries_from_explain(result)[0] == {
         "query": {
             "bool": {
@@ -80,7 +78,7 @@ def test_es_specific_pattern_matching_queries(local_engine_empty):
     """
 
     # Ensure proper query translation
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
     assert _extract_es_queries_from_explain(result)[0] == {
         "query": {
             "bool": {
@@ -103,7 +101,7 @@ def test_es_specific_pattern_matching_queries(local_engine_empty):
     """
 
     # Ensure proper query translation
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
     assert _extract_es_queries_from_explain(result)[0] == {
         "query": {
             "bool": {
@@ -121,13 +119,14 @@ def test_es_specific_pattern_matching_queries(local_engine_empty):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_pattern_matching_queries(data_source, local_engine_empty):
+def test_pattern_matching_queries(data_source, test_local_engine):
     # Test meaningful pattern match query returns correct result
     query = f"SELECT firstname FROM {data_source}.account WHERE firstname ~~ 'Su_an%'"
 
     # Ensure proper query translation
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -140,7 +139,7 @@ def test_pattern_matching_queries(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 4
     assert set(result) == {"Susan", "Susana", "Susanne", "Suzanne"}
 
@@ -148,7 +147,7 @@ def test_pattern_matching_queries(data_source, local_engine_empty):
     query = f"SELECT firstname FROM {data_source}.account WHERE firstname !~~ 'Su_an%'"
 
     # Ensure proper query translation
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -161,17 +160,16 @@ def test_pattern_matching_queries(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 996
     assert not {"Susan", "Susana", "Susanne", "Suzanne"}.issubset(set(result))
 
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_simple_aggregation_functions(data_source, local_engine_empty):
-    _mount_elasticsearch()
-
+def test_simple_aggregation_functions(data_source, test_local_engine):
     query = f"""
     SELECT max(account_number), avg(balance), max(balance),
         sum(balance), min(age), avg(age)
@@ -179,7 +177,7 @@ def test_simple_aggregation_functions(data_source, local_engine_empty):
     """
 
     # Ensure query is going to be aggregated on the foreign server
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -205,7 +203,7 @@ def test_simple_aggregation_functions(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 1
 
     # Assert aggregation result
@@ -220,7 +218,7 @@ def test_simple_aggregation_functions(data_source, local_engine_empty):
     query = f"SELECT COUNT(*) FROM {data_source}.account"
 
     # Ensure query is going to be aggregated on the foreign server
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -235,13 +233,13 @@ def test_simple_aggregation_functions(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.ONE_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.ONE_ONE)
     assert result == 1000
 
     # Not like qual operator
     query = f"SELECT COUNT(*) FROM {data_source}.account WHERE firstname !~~ 'Su_an%'"
 
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
     if data_source == "es":
         # Ensure query is not going to be aggregated on the foreign server
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -256,15 +254,15 @@ def test_simple_aggregation_functions(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.ONE_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.ONE_ONE)
     assert result == 996
 
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_simple_aggregation_functions_filtering(data_source, local_engine_empty):
-    _mount_elasticsearch()
+def test_simple_aggregation_functions_filtering(data_source, test_local_engine):
     query = f"""
     SELECT avg(age), max(balance)
     FROM {data_source}.account
@@ -272,7 +270,7 @@ def test_simple_aggregation_functions_filtering(data_source, local_engine_empty)
     """
 
     # Ensure query is going to be aggregated on the foreign server
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -297,7 +295,7 @@ def test_simple_aggregation_functions_filtering(data_source, local_engine_empty)
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 1
 
     # Assert aggregation result
@@ -308,7 +306,7 @@ def test_simple_aggregation_functions_filtering(data_source, local_engine_empty)
     query = f"SELECT avg(balance), COUNT(*) FROM {data_source}.account WHERE firstname ~~ 'Su_an%'"
 
     # Ensure query is going to be aggregated on the foreign server
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -325,7 +323,7 @@ def test_simple_aggregation_functions_filtering(data_source, local_engine_empty)
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 1
 
     # Assert aggregation result
@@ -335,15 +333,14 @@ def test_simple_aggregation_functions_filtering(data_source, local_engine_empty)
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_simple_grouping_clauses(data_source, snapshot, local_engine_empty):
-    _mount_elasticsearch()
-
+def test_simple_grouping_clauses(data_source, snapshot, test_local_engine):
     # Single column grouping
     query = f"SELECT state FROM {data_source}.account GROUP BY state ORDER BY state"
 
     # Ensure grouping is going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -360,7 +357,7 @@ def test_simple_grouping_clauses(data_source, snapshot, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 51
 
     # Assert aggregation result
@@ -372,7 +369,7 @@ def test_simple_grouping_clauses(data_source, snapshot, local_engine_empty):
     )
 
     # Ensure grouping is going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -396,7 +393,7 @@ def test_simple_grouping_clauses(data_source, snapshot, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 42
 
     # Assert aggregation result
@@ -405,10 +402,9 @@ def test_simple_grouping_clauses(data_source, snapshot, local_engine_empty):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_simple_grouping_clauses_filtering(data_source, snapshot, local_engine_empty):
-    _mount_elasticsearch()
-
+def test_simple_grouping_clauses_filtering(data_source, snapshot, test_local_engine):
     # Single column grouping
     query = f"""
         SELECT state, gender FROM {data_source}.account
@@ -418,7 +414,7 @@ def test_simple_grouping_clauses_filtering(data_source, snapshot, local_engine_e
     """
 
     # Ensure grouping is going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -457,21 +453,20 @@ def test_simple_grouping_clauses_filtering(data_source, snapshot, local_engine_e
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert result == [("WA", "F"), ("WA", "M"), ("TX", "F"), ("TX", "M"), ("CO", "F"), ("CO", "M")]
 
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_grouping_and_aggregations_bare(data_source, snapshot, local_engine_empty):
-    _mount_elasticsearch()
-
+def test_grouping_and_aggregations_bare(data_source, snapshot, test_local_engine):
     # Aggregations functions and grouping bare combination
     query = f"SELECT gender, avg(balance), avg(age) FROM {data_source}.account GROUP BY gender ORDER BY gender"
 
     # Ensure query is going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -498,7 +493,7 @@ def test_grouping_and_aggregations_bare(data_source, snapshot, local_engine_empt
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 2
     assert result[0][0] == "F"
     assert math.isclose(result[0][1], 25623.3468, rel_tol=1e-05)
@@ -512,7 +507,7 @@ def test_grouping_and_aggregations_bare(data_source, snapshot, local_engine_empt
     query = f"SELECT age, COUNT(account_number), min(balance) FROM {data_source}.account GROUP BY age ORDER BY age DESC"
 
     # Ensure query is going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -536,7 +531,7 @@ def test_grouping_and_aggregations_bare(data_source, snapshot, local_engine_empt
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 21
 
     # Assert aggregation result
@@ -545,10 +540,9 @@ def test_grouping_and_aggregations_bare(data_source, snapshot, local_engine_empt
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_grouping_and_aggregations_filtering(data_source, snapshot, local_engine_empty):
-    _mount_elasticsearch()
-
+def test_grouping_and_aggregations_filtering(data_source, snapshot, test_local_engine):
     # Aggregation functions and grouping with filtering
     query = f"""
     SELECT state, age, min(balance), COUNT(*)
@@ -559,7 +553,7 @@ def test_grouping_and_aggregations_filtering(data_source, snapshot, local_engine
     """
 
     # Ensure query is going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -605,7 +599,7 @@ def test_grouping_and_aggregations_filtering(data_source, snapshot, local_engine
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 45
 
     # Assert aggregation result
@@ -622,7 +616,7 @@ def test_grouping_and_aggregations_filtering(data_source, snapshot, local_engine
     """
 
     # Ensure query is going to be pushed down
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -667,7 +661,7 @@ def test_grouping_and_aggregations_filtering(data_source, snapshot, local_engine
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
 
     # Assert aggregation result
     snapshot.assert_match(yaml.dump(result), "avg_age_state_gender_filter_by_having.yml")
@@ -675,15 +669,14 @@ def test_grouping_and_aggregations_filtering(data_source, snapshot, local_engine
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_agg_subquery_pushdown(data_source, local_engine_empty):
+def test_agg_subquery_pushdown(data_source, test_local_engine):
     """
     Most of the magic in these examples is coming from PG, not our Multicorn code
     (i.e. discarding redundant targets from subqueries).
     Here we just make sure that we don't break that somehow.
     """
-
-    _mount_elasticsearch()
 
     # DISTINCT on a grouping clause from a subquery
     query = f"""
@@ -695,7 +688,7 @@ def test_agg_subquery_pushdown(data_source, local_engine_empty):
     """
 
     # Ensure only the relevant part is pushed down (i.e. no aggregations as they are redundant)
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -719,7 +712,7 @@ def test_agg_subquery_pushdown(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 2
 
     # Assert aggregation result
@@ -735,7 +728,7 @@ def test_agg_subquery_pushdown(data_source, local_engine_empty):
     """
 
     # Ensure only the relevant part is pushed down (no redundant aggregations, i.e. only min)
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -760,7 +753,7 @@ def test_agg_subquery_pushdown(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.MANY_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.MANY_ONE)
     assert len(result) == 8
 
     # Assert aggregation result
@@ -777,7 +770,7 @@ def test_agg_subquery_pushdown(data_source, local_engine_empty):
     """
 
     # Only the subqueries are pushed-down
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == {
@@ -802,7 +795,7 @@ def test_agg_subquery_pushdown(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 2
 
     # Assert aggregation result
@@ -811,8 +804,9 @@ def test_agg_subquery_pushdown(data_source, local_engine_empty):
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_aggregations_join_combinations(data_source, snapshot, local_engine_empty):
+def test_aggregations_join_combinations(data_source, snapshot, test_local_engine):
     # Sub-aggregations in a join are pushed down
     query = f"""
     SELECT t1.*, t2.min FROM (
@@ -830,7 +824,7 @@ def test_aggregations_join_combinations(data_source, snapshot, local_engine_empt
     """
 
     # Only the subquery is pushed-down, with no redundant aggregations
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         queries = _extract_es_queries_from_explain(result)
@@ -870,7 +864,7 @@ def test_aggregations_join_combinations(data_source, snapshot, local_engine_empt
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
     assert len(result) == 21
 
     # Assert aggregation result
@@ -885,7 +879,7 @@ def test_aggregations_join_combinations(data_source, snapshot, local_engine_empt
         ) t GROUP BY state
     """
 
-    result = local_engine_empty.run_sql(query)
+    result = test_local_engine.run_sql(query)
 
     if data_source == "es":
         queries = _extract_es_queries_from_explain(result)
@@ -905,14 +899,13 @@ def test_aggregations_join_combinations(data_source, snapshot, local_engine_empt
 
 @pytest.mark.mounting
 @pytest.mark.parametrize("data_source", ["es", "pg"])
+@pytest.mark.usefixtures("esorigin_fdw")
 @pytest.mark.usefixtures("pgorigin_sqlalchemy_fdw")
-def test_various_not_pushed_down(data_source, local_engine_empty):
-    _mount_elasticsearch()
-
+def test_various_not_pushed_down(data_source, test_local_engine):
     # COUNT(1) not going to be pushed down, as 1 is treated like an expression (single T_Const node)
     query = f"SELECT COUNT(1) FROM {data_source}.account"
 
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == _bare_es_sequential_scan
@@ -922,13 +915,13 @@ def test_various_not_pushed_down(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.ONE_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.ONE_ONE)
     assert result == 1000
 
     # COUNT DISTINCT queries are not going to be pushed down
     query = f"SELECT COUNT(DISTINCT state) FROM {data_source}.account"
 
-    result = local_engine_empty.run_sql("EXPLAIN " + query)
+    result = test_local_engine.run_sql("EXPLAIN " + query)
 
     if data_source == "es":
         assert _extract_es_queries_from_explain(result)[0] == _bare_es_sequential_scan
@@ -938,11 +931,11 @@ def test_various_not_pushed_down(data_source, local_engine_empty):
         )
 
     # Ensure results are correct
-    result = local_engine_empty.run_sql(query, return_shape=ResultShape.ONE_ONE)
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.ONE_ONE)
     assert result == 51
 
     # SUM DISTINCT queries are not going to be pushed down
-    result = local_engine_empty.run_sql(
+    result = test_local_engine.run_sql(
         f"EXPLAIN SELECT SUM(DISTINCT age) FROM {data_source}.account"
     )
 
@@ -954,7 +947,7 @@ def test_various_not_pushed_down(data_source, local_engine_empty):
         )
 
     # AVG DISTINCT queries are not going to be pushed down
-    result = local_engine_empty.run_sql(
+    result = test_local_engine.run_sql(
         f"EXPLAIN SELECT AVG(DISTINCT balance) FROM {data_source}.account"
     )
 
@@ -966,7 +959,7 @@ def test_various_not_pushed_down(data_source, local_engine_empty):
         )
 
     # Queries with proper HAVING are not goint to be pushed down
-    result = local_engine_empty.run_sql(
+    result = test_local_engine.run_sql(
         f"EXPLAIN SELECT max(balance) FROM {data_source}.account HAVING max(balance) > 30"
     )
 
@@ -979,7 +972,7 @@ def test_various_not_pushed_down(data_source, local_engine_empty):
         )
 
     # Aggregation with a nested expression won't be pushed down
-    result = local_engine_empty.run_sql(
+    result = test_local_engine.run_sql(
         f"EXPLAIN SELECT avg(age * balance) FROM {data_source}.account GROUP BY state"
     )
 

@@ -611,10 +611,15 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
         repo.commit(snap_only=snap_only)
 
 
-@pytest.fixture
-def pgorigin_sqlalchemy_fdw(local_engine_empty):
-    local_engine_empty.run_sql("DROP SERVER IF EXISTS pgorigin CASCADE")
-    local_engine_empty.run_sql(
+@pytest.fixture(scope="session")
+def esorigin_fdw():
+    _mount_elasticsearch()
+
+
+@pytest.fixture(scope="session")
+def pgorigin_sqlalchemy_fdw(test_local_engine):
+    test_local_engine.run_sql("DROP SERVER IF EXISTS pgorigin CASCADE")
+    test_local_engine.run_sql(
         """
         CREATE SERVER pgorigin FOREIGN DATA WRAPPER multicorn OPTIONS (
             wrapper 'multicorn.sqlalchemyfdw.SqlAlchemyFdw',
@@ -624,8 +629,8 @@ def pgorigin_sqlalchemy_fdw(local_engine_empty):
         )
         """
     )
-    local_engine_empty.run_sql("DROP SCHEMA IF EXISTS pg CASCADE")
-    local_engine_empty.run_sql("CREATE SCHEMA pg")
-    local_engine_empty.run_sql(
+    test_local_engine.run_sql("DROP SCHEMA IF EXISTS pg CASCADE")
+    test_local_engine.run_sql("CREATE SCHEMA pg")
+    test_local_engine.run_sql(
         "IMPORT FOREIGN SCHEMA public LIMIT TO (account) FROM SERVER pgorigin INTO pg"
     )
