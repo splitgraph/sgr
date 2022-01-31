@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.5 (2022-01-31)
+
+  * Support for aggregation and GROUP BY pushdown for the Snowflake FDW
+    * https://github.com/splitgraph/splitgraph/pull/620
+    * https://github.com/splitgraph/Multicorn/pull/3
+  * Fix FDW previews when column names have percentage signs (https://github.com/splitgraph/splitgraph/pull/619)
+
 ## v0.3.4 (2022-01-21)
 
   * Further support for aggregation pushdown with Multicorn-backed FDWs
