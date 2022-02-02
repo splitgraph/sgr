@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.6 (2022-02-02)
+
+  * Fix `libffi` crashes when using the Snowflake FDW (https://github.com/splitgraph/splitgraph/pull/623)
+
 ## v0.3.5 (2022-01-31)
 
   * Support for aggregation and GROUP BY pushdown for the Snowflake FDW
