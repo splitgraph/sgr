@@ -27,6 +27,13 @@ jsonschema = ">=3.1.0"
 cryptography = ">=3.4.0"
 pydantic = ">=1.8.1"
 chardet = "^4.0.0"
+# Pin cffi to < 1.15.
+# Versions after that vendor a libffi-9c61262e.so.8.1.0 which would be
+# great except when we are running inside of a PostgreSQL process (which itself, in the case
+# of PG12, uses libffi.so.6). In that case the Python code resolves to the cffi symbols from the
+# system library (rather than the vendored libffi library) and crashes with ABI errors:
+# ffi_prep_closure(): bad user_data (it seems that the version of the libffi library seen at runtime is different from the 'ffi.h' file seen at compile-time)
+cffi = "<1.15"
 
 # Socrata dataset mounting.
 # This could be optional but it's very lightweight (only requires requests).
