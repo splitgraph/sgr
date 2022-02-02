@@ -3,9 +3,11 @@ from unittest import mock
 from unittest.mock import Mock
 
 import pytest
+from psycopg2 import DatabaseError
 
 from splitgraph.cloud.models import ExternalTableRequest
 from splitgraph.core.types import Credentials, Params, dict_to_table_schema_params
+from splitgraph.hooks.mount_handlers import mount
 from splitgraph.ingestion.snowflake import SnowflakeDataSource
 
 _sample_privkey = """-----BEGIN PRIVATE KEY-----
@@ -156,3 +158,21 @@ def test_snowflake_data_source_table_options():
         "subquery": "SELECT col_1, col_2 FROM other_table",
         "tablename": "test_table",
     }
+
+
+@pytest.mark.mounting
+def test_snowflake_mount_expected_error():
+    # Smoke test to make sure that the Snowflake connector can initialize its
+    # SSL connection properly and get a "wrong password" error instead of libffi.
+    with pytest.raises(DatabaseError, match="Incorrect username or password was specified"):
+        mount(
+            "sf",
+            "snowflake",
+            {
+                "username": "user",
+                "secret": {"secret_type": "password", "password": "pass"},
+                "account": "bw54298.eu-central-1",
+                "database": "SNOWFLAKE_SAMPLE_DATA",
+                "schema": "TPCH_SF100",
+            },
+        )
