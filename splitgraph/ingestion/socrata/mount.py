@@ -46,6 +46,8 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         "required": ["socrata_id"],
     }
 
+    _icon_file = "socrata.svg"
+
     @classmethod
     def get_name(cls) -> str:
         return "Socrata"
