@@ -173,10 +173,12 @@ def run_dbt_transformation_from_git(
         # Airbyte load is currently the only user of this function), but at this point
         # there isn't much that makes us require it.
         entrypoint = ["/bin/bash"]
+        project_settings = (
+            "--profiles-dir /data --project-dir /data/dbt_project --profile splitgraph"
+        )
         command = [
             "-c",
-            "dbt deps --project-dir /data/dbt_project && "
-            "dbt run --profiles-dir /data --project-dir /data/dbt_project --profile splitgraph",
+            f"dbt deps {project_settings} && " f"dbt run {project_settings}",
         ]
         if models is not None:
             command[-1] += " --models " + shlex.join(["+" + m for m in models])
@@ -226,10 +228,12 @@ def compile_dbt_manifest(
             build_dir = project.get("target-path", "target")
 
         entrypoint = ["/bin/bash"]
+        project_settings = (
+            "--profiles-dir /data --project-dir /data/dbt_project --profile splitgraph"
+        )
         command = [
             "-c",
-            "dbt deps --project-dir /data/dbt_project && "
-            "dbt compile --profiles-dir /data --project-dir /data/dbt_project --profile splitgraph",
+            f"dbt deps {project_settings} && " f"dbt run {project_settings}",
         ]
         client.images.pull(dbt_image)
         container = client.containers.create(
