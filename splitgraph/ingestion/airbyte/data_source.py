@@ -4,8 +4,9 @@ import os
 import re
 from abc import ABC
 from contextlib import contextmanager
+from enum import Enum
 from random import getrandbits
-from typing import Dict, Generator, List, Optional, Tuple
+from typing import Dict, Generator, Iterable, List, Optional, Tuple
 
 import docker.errors
 import pydantic
@@ -29,6 +30,7 @@ from splitgraph.hooks.data_source.base import (
 )
 from splitgraph.utils.docker import copy_to_container, get_docker_client
 
+from ...exceptions import DataSourceError
 from ..common import add_timestamp_tags
 from ..dbt.utils import run_dbt_transformation_from_git
 from ..singer.common import store_ingestion_state
@@ -37,9 +39,9 @@ from .docker_utils import (
     build_command,
     detect_network_mode,
     remove_at_end,
-    wait_not_failed,
+    wait_container,
 )
-from .models import AirbyteCatalog, AirbyteMessage, ConfiguredAirbyteCatalog
+from .models import AirbyteCatalog, AirbyteMessage, ConfiguredAirbyteCatalog, Status
 from .utils import (
     AirbyteConfig,
     _airbyte_message_reader,
@@ -49,6 +51,12 @@ from .utils import (
     get_sg_schema,
     select_streams,
 )
+
+
+class AirbyteSourcePrimitive(Enum):
+    Check = "check"
+    Discover = "discover"
+    Read = "read"
 
 
 @contextmanager
@@ -173,6 +181,21 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             "ssl": False,
         }
 
+    @staticmethod
+    def _run_and_read_from_container(
+        container: Container, config: Optional[AirbyteConfig], raise_on_status: bool = True
+    ) -> Iterable[AirbyteMessage]:
+        copy_to_container(
+            container,
+            source_path=None,
+            target_path="/config.json",
+            data=json.dumps(config or {}).encode(),
+        )
+
+        container.start()
+        wait_container(container, mirror_logs=False, raise_on_status=raise_on_status)
+        yield from _airbyte_message_reader(container.logs(stream=True))
+
     def _run_discovery(self, config: Optional[AirbyteConfig] = None) -> AirbyteCatalog:
         client = get_docker_client()
         network_mode = detect_network_mode()
@@ -183,25 +206,41 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             config=config,
             catalog=None,
             state=None,
-            discover=True,
+            primitive=AirbyteSourcePrimitive.Check,
         ) as container:
-            # Copy config into /
-            copy_to_container(
-                container,
-                source_path=None,
-                target_path="/config.json",
-                data=json.dumps(config or {}).encode(),
-            )
+            # Run the connection test (exits with 1 if failed -- but we get a more meaningful error
+            # in the output)
+            for message in self._run_and_read_from_container(
+                container, config, raise_on_status=False
+            ):
+                if message.connectionStatus:
+                    logging.info("Connection status: %s", message.connectionStatus.status)
+                    if message.connectionStatus.status == Status.FAILED:
+                        logging.error(message.connectionStatus.message)
+                        raise DataSourceError(
+                            message.connectionStatus.message or "Unknown connection error"
+                        )
+                    break
+            else:
+                raise DataSourceError("Unknown connection error")
 
-            container.start()
-            wait_not_failed(container, mirror_logs=False)
-
+        with self._source_container(
+            client,
+            network_mode=network_mode,
+            config=config,
+            catalog=None,
+            state=None,
+            primitive=AirbyteSourcePrimitive.Discover,
+        ) as container:
             # Grab the catalog from the output (it's mixed with other logs)
-            for message in _airbyte_message_reader(container.logs(stream=True)):
+            for message in self._run_and_read_from_container(
+                container, config, raise_on_status=False
+            ):
+                breakpoint()
                 if message.catalog:
                     logging.info("Catalog: %s", message.catalog)
                     return message.catalog
-        raise AssertionError("No catalog output!")
+        raise DataSourceError("Data source did not return a catalog")
 
     def sync(
         self,
@@ -312,7 +351,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
                 with self._normalization_container(client, network_mode) as normalization_container:
                     add_files(normalization_container, dest_files)
                     normalization_container.start()
-                    wait_not_failed(normalization_container, mirror_logs=True)
+                    wait_container(normalization_container, mirror_logs=True)
             else:
                 logging.info("Using a dbt project from Git")
 
@@ -406,8 +445,8 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             # https://github.com/docker/docker-py/issues/983#issuecomment-492513718
             os.close(dest_socket._sock.fileno())
 
-            wait_not_failed(source)
-            wait_not_failed(destination)
+            wait_container(source)
+            wait_container(destination)
             dest_logs = destination.logs(stream=True)
 
             # Grab the state from stdout
@@ -460,12 +499,14 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         config: Optional[AirbyteConfig],
         catalog: Optional[ConfiguredAirbyteCatalog],
         state: Optional[SyncState],
-        discover: bool = False,
+        primitive: AirbyteSourcePrimitive = AirbyteSourcePrimitive.Read,
     ) -> Container:
         client.images.pull(self.docker_image)
         container_name = "sg-ab-src-{:08x}".format(getrandbits(64))
-        if discover:
+        if primitive == AirbyteSourcePrimitive.Discover:
             command = ["discover"] + build_command([("config", config)])
+        elif primitive == AirbyteSourcePrimitive.Check:
+            command = ["check"] + build_command([("config", config)])
         else:
             command = ["read"] + build_command(
                 [("config", config), ("state", state), ("catalog", catalog)]

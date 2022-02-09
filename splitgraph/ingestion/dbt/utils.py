@@ -13,7 +13,7 @@ from ruamel.yaml import YAMLError
 from splitgraph.ingestion.airbyte.docker_utils import (
     detect_network_mode,
     remove_at_end,
-    wait_not_failed,
+    wait_container,
 )
 from splitgraph.utils.docker import (
     copy_dir_to_container,
@@ -193,7 +193,7 @@ def run_dbt_transformation_from_git(
         with remove_at_end(container):
             copy_dir_to_container(container, tmp_dir, "/data", exclude_names=[".git"])
             container.start()
-            wait_not_failed(container, mirror_logs=True)
+            wait_container(container, mirror_logs=True)
 
 
 def compile_dbt_manifest(
@@ -244,7 +244,7 @@ def compile_dbt_manifest(
         with remove_at_end(container):
             copy_dir_to_container(container, tmp_dir, "/data", exclude_names=[".git"])
             container.start()
-            wait_not_failed(container, mirror_logs=True)
+            wait_container(container, mirror_logs=True)
             # Extract the manifest
             return cast(
                 Dict[str, Any],

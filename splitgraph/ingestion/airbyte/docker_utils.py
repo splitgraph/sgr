@@ -38,11 +38,13 @@ def remove_at_end(container: Container) -> Container:
             logging.warning("Error removing container at the end, continuing", exc_info=e)
 
 
-def wait_not_failed(container: Container, mirror_logs: bool = False) -> None:
+def wait_container(
+    container: Container, mirror_logs: bool = False, raise_on_status: bool = False
+) -> int:
     """
     Block until a Docker container exits.
 
-    :raises SubprocessError if the container exited with a non-zero code.
+    :raises SubprocessError if the container exited with a non-zero code and raise_on_status is True
     """
 
     if mirror_logs:
@@ -55,9 +57,12 @@ def wait_not_failed(container: Container, mirror_logs: bool = False) -> None:
         logs = container.logs(tail=1000) or b""
         for line in logs.decode().splitlines():
             logging.info("%s: %s", container.name, line)
-        raise SubprocessError(
-            "Container %s exited with %d" % (container.name, result["StatusCode"])
-        )
+
+        if raise_on_status:
+            raise SubprocessError(
+                "Container %s exited with %d" % (container.name, result["StatusCode"])
+            )
+    return int(result["StatusCode"])
 
 
 def build_command(files: List[Tuple[str, Any]]) -> List[str]:

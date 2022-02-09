@@ -12,6 +12,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn, TableParams
 from splitgraph.engine import ResultShape
+from splitgraph.exceptions import DataSourceError
 from splitgraph.hooks.data_source import merge_jsonschema
 from splitgraph.ingestion.airbyte.data_source import AirbyteDataSource
 from splitgraph.ingestion.airbyte.docker_utils import SubprocessError
@@ -650,3 +651,12 @@ def test_airbyte_mysql_source_failure(local_engine_empty):
     assert re.match(r"Container sg-ab-src-\S+ exited with 1", str(e.value))
     # Check we didn't create an empty image
     assert len(repo.images()) == 0
+
+
+@pytest.mark.mounting
+def test_airbyte_mysql_source_introspection_failure(local_engine_empty):
+    source = _source(local_engine_empty)
+    source.credentials["password"] = "wrongpass"
+
+    with pytest.raises(DataSourceError) as e:
+        source.introspect()
