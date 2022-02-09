@@ -236,7 +236,6 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             for message in self._run_and_read_from_container(
                 container, config, raise_on_status=False
             ):
-                breakpoint()
                 if message.catalog:
                     logging.info("Catalog: %s", message.catalog)
                     return message.catalog
