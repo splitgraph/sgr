@@ -29,7 +29,11 @@ class MySQLAirbyteDataSource(AirbyteDataSource):
 
     credentials_schema = merge_jsonschema(
         AirbyteDataSource.credentials_schema,
-        {"type": "object", "properties": {"password": {"type": "string"}}},
+        {
+            "type": "object",
+            "properties": {"password": {"type": "string"}},
+            "required": ["password"],
+        },
     )
     params_schema = merge_jsonschema(
         AirbyteDataSource.credentials_schema,
@@ -97,6 +101,56 @@ _EXPECTED_AIRBYTE_CATALOG = AirbyteCatalog(
     ]
 )
 TEST_REPO = "test/airbyte"
+
+
+def test_airbyte_mysql_merged_jsonschema():
+    assert MySQLAirbyteDataSource.credentials_schema == {
+        "properties": {
+            "normalization_git_url": {
+                "description": "For `custom` normalization, a URL to the Git repo with the dbt project, for example,`https://uname:pass_or_token@github.com/organisation/repository.git`.",
+                "title": "dbt model Git URL",
+                "type": "string",
+            },
+            "password": {"type": "string"},
+        },
+        "required": ["password"],
+        "type": "object",
+    }
+
+    assert MySQLAirbyteDataSource.params_schema == {
+        "type": "object",
+        "properties": {
+            "normalization_git_url": {
+                "type": "string",
+                "title": "dbt model Git URL",
+                "description": "For `custom` normalization, a URL to the Git repo with the dbt project, for example,`https://uname:pass_or_token@github.com/organisation/repository.git`.",
+            },
+            "host": {"type": "string"},
+            "port": {"type": "integer"},
+            "database": {"type": "string"},
+            "username": {"type": "string"},
+            "replication_method": {"type": "string"},
+        },
+        "required": ["host", "port", "database", "username", "replication_method"],
+    }
+
+    assert MySQLAirbyteDataSource.table_params_schema == {
+        "type": "object",
+        "properties": {
+            "airbyte_cursor_field": {
+                "type": "array",
+                "title": "Cursor field(s)",
+                "description": "Fields in this stream to be used as a cursor for incremental replication (overrides Airbyte configuration's cursor_field)",
+                "items": {"type": "string"},
+            },
+            "airbyte_primary_key_field": {
+                "type": "array",
+                "title": "Primary key field(s)",
+                "description": "Fields in this stream to be used as a primary key for deduplication (overrides Airbyte configuration's primary_key)",
+                "items": {"type": "string"},
+            },
+        },
+    }
 
 
 @pytest.mark.mounting
