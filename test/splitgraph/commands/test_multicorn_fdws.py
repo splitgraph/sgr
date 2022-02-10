@@ -869,6 +869,68 @@ def test_aggregations_join_combinations(data_source, snapshot, test_local_engine
     # Assert aggregation result
     snapshot.assert_match(yaml.dump(result), "account_join_sub_aggs.yml")
 
+    # Sub-aggregations in a join with WHERE clauses are pushed down
+    query = f"""
+    SELECT t1.state, t2.state, t1.min FROM (
+        SELECT state, min(age)
+        FROM {data_source}.account
+        WHERE balance > 35000
+        GROUP BY state
+    ) AS t1
+    INNER JOIN (
+        SELECT state, max(age)
+        FROM {data_source}.account
+        WHERE balance > 35000
+        GROUP BY state
+    ) AS t2
+    ON t1.min = t2.max
+    ORDER BY t1.state, t2.state
+    """
+
+    # Only the subquery is pushed-down, with no redundant aggregations
+    result = test_local_engine.run_sql("EXPLAIN " + query)
+
+    if data_source == "es":
+        queries = _extract_es_queries_from_explain(result)
+        assert queries[0] == {
+            "query": {"bool": {"must": [{"range": {"balance": {"gt": "35000"}}}]}},
+            "aggs": {
+                "group_buckets": {
+                    "composite": {
+                        "sources": [{"state": {"terms": {"field": "state"}}}],
+                        "size": 5,
+                    },
+                    "aggregations": {"min.age": {"min": {"field": "age"}}},
+                }
+            },
+        }
+        assert queries[1] == {
+            "query": {"bool": {"must": [{"range": {"balance": {"gt": "35000"}}}]}},
+            "aggs": {
+                "group_buckets": {
+                    "composite": {
+                        "sources": [{"state": {"terms": {"field": "state"}}}],
+                        "size": 5,
+                    },
+                    "aggregations": {"max.age": {"max": {"field": "age"}}},
+                }
+            },
+        }
+    elif data_source == "pg":
+        queries = _extract_pg_queries_from_explain(result)
+        assert queries[0] == (
+            'SELECT public.account.state, min(public.account.age) AS "min.age" '
+            "FROM public.account WHERE public.account.balance > 35000 GROUP BY public.account.state"
+        )
+        assert queries[1] == (
+            'SELECT public.account.state, max(public.account.age) AS "max.age" '
+            "FROM public.account WHERE public.account.balance > 35000 GROUP BY public.account.state"
+        )
+
+    # Ensure results are correct
+    result = test_local_engine.run_sql(query)
+    assert result == [("DE", "NV", 30), ("FL", "CT", 27), ("OR", "OR", 29)]
+
     # However, aggregation of a joined table are not pushed down
     query = f"""
         EXPLAIN SELECT t.state, AVG(t.balance) FROM (
