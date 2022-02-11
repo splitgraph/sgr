@@ -36,7 +36,7 @@ from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
 from splitgraph.core.sql import insert, select, validate_import_sql
 from splitgraph.core.table import Table
-from splitgraph.core.types import TableSchema
+from splitgraph.core.types import TableSchema, parse_repository
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import (
     CheckoutError,
@@ -138,10 +138,7 @@ class Repository:
     @classmethod
     def from_schema(cls, schema: str) -> "Repository":
         """Convert a Postgres schema name of the format `namespace/repository` to a Splitgraph repository object."""
-        if "/" in schema:
-            namespace, repository = schema.split("/")
-            return cls(namespace, repository)
-        return cls("", schema)
+        return cls(*parse_repository(schema))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Repository):

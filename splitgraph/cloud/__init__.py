@@ -74,6 +74,7 @@ from splitgraph.config.config import (
 )
 from splitgraph.config.export import overwrite_config
 from splitgraph.config.management import patch_and_save_config
+from splitgraph.core.types import parse_repository
 from splitgraph.exceptions import (
     AuthAPIError,
     DataSourceError,
@@ -1050,17 +1051,15 @@ class GQLAPIClient:
         return None
 
     def load_all_repositories(self, limit_to: List[str] = None) -> List[Repository]:
-        from splitgraph.core.repository import Repository as SGRepository
-
         if limit_to:
             parsed_metadata = []
             parsed_external = []
 
             for repository in limit_to:
                 # We currently can't filter on multiple fields in GQL, so we loop instead.
-                repo_obj = SGRepository.from_schema(repository)
-                metadata = self.get_metadata(repo_obj.namespace, repo_obj.repository)
-                external = self.get_external_metadata(repo_obj.namespace, repo_obj.repository)
+                ns, repo = parse_repository(repository)
+                metadata = self.get_metadata(ns, repo)
+                external = self.get_external_metadata(ns, repo)
 
                 if metadata:
                     parsed_metadata.append(metadata)
