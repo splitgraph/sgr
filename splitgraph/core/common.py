@@ -1,8 +1,6 @@
 """
 Common internal functions used by Splitgraph commands.
 """
-import importlib.resources
-import logging
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
@@ -22,29 +20,15 @@ from typing import (
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
-from splitgraph.core.migration import set_installed_version, source_files_to_apply
+from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.output import parse_date, parse_dt
-from splitgraph.core.sql import select
+from splitgraph.core.sql.queries import select
 from splitgraph.exceptions import ImageNotFoundError, RepositoryNotFoundError
-from splitgraph.resources import splitgraph_meta
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
-META_TABLES = [
-    "images",
-    "tags",
-    "objects",
-    "tables",
-    "upstream",
-    "object_locations",
-    "object_cache_status",
-    "object_cache_occupancy",
-    "info",
-    "version",
-]
 OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
 
 
@@ -139,32 +123,6 @@ def manage_audit(func: Callable) -> Callable:
             manage_audit_triggers(repository.engine, repository.object_engine)
 
     return wrapped
-
-
-def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
-    """
-    Create or migrate the metadata schema splitgraph_meta that stores the hash tree of schema
-    snapshots (images), tags and tables.
-    This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
-    ".git" under Git version control...
-    """
-
-    schema_files = [f for f in importlib.resources.contents(splitgraph_meta) if f.endswith("sql")]
-
-    files, target_version = source_files_to_apply(
-        engine,
-        schema_name=SPLITGRAPH_META_SCHEMA,
-        schema_files=schema_files,
-    )
-
-    if not files:
-        return
-    for name in files:
-        data = importlib.resources.read_text(splitgraph_meta, name)
-        logging.info("Running %s", name)
-        engine.run_sql(data)
-    set_installed_version(engine, SPLITGRAPH_META_SCHEMA, target_version)
-    engine.commit()
 
 
 def aggregate_changes(
@@ -439,11 +397,3 @@ class CallbackList(list):
 def get_temporary_table_id() -> str:
     """Generate a random ID for temporary/staging objects that haven't had their ID calculated yet."""
     return str.format("sg_tmp_{:032x}", getrandbits(128))
-
-
-def unmount_schema(engine: "PsycopgEngine", schema: str) -> None:
-    engine.run_sql(
-        SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier("%s_lq_checkout_server" % schema))
-    )
-    engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(schema + "_server")))
-    engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(schema)))

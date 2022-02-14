@@ -18,7 +18,8 @@ from splitgraph.ingestion.common import IngestionAdapter
 from splitgraph.ingestion.csv import copy_csv_buffer
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
 def _get_sqlalchemy_engine(engine: "PostgresEngine") -> Engine:

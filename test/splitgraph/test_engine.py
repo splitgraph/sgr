@@ -10,7 +10,6 @@ from packaging.version import Version
 
 from splitgraph.__version__ import __version__
 from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
-from splitgraph.core.common import ensure_metadata_schema
 from splitgraph.core.engine import (
     get_current_repositories,
     lookup_repository,
@@ -18,10 +17,11 @@ from splitgraph.core.engine import (
 )
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
-from splitgraph.engine import ResultShape, _prepare_engine_config
-from splitgraph.engine.postgres.engine import (
+from splitgraph.engine import ResultShape, ensure_metadata_schema
+from splitgraph.engine.config import _prepare_engine_config
+from splitgraph.engine.postgres.engine import PostgresEngine
+from splitgraph.engine.postgres.psycopg import (
     _API_VERSION,
-    PostgresEngine,
     PsycopgEngine,
     _paginate_by_size,
 )
@@ -56,9 +56,9 @@ def test_engine_reconnect(local_engine_empty):
 def test_engine_retry(local_engine_empty):
     conn = local_engine_empty.connection
 
-    with mock.patch("splitgraph.engine.postgres.engine.RETRY_DELAY", 0.1):
+    with mock.patch("splitgraph.engine.postgres.psycopg.RETRY_DELAY", 0.1):
         with mock.patch.object(local_engine_empty, "_pool") as pool:
-            with mock.patch("splitgraph.engine.postgres.engine._quiet", return_value=True):
+            with mock.patch("splitgraph.engine.postgres.psycopg._quiet", return_value=True):
                 stdout = StringIO()
                 with mock.patch("sys.stdout", stdout):
                     pool.getconn.side_effect = [
@@ -71,7 +71,7 @@ def test_engine_retry(local_engine_empty):
                     assert "Waiting for connection..." in stdout.getvalue()
 
         with mock.patch.object(local_engine_empty, "_pool") as pool:
-            with mock.patch("splitgraph.engine.postgres.engine.RETRY_AMOUNT", 1):
+            with mock.patch("splitgraph.engine.postgres.psycopg.RETRY_AMOUNT", 1):
                 pool.getconn.side_effect = [
                     psycopg2.OperationalError,
                     psycopg2.OperationalError,
@@ -84,9 +84,9 @@ def test_engine_retry(local_engine_empty):
 def test_engine_retry_admin(local_engine_empty):
     conn = local_engine_empty._admin_conn()
 
-    with mock.patch("splitgraph.engine.postgres.engine.RETRY_DELAY", 0.1):
+    with mock.patch("splitgraph.engine.postgres.psycopg.RETRY_DELAY", 0.1):
         with mock.patch("splitgraph.engine.postgres.engine.psycopg2.connect") as connect:
-            with mock.patch("splitgraph.engine.postgres.engine._quiet", return_value=True):
+            with mock.patch("splitgraph.engine.postgres.psycopg._quiet", return_value=True):
                 stdout = StringIO()
                 with mock.patch("sys.stdout", stdout):
                     connect.side_effect = [
@@ -99,7 +99,7 @@ def test_engine_retry_admin(local_engine_empty):
                     assert "Waiting for connection..." in stdout.getvalue()
 
         with mock.patch("splitgraph.engine.postgres.engine.psycopg2.connect") as connect:
-            with mock.patch("splitgraph.engine.postgres.engine.RETRY_AMOUNT", 1):
+            with mock.patch("splitgraph.engine.postgres.psycopg.RETRY_AMOUNT", 1):
                 connect.side_effect = [
                     psycopg2.DatabaseError,
                     psycopg2.DatabaseError,
@@ -201,7 +201,7 @@ def test_client_api_compat(unprivileged_remote_engine):
     unprivileged_remote_engine.close()
     unprivileged_remote_engine.connected = False
     with mock.patch.object(unprivileged_remote_engine, "_call_version_func") as cvf:
-        with mock.patch("splitgraph.engine.postgres.engine.logging") as log:
+        with mock.patch("splitgraph.engine.postgres.psycopg.logging") as log:
             v = Version(_API_VERSION)
             cvf.return_value = "%d.%d.%d" % (v.major, v.minor + 1, v.micro)
             unprivileged_remote_engine.run_sql("SELECT 1")

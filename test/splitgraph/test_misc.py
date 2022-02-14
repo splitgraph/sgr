@@ -15,7 +15,7 @@ from splitgraph.core.types import (
     dict_to_table_schema_params,
     table_schema_params_to_dict,
 )
-from splitgraph.engine.postgres.engine import API_MAX_QUERY_LENGTH
+from splitgraph.engine.postgres.psycopg import API_MAX_QUERY_LENGTH
 from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.s3 import get_object_upload_urls
 

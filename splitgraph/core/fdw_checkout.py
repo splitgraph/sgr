@@ -8,8 +8,9 @@ import splitgraph.config
 from splitgraph.config import get_singleton
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.output import pretty_size
-from splitgraph.core.repository import Repository, get_engine
+from splitgraph.core.repository import Repository
 from splitgraph.core.table import QueryPlan, Table
+from splitgraph.engine.config import get_engine
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine

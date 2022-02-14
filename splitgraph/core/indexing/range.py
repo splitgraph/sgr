@@ -15,13 +15,14 @@ from psycopg2.sql import SQL, Composable, Composed, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import adapt, coerce_val_to_json
-from splitgraph.core.sql import select
+from splitgraph.core.sql.queries import select
 from splitgraph.core.types import Changeset, Comparable, Quals, TableSchema
-from splitgraph.engine import ResultShape, validate_type
+from splitgraph.engine import ResultShape
+from splitgraph.engine.base import validate_type
 from splitgraph.engine.postgres.engine import PG_INDEXABLE_TYPES
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 T = TypeVar("T", bound=Comparable)
 

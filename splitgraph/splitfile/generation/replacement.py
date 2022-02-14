@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Dict, List
 
-from splitgraph.core.sql import prepare_splitfile_sql
+from splitgraph.core.sql.splitfile_validation import prepare_splitfile_sql
 from splitgraph.core.types import ProvenanceLine
 from splitgraph.splitfile.generation.common import reconstruct_splitfile
 

@@ -270,10 +270,11 @@ def object_c(object_id):
     """
     from splitgraph.core.indexing.bloom import describe
     from splitgraph.core.object_manager import ObjectManager
-    from splitgraph.engine import ResultShape, get_engine
+    from splitgraph.engine import ResultShape
 
     from ..core.output import pretty_size
-    from ..core.sql import select
+    from ..core.sql.queries import select
+    from ..engine.config import get_engine
 
     object_manager = ObjectManager(get_engine())
     object_meta = object_manager.get_object_meta([object_id])
@@ -337,7 +338,8 @@ def objects_c(local):
     List objects known to this engine.
     """
     from splitgraph.core.object_manager import ObjectManager
-    from splitgraph.engine import get_engine
+
+    from ..engine.config import get_engine
 
     om = ObjectManager(get_engine())
 
@@ -386,7 +388,7 @@ def sql_c(sql, schema, image, show_all, json, no_transaction):
     sgr sql -i noaa/climate:latest "SELECT * FROM table"
     ```
     """
-    from splitgraph.engine import get_engine
+    from ..engine.config import get_engine
 
     if schema and image:
         raise click.UsageError("Only one of --schema and --image can be specified!")
@@ -479,7 +481,8 @@ def status_c(repository):
     out image (with LQ if the image is checked out using read-only layered querying).
     """
     from splitgraph.core.engine import get_current_repositories
-    from splitgraph.engine import get_engine
+
+    from ..engine.config import get_engine
 
     if repository is None:
         engine = get_engine()

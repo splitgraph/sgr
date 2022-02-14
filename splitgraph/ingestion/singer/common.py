@@ -8,7 +8,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import Changeset, TableSchema
-from splitgraph.engine import validate_type
+from splitgraph.engine.base import validate_type
 from splitgraph.engine.postgres.engine import PostgresEngine, get_change_key
 from splitgraph.hooks.data_source.base import (
     INGESTION_STATE_SCHEMA,

@@ -146,7 +146,7 @@ def remote_switch_option(*names, **kwargs):
     def switch_engine_back(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
-            from splitgraph.engine import get_engine, set_engine
+            from splitgraph.engine.config import get_engine, set_engine
 
             engine = get_engine()
             try:
@@ -170,7 +170,7 @@ def remote_switch_option(*names, **kwargs):
             if not value:
                 return
             try:
-                from splitgraph.engine import get_engine, set_engine
+                from splitgraph.engine.config import get_engine, set_engine
 
                 engine = get_engine(value)
 

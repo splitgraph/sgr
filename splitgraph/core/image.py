@@ -28,10 +28,12 @@ from splitgraph.config import (
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 
+from ..engine.utils import unmount_schema
 from ..splitfile.generation.common import reconstruct_splitfile
 from ..splitfile.generation.replacement import reconstruct_splitfile_with_replacement
-from .common import manage_audit, set_head, set_tag, unmount_schema
-from .sql import POSTGRES_MAX_IDENTIFIER, select
+from .common import manage_audit, set_head, set_tag
+from .sql.queries import select
+from .sql.splitfile_validation import POSTGRES_MAX_IDENTIFIER
 from .table import Table
 from .types import ProvenanceLine, TableColumn
 

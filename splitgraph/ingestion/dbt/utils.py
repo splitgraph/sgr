@@ -23,7 +23,7 @@ from splitgraph.utils.docker import (
 from splitgraph.utils.yaml import safe_dump, safe_load
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
 def prepare_git_repo(url: str, target_path: str, ref: str = "master") -> None:

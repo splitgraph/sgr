@@ -16,14 +16,14 @@ from splitgraph.config.config import get_all_in_section, get_singleton
 from splitgraph.core.engine import lookup_repository, repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
-from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
-from splitgraph.engine import get_engine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import mount
 
 from ..core.image_mounting import ImageMapper, _get_local_image_for_import
 from ..core.output import Color, conn_string_to_dict, pluralise, truncate_line
+from ..core.sql.splitfile_validation import prepare_splitfile_sql, validate_import_sql
 from ..core.types import ProvenanceLine
+from ..engine.config import get_engine
 from ._parsing import (
     extract_all_table_aliases,
     extract_nodes,

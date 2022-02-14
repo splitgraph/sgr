@@ -8,7 +8,7 @@ from psycopg2.pool import AbstractConnectionPool
 
 from splitgraph.core.image_mounting import ImageMapper
 from splitgraph.core.repository import Repository
-from splitgraph.engine import switch_engine
+from splitgraph.engine.config import switch_engine
 from splitgraph.engine.postgres.engine import PostgresEngine
 
 

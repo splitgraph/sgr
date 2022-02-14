@@ -3,11 +3,12 @@ from abc import ABC, abstractmethod
 from hashlib import sha256
 from typing import TYPE_CHECKING, Dict, List, Tuple
 
-from splitgraph.core.common import get_temporary_table_id, unmount_schema
+from splitgraph.core.common import get_temporary_table_id
 from splitgraph.core.engine import lookup_repository
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.types import ProvenanceLine
+from splitgraph.engine.utils import unmount_schema
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine

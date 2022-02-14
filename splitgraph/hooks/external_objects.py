@@ -9,7 +9,7 @@ from splitgraph.config.config import get_from_section
 from splitgraph.exceptions import ExternalHandlerError
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
 class ExternalObjectHandler:

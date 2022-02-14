@@ -1,7 +1,7 @@
 from click.testing import CliRunner
 
 from splitgraph.commandline import checkout_c, commit_c, sql_c, tag_c
-from splitgraph.engine import get_engine
+from splitgraph.engine.config import get_engine
 
 
 def test_commandline_commit_chunk(pg_repo_local):

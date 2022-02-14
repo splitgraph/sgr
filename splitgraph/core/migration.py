@@ -16,11 +16,10 @@ from typing import (
 from packaging.version import Version
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.core.sql import insert, select
-from splitgraph.engine import ResultShape
+from splitgraph.core.sql.queries import insert, select
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 T = TypeVar("T")
 
@@ -66,6 +65,8 @@ def make_file_list(schema_name: str, migration_path: List[Optional[str]]):
 def get_installed_version(
     engine: "PsycopgEngine", schema_name: str, version_table: str = "version"
 ) -> Optional[Tuple[str, datetime]]:
+    from splitgraph.engine import ResultShape
+
     if not engine.table_exists(schema_name, version_table):
         return None
     return cast(

@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING, List, Tuple
 from tqdm import tqdm
 
 from splitgraph.config import CONFIG, SG_CMD_ASCII, get_singleton
-from splitgraph.engine import ResultShape, get_engine
+from splitgraph.engine import ResultShape
+from splitgraph.engine.config import get_engine
+from splitgraph.engine.postgres.psycopg import PsycopgEngine
 from splitgraph.exceptions import (
     IncompleteObjectDownloadError,
     IncompleteObjectUploadError,
@@ -16,7 +18,7 @@ from splitgraph.exceptions import (
 from splitgraph.hooks.external_objects import ExternalObjectHandler
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    pass
 
 # Downloading/uploading objects to/from S3.
 # In the beginning, let's say that we just mount all objects as soon as they are downloaded -- otherwise

@@ -17,7 +17,7 @@ from splitgraph.commandline import (
 )
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.repository import Repository
-from splitgraph.core.sql import insert
+from splitgraph.core.sql.queries import insert
 from splitgraph.core.types import TableColumn
 
 

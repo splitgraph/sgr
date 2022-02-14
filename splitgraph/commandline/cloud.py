@@ -359,7 +359,7 @@ def curl_c(remote, request_type, image, request_params, curl_args):
 
 
 def _get_ddn_conn_params(remote: str) -> Dict[str, Optional[str]]:
-    from splitgraph.engine import get_engine
+    from splitgraph.engine.config import get_engine
 
     try:
         engine = get_engine(remote)

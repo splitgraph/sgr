@@ -1,15 +1,17 @@
 from abc import abstractmethod
 from datetime import datetime as dt
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
-from splitgraph.core.sql import POSTGRES_MAX_IDENTIFIER
+from splitgraph.core.sql.splitfile_validation import POSTGRES_MAX_IDENTIFIER
 from splitgraph.core.types import TableColumn, TableSchema
-from splitgraph.engine.postgres.engine import PsycopgEngine
 from splitgraph.exceptions import CheckoutError
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
 def schema_compatible(source_schema: TableSchema, target_schema: TableSchema) -> bool:

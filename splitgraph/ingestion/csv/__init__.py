@@ -22,7 +22,8 @@ from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
 from splitgraph.ingestion.csv.common import dump_options, load_options
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
 class CSVIngestionAdapter(IngestionAdapter):

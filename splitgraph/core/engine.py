@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA, get_singleton
-from splitgraph.engine import ResultShape, get_engine
+from splitgraph.engine import ResultShape
 from splitgraph.exceptions import RepositoryNotFoundError
 
-from .sql import select
+from ..engine.config import get_engine
+from .sql.queries import select
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image

@@ -9,13 +9,13 @@ from unittest.mock import call
 import pytest
 
 from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
-from splitgraph.core.common import META_TABLES
 from splitgraph.core.fragment_manager import get_chunk_groups
 from splitgraph.core.indexing.range import extract_min_max_pks
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.table import _generate_select_query
-from splitgraph.engine import ResultShape, _prepare_engine_config
+from splitgraph.engine import META_TABLES, ResultShape
+from splitgraph.engine.config import _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine, get_change_key
 from splitgraph.exceptions import ObjectNotFoundError
 

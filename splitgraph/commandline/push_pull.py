@@ -68,7 +68,7 @@ def clone_c(
     config parameters and can be overridden by the command line ``--remote`` option.
     """
     from splitgraph.core.repository import Repository, clone
-    from splitgraph.engine import get_engine
+    from splitgraph.engine.config import get_engine
 
     remote_repository, image = remote_repository_or_image
 
@@ -193,7 +193,7 @@ def _determine_push_target(repository, remote_repository, remote):
     :return:
     """
     from splitgraph.core.repository import Repository
-    from splitgraph.engine import get_engine
+    from splitgraph.engine.config import get_engine
 
     if remote_repository and remote:
         remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
@@ -221,7 +221,7 @@ def _get_default_remote():
 
 def _make_push_target(repository, remote):
     from splitgraph.core.repository import Repository
-    from splitgraph.engine import get_engine
+    from splitgraph.engine.config import get_engine
 
     namespace: Optional[str]
     try:
@@ -269,7 +269,7 @@ def upstream_c(repository, set_to, reset):
     Shows the current upstream for ``my/repo``.
     """
     from splitgraph.core.repository import Repository
-    from splitgraph.engine import get_engine
+    from splitgraph.engine.config import get_engine
 
     # surely there's a better way of finding out whether --set isn't specified
     if set_to != ("", None) and reset:

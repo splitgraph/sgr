@@ -24,7 +24,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA, get_singleton
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.types import Quals
-from splitgraph.engine import ResultShape, switch_engine
+from splitgraph.engine import META_TABLES, ResultShape
 from splitgraph.exceptions import (
     IncompleteObjectDownloadError,
     IncompleteObjectUploadError,
@@ -33,13 +33,15 @@ from splitgraph.exceptions import (
 )
 from splitgraph.hooks.external_objects import get_external_object_handler
 
-from .common import META_TABLES, CallbackList, Tracer
+from ..engine.config import switch_engine
+from .common import CallbackList, Tracer
 from .output import pluralise, pretty_size, truncate_list
-from .sql import insert, select
+from .sql.queries import insert, select
 
 if TYPE_CHECKING:
     from splitgraph.core.table import Table
-    from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
 class ObjectManager(FragmentManager):

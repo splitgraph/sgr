@@ -3,7 +3,7 @@ Extra wrapper code for mount handlers
 """
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from splitgraph.core.common import unmount_schema
+from splitgraph.engine.utils import unmount_schema
 from splitgraph.exceptions import DataSourceError
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ def mount(
     :param tables: List of tables to mount or their schemas
     """
     # Workaround for circular imports
-    from splitgraph.engine import get_engine
+    from splitgraph.engine.config import get_engine
     from splitgraph.hooks.data_source import get_data_source
     from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
 

@@ -19,12 +19,12 @@ from splitgraph.core.types import (
     TableSchema,
     dict_to_table_schema_params,
 )
-from splitgraph.engine import validate_type
+from splitgraph.engine.base import validate_type
 from splitgraph.exceptions import DataSourceError, get_exception_name
 from splitgraph.hooks.data_source.base import LoadableDataSource, MountableDataSource
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
 class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC):

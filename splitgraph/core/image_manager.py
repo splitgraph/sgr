@@ -8,7 +8,7 @@ from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import IMAGE_COLS, Image
 from splitgraph.core.output import truncate_line
-from splitgraph.core.sql import select
+from splitgraph.core.sql.queries import select
 from splitgraph.core.types import ProvenanceLine
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ImageNotFoundError, RepositoryNotFoundError

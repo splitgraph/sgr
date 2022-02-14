@@ -14,7 +14,7 @@ import pytest
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.indexing.range import _quals_to_clause
 from splitgraph.core.repository import clone
-from splitgraph.core.sql import select
+from splitgraph.core.sql.queries import select
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
 

@@ -16,7 +16,7 @@ from splitgraph.core.fragment_manager import Digest
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
-from splitgraph.core.sql import select
+from splitgraph.core.sql.queries import select
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import PostgresEngine
