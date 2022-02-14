@@ -116,7 +116,7 @@ class WithExceptionHandler(click.Group):
         import psycopg2.extensions
         import psycopg2.extras
 
-        from splitgraph.engine import get_engine
+        from splitgraph.engine.config import get_engine
 
         # Allow users to send SIGINT to quickly terminate sgr (instead of waiting for a PG
         # statement to finish)

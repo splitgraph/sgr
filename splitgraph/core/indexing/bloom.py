@@ -15,7 +15,7 @@ from splitgraph.core.types import Changeset
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
 def _hash_value(value: Union[datetime, int, str, None]) -> Tuple[bytes, bytes]:

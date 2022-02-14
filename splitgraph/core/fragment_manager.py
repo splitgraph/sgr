@@ -21,22 +21,27 @@ from psycopg2.errors import UniqueViolation
 from psycopg2.sql import SQL, Composable, Identifier
 from tqdm import tqdm
 
-from splitgraph.config import SG_CMD_ASCII, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import (
+    SG_CMD_ASCII,
+    SPLITGRAPH_API_SCHEMA,
+    SPLITGRAPH_META_SCHEMA,
+)
 from splitgraph.core.indexing.bloom import filter_bloom_index, generate_bloom_index
 from splitgraph.core.indexing.range import filter_range_index, generate_range_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.core.types import Changeset, TableSchema
-from splitgraph.engine import ResultShape, validate_type
+from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import (
     SG_UD_FLAG,
     add_ud_flag_column,
-    chunk,
     get_change_key,
 )
 from splitgraph.exceptions import SplitGraphError
 
-from .common import SPLITGRAPH_META_SCHEMA, adapt, get_temporary_table_id
-from .sql import select
+from ..engine.base import validate_type
+from ..engine.postgres.psycopg import chunk
+from .common import adapt, get_temporary_table_id
+from .sql.queries import select
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository

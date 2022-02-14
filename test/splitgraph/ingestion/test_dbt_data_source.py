@@ -9,7 +9,7 @@ from splitgraph.commandline.ingestion import csv_import
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import Credentials, Params
 from splitgraph.engine import ResultShape
-from splitgraph.engine.postgres.engine import PsycopgEngine
+from splitgraph.engine.postgres.psycopg import PsycopgEngine
 from splitgraph.ingestion.dbt.data_source import DBTDataSource
 
 _REPO_PATH = "https://github.com/splitgraph/jaffle_shop_archive"

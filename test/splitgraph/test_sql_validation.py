@@ -1,6 +1,6 @@
 import pytest
 
-from splitgraph.core.sql import (
+from splitgraph.core.sql.splitfile_validation import (
     _rewrite_sql_fallback,
     prepare_splitfile_sql,
     validate_import_sql,

@@ -113,3 +113,10 @@ def table_schema_params_to_dict(
         }
         for t, (ts, tp) in tables.items()
     }
+
+
+def parse_repository(repository: str) -> Tuple[str, str]:
+    if "/" in repository:
+        ns, repo = repository.split("/")
+        return ns, repo
+    return "", repository

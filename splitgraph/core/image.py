@@ -28,8 +28,12 @@ from splitgraph.config import (
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 
-from .common import manage_audit, set_head, set_tag, unmount_schema
-from .sql import POSTGRES_MAX_IDENTIFIER, prepare_splitfile_sql, select
+from ..engine.utils import unmount_schema
+from ..splitfile.generation.common import reconstruct_splitfile
+from ..splitfile.generation.replacement import reconstruct_splitfile_with_replacement
+from .common import manage_audit, set_head, set_tag
+from .sql.queries import select
+from .sql.splitfile_validation import POSTGRES_MAX_IDENTIFIER
 from .table import Table
 from .types import ProvenanceLine, TableColumn
 
@@ -315,10 +319,12 @@ class Image(NamedTuple):
             dependencies of this Splitfile (table imports and FROM commands).
         :return: A list of Splitfile commands that can be fed back into the executor.
         """
-
-        return reconstruct_splitfile(
-            self.provenance_data, ignore_irreproducible, source_replacement
-        )
+        if source_replacement:
+            return reconstruct_splitfile_with_replacement(
+                self.provenance_data, source_replacement, ignore_irreproducible
+            )
+        else:
+            return reconstruct_splitfile(self.provenance_data, ignore_irreproducible)
 
     def provenance(self, reverse=False, engine=None) -> List[Tuple["Repository", str]]:
         """
@@ -364,83 +370,3 @@ class Image(NamedTuple):
                 self.image_hash,
             ),
         )
-
-
-def reconstruct_splitfile(
-    provenance_data: List[ProvenanceLine],
-    ignore_irreproducible: bool = False,
-    source_replacement: Optional[Dict["Repository", str]] = None,
-) -> List[str]:
-    """
-    Recreate the Splitfile that can be used to reconstruct an image.
-    """
-
-    if source_replacement is None:
-        source_replacement = {}
-    splitfile_commands = []
-    for provenance_line in provenance_data:
-        prov_type = provenance_line["type"]
-        assert isinstance(prov_type, str)
-        if prov_type in ("IMPORT", "SQL", "FROM"):
-            splitfile_commands.append(
-                _prov_command_to_splitfile(provenance_line, source_replacement)
-            )
-        elif prov_type in ("MOUNT", "CUSTOM"):
-            if not ignore_irreproducible:
-                raise SplitGraphError(
-                    "Image used a Splitfile command %s" " that can't be reproduced!" % prov_type
-                )
-            splitfile_commands.append("# Irreproducible Splitfile command of type %s" % prov_type)
-    return splitfile_commands
-
-
-def _prov_command_to_splitfile(
-    prov_data: ProvenanceLine,
-    source_replacement: Dict["Repository", str],
-) -> str:
-    """
-    Converts the image's provenance data stored by the Splitfile executor back to a Splitfile used to
-    reconstruct it.
-
-    :param prov_data: Provenance line for one command
-    :param source_replacement: Replace repository imports with different versions
-    :return: String with the Splitfile command.
-    """
-    from splitgraph.core.repository import Repository
-
-    prov_type = prov_data["type"]
-    assert isinstance(prov_type, str)
-
-    if prov_type == "IMPORT":
-        repo, image = (
-            Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"])),
-            cast(str, prov_data["source_hash"]),
-        )
-        result = "FROM %s:%s IMPORT " % (str(repo), source_replacement.get(repo, image))
-        result += ", ".join(
-            "%s AS %s" % (tn if not q else "{" + tn.replace("}", "\\}") + "}", ta)
-            for tn, ta, q in zip(
-                cast(List[str], prov_data["tables"]),
-                cast(List[str], prov_data["table_aliases"]),
-                cast(List[bool], prov_data["table_queries"]),
-            )
-        )
-        return result
-    if prov_type == "FROM":
-        repo = Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"]))
-        return "FROM %s:%s" % (str(repo), source_replacement.get(repo, prov_data["source_hash"]))
-    if prov_type == "SQL":
-        # Use the SQL validator/replacer to rewrite old image hashes into new hashes/tags.
-
-        def image_mapper(repository: Repository, image_hash: str):
-            new_image = (
-                repository.to_schema() + ":" + source_replacement.get(repository, image_hash)
-            )
-            return new_image, new_image
-
-        if source_replacement:
-            _, replaced_sql = prepare_splitfile_sql(str(prov_data["sql"]), image_mapper)
-        else:
-            replaced_sql = str(prov_data["sql"])
-        return "SQL " + "{" + replaced_sql.replace("}", "\\}") + "}"
-    raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)

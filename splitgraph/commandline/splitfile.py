@@ -174,7 +174,8 @@ def dependents_c(image_spec, source_on, dependents_on):
     on the Splitgraph registry.
     """
     from splitgraph.core.repository import Repository
-    from splitgraph.engine import get_engine
+
+    from ..engine.config import get_engine
 
     source_engine = get_engine(source_on) if source_on else get_engine()
     repository, image = image_spec

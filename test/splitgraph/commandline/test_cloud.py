@@ -449,7 +449,7 @@ def test_commandline_cloud_sql():
     fake_ddn_engine = Mock()
     fake_ddn_engine.run_sql.return_value = [("one", "two"), ("three", "four")]
 
-    with patch("splitgraph.engine.get_engine", return_value=fake_engine):
+    with patch("splitgraph.engine.config.get_engine", return_value=fake_engine):
         with patch(
             "splitgraph.engine.postgres.engine.PostgresEngine", return_value=fake_ddn_engine
         ):

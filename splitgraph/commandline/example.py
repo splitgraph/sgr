@@ -77,7 +77,7 @@ def alter_table(
     """
     from psycopg2.sql import SQL, Identifier
 
-    from splitgraph.core.sql import select
+    from splitgraph.core.sql.queries import select
     from splitgraph.engine import ResultShape
 
     keys = repository.run_sql(

@@ -182,7 +182,7 @@ COPY ./bin /splitgraph/bin
 # "Install" elasticsearch_fdw
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
     mkdir /pg_es_fdw && \
-    pip install "elasticsearch>=7.7.0"
+    pip install "elasticsearch>=7.7.0,<8.0"
 COPY ./engine/src/postgres-elasticsearch-fdw/pg_es_fdw /pg_es_fdw/pg_es_fdw
 
 # Install the Snowflake SQLAlchemy connector
@@ -197,7 +197,7 @@ ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
 ARG with_postgis
 RUN test -z "${with_postgis}" || (\
     export POSTGIS_MAJOR=3 && \
-    export POSTGIS_VERSION=3.2.0+dfsg-1.pgdg100+1 && \
+    export POSTGIS_VERSION=3.2.1+dfsg-1.pgdg100+1 && \
     apt-get update \
       && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
       && apt-get install -y --no-install-recommends \

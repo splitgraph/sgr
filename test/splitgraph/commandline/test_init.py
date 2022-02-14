@@ -7,7 +7,8 @@ from splitgraph.commandline import init_c
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.engine import init_engine
 from splitgraph.core.migration import get_installed_version
-from splitgraph.engine import ResultShape, get_engine
+from splitgraph.engine import ResultShape
+from splitgraph.engine.config import get_engine
 
 
 def test_init_new_db():

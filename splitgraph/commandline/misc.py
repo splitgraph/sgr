@@ -65,7 +65,8 @@ def rm_c(image_spec, yes):
     """
     from splitgraph.core.engine import repository_exists
     from splitgraph.core.repository import Repository
-    from splitgraph.engine import get_engine
+
+    from ..engine.config import get_engine
 
     engine = get_engine()
 
@@ -132,7 +133,8 @@ def prune_c(repository, yes):
     use ``sgr cleanup`` to do that.
     """
     from splitgraph.core.repository import Repository
-    from splitgraph.engine import get_engine
+
+    from ..engine.config import get_engine
 
     repository = Repository.from_template(repository, engine=get_engine())
 
@@ -202,9 +204,9 @@ def cleanup_c():
     This deletes all objects from the cache that aren't required by any local repository.
     """
     from splitgraph.core.object_manager import ObjectManager
-    from splitgraph.engine import get_engine
 
     from ..core.output import pluralise
+    from ..engine.config import get_engine
 
     deleted = ObjectManager(get_engine()).cleanup()
     click.echo("Deleted %s." % pluralise("object", len(deleted)))
@@ -261,8 +263,9 @@ def config_c(no_shielding, config_format, conn_string):
 
     from splitgraph.config import CONFIG
     from splitgraph.config.export import serialize_config
-    from splitgraph.engine import get_engine
     from splitgraph.engine.postgres.engine import get_conn_str
+
+    from ..engine.config import get_engine
 
     if conn_string:
         click.echo(get_conn_str(get_engine().conn_params))
@@ -291,7 +294,8 @@ def _eval(command, args):
     # noinspection PyUnresolvedReferences
     from splitgraph.core.object_manager import ObjectManager
     from splitgraph.core.repository import Repository  # noqa
-    from splitgraph.engine import get_engine
+
+    from ..engine.config import get_engine
 
     engine = get_engine()
     object_manager = ObjectManager(object_engine=engine, metadata_engine=engine)

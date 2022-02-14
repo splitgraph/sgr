@@ -455,7 +455,7 @@ def configure_engine_c(name):
 @click.argument("name", default=DEFAULT_ENGINE)
 def version_engine_c(name):
     """Get version of Splitgraph engine."""
-    from splitgraph.engine import get_engine
+    from splitgraph.engine.config import get_engine
 
     if name == DEFAULT_ENGINE:
         engine = get_engine()
@@ -485,7 +485,7 @@ def upgrade_engine_c(ctx, image, no_pull, name):
     metadata volumes intact), creating a container based on a newer
     image and finally reinitializing the engine to perform needed migrations.
     """
-    from splitgraph.engine import get_engine
+    from splitgraph.engine.config import get_engine
 
     # Get reference to engine to extract its connection params
     if name == DEFAULT_ENGINE:

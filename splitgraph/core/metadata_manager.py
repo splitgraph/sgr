@@ -21,13 +21,13 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.types import TableSchema
 from splitgraph.engine import ResultShape
-from splitgraph.engine.postgres.engine import API_MAX_VARIADIC_ARGS, chunk
 
-from .sql import select
+from ..engine.postgres.psycopg import API_MAX_VARIADIC_ARGS, chunk
+from .sql.queries import select
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PsycopgEngine
+    from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 OBJECT_COLS = [
     "object_id",

@@ -30,7 +30,7 @@ from splitgraph.core.common import Tracer, get_temporary_table_id
 from splitgraph.core.fragment_manager import ExtraIndexInfo, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
 from splitgraph.core.output import pluralise, truncate_list
-from splitgraph.core.sql import select
+from splitgraph.core.sql.queries import select
 from splitgraph.core.types import Quals, TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import get_change_key
