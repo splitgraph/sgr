@@ -15,9 +15,10 @@ from splitgraph.core.engine import (
     lookup_repository,
     repository_exists,
 )
+from splitgraph.core.migration import ensure_metadata_schema
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
-from splitgraph.engine import ResultShape, ensure_metadata_schema
+from splitgraph.engine import ResultShape
 from splitgraph.engine.config import _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.engine.postgres.psycopg import (

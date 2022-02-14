@@ -1,3 +1,4 @@
+import importlib.resources
 import logging
 import re
 from collections import defaultdict
@@ -16,7 +17,9 @@ from typing import (
 from packaging.version import Version
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.sql.queries import insert, select
+from splitgraph.resources import splitgraph_meta
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.psycopg import PsycopgEngine
@@ -158,3 +161,43 @@ def source_files_to_apply(
         path = _bfs(adjacency, start=current_version, end=target_version)
 
     return make_file_list(schema_name, path), target_version
+
+
+META_TABLES = [
+    "images",
+    "tags",
+    "objects",
+    "tables",
+    "upstream",
+    "object_locations",
+    "object_cache_status",
+    "object_cache_occupancy",
+    "info",
+    "version",
+]
+
+
+def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
+    """
+    Create or migrate the metadata schema splitgraph_meta that stores the hash tree of schema
+    snapshots (images), tags and tables.
+    This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
+    ".git" under Git version control...
+    """
+
+    schema_files = [f for f in importlib.resources.contents(splitgraph_meta) if f.endswith("sql")]
+
+    files, target_version = source_files_to_apply(
+        engine,
+        schema_name=SPLITGRAPH_META_SCHEMA,
+        schema_files=schema_files,
+    )
+
+    if not files:
+        return
+    for name in files:
+        data = importlib.resources.read_text(splitgraph_meta, name)
+        logging.info("Running %s", name)
+        engine.run_sql(data)
+    set_installed_version(engine, SPLITGRAPH_META_SCHEMA, target_version)
+    engine.commit()

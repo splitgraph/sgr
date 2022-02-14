@@ -32,8 +32,9 @@ from psycopg2.sql import SQL, Composed, Identifier
 from splitgraph.__version__ import __version__
 from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core import server
+from splitgraph.core.migration import META_TABLES, ensure_metadata_schema
 from splitgraph.core.sql.queries import select
-from splitgraph.engine import META_TABLES, ResultShape, ensure_metadata_schema
+from splitgraph.engine import ResultShape
 from splitgraph.engine.base import SQLEngine
 from splitgraph.exceptions import (
     APICompatibilityError,

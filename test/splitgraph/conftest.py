@@ -9,11 +9,12 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.engine import get_current_repositories
+from splitgraph.core.migration import META_TABLES
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import set_info_key, setup_registry_mode
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.types import TableColumn
-from splitgraph.engine import META_TABLES, ResultShape
+from splitgraph.engine import ResultShape
 from splitgraph.engine.config import get_engine, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
