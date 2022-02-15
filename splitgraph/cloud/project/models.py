@@ -24,7 +24,7 @@ class Credential(BaseModel):
 
 class IngestionSchedule(BaseModel):
     schedule: str
-    enabled = True
+    enabled: bool = True
 
 
 class External(BaseModel):

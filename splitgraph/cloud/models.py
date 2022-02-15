@@ -106,7 +106,7 @@ class ExternalResponse(BaseModel):
 
     class IngestionScheduleResponse(BaseModel):
         schedule: str
-        enabled = True
+        enabled: bool = True
         schema_: Dict[str, TableSchema] = Field(alias="schema")
 
     namespace: str
@@ -284,7 +284,7 @@ class AddExternalRepositoryRequest(BaseModel):
             namespace=namespace,
             repository=repository,
             plugin_name=external.plugin,
-            params=external.params,
+            params=Params(external.params),
             tables={
                 table_name: ExternalTableRequest(
                     options=table.options, schema={c.name: c.pg_type for c in table.schema_}
