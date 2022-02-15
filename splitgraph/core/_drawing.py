@@ -3,14 +3,15 @@ Routines for rendering a Splitgraph repository as a tree of images
 """
 from collections import OrderedDict, defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Dict, List, Mapping, Optional
 
 import click
 
 from splitgraph.config import SG_CMD_ASCII
-from splitgraph.core.output import Color
+from splitgraph.core.output import Color, truncate_line
 
 if TYPE_CHECKING:
+    from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
 
 
@@ -53,12 +54,30 @@ def format_time(time: datetime) -> str:
     return " " + Color.GREEN + time.strftime("%Y-%m-%d %H:%M:%S") + Color.END
 
 
+import asciitree
+
+
+class ImageTraversal(asciitree.DictTraversal):
+    def __init__(
+        self, all_images: Dict[str, "Image"], tag_dict: Mapping[Optional[str], List[str]], **kwargs
+    ):
+        super().__init__(**kwargs)
+
+        self.all_images = all_images
+        self.tag_dict = tag_dict
+
+    def get_text(self, node):
+        image = self.all_images[node[0]]
+        result = format_image_hash(image.image_hash)
+        result += format_tags(self.tag_dict[image.image_hash])
+        result += format_time(image.created)
+        if image.comment:
+            result += " " + truncate_line(image.comment)
+        return result
+
+
 def render_tree(repository: "Repository") -> None:
     """Draws the repository's commit graph as a Git-like tree."""
-
-    import asciitree
-
-    from splitgraph.core.output import truncate_line
 
     # Get all commits in ascending time order
     all_images = {i.image_hash: i for i in repository.images()}
@@ -72,16 +91,6 @@ def render_tree(repository: "Repository") -> None:
     for img, img_tag in repository.get_all_hashes_tags():
         tag_dict[img].append(img_tag)
     tag_dict[latest.image_hash].append("latest")
-
-    class ImageTraversal(asciitree.DictTraversal):
-        def get_text(self, node):
-            image = all_images[node[0]]
-            result = format_image_hash(image.image_hash)
-            result += format_tags(tag_dict[image.image_hash])
-            result += format_time(image.created)
-            if image.comment:
-                result += " " + truncate_line(image.comment)
-            return result
 
     tree: OrderedDict[str, OrderedDict] = OrderedDict(
         (image, OrderedDict()) for image in all_images
@@ -106,7 +115,7 @@ def render_tree(repository: "Repository") -> None:
             label_space=1,
             horiz_len=0,
         ),
-        traverse=ImageTraversal(),
+        traverse=ImageTraversal(all_images, tag_dict),
     )
     for root, root_tree in tree.items():
         click.echo(renderer({root: root_tree}))

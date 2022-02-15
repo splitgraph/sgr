@@ -5,10 +5,11 @@ from copy import deepcopy
 from importlib import import_module
 from typing import Any, Dict, List, Optional, Type, cast
 
-from ...config import CONFIG
-from ...config.config import get_all_in_section, get_singleton
-from ...config.keys import DEFAULTS
-from ...exceptions import DataSourceError
+from splitgraph.config import CONFIG
+from splitgraph.config.config import get_all_in_section, get_singleton
+from splitgraph.config.keys import DEFAULTS
+from splitgraph.exceptions import DataSourceError
+
 from .base import DataSource
 from .fdw import (  # noqa
     ElasticSearchDataSource,

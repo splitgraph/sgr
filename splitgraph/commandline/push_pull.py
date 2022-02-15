@@ -277,7 +277,7 @@ def upstream_c(repository, set_to, reset):
 
     if reset:
         if repository.upstream:
-            del repository.upstream
+            repository.upstream = None
             click.echo("Deleted upstream for %s." % repository.to_schema())
         else:
             click.echo("%s has no upstream to delete!" % repository.to_schema())

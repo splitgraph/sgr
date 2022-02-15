@@ -384,13 +384,16 @@ def coerce_val_to_json(val: Any) -> Any:
     return val
 
 
-class CallbackList(list):
+class CallbackList:
     """
     Used to pass around and call multiple callbacks at once.
     """
 
+    def __init__(self, callbacks: List[Callable]) -> None:
+        self.callbacks = callbacks
+
     def __call__(self, *args, **kwargs) -> None:
-        for listener in self:
+        for listener in self.callbacks:
             listener(*args, **kwargs)
 
 

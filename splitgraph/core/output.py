@@ -3,7 +3,7 @@ import os
 import re
 import time
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, ClassVar, Dict, List, Optional, Union
 
 
 def pretty_size(size: Union[int, float]) -> str:
@@ -176,13 +176,13 @@ class Color:
     An enumeration of console colors
     """
 
-    PURPLE = "\033[95m"
-    CYAN = "\033[96m"
-    DARKCYAN = "\033[36m"
-    BLUE = "\033[94m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RED = "\033[91m"
-    BOLD = "\033[1m"
-    UNDERLINE = "\033[4m"
-    END = "\033[0m"
+    PURPLE: ClassVar[str] = "\033[95m"
+    CYAN: ClassVar[str] = "\033[96m"
+    DARKCYAN: ClassVar[str] = "\033[36m"
+    BLUE: ClassVar[str] = "\033[94m"
+    GREEN: ClassVar[str] = "\033[92m"
+    YELLOW: ClassVar[str] = "\033[93m"
+    RED: ClassVar[str] = "\033[91m"
+    BOLD: ClassVar[str] = "\033[1m"
+    UNDERLINE: ClassVar[str] = "\033[4m"
+    END: ClassVar[str] = "\033[0m"

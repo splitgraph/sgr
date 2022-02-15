@@ -178,7 +178,7 @@ class ObjectManager(FragmentManager):
         #   * What happens if we crash when we're downloading these objects?
 
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO OFF")
-        tracer = tracer or Tracer()
+        tracer_ = tracer or Tracer()
 
         if objects is not None:
             required_objects = objects
@@ -194,20 +194,20 @@ class ObjectManager(FragmentManager):
 
             # Filter to see if we can discard any objects with the quals
             required_objects = self.filter_fragments(table.objects, table, quals)
-            tracer.log("filter_objects")
+            tracer_.log("filter_objects")
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         logging.debug("Claiming %s", pluralise("object", len(required_objects)))
 
         self._claim_objects(required_objects)
-        tracer.log("claim_objects")
+        tracer_.log("claim_objects")
 
         try:
             to_fetch = self._prepare_fetch_list(required_objects)
         except SplitGraphError:
             self.object_engine.rollback()
             raise
-        tracer.log("prepare_fetch_list")
+        tracer_.log("prepare_fetch_list")
 
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
@@ -261,10 +261,10 @@ class ObjectManager(FragmentManager):
                 raise partial_failure
 
             self._set_ready_flags(to_fetch, is_ready=True)
-        tracer.log("fetch_objects")
+        tracer_.log("fetch_objects")
         logging.debug("Object manager finished.")
 
-        release_callback = self._make_release_callback(required_objects, table, tracer)
+        release_callback = self._make_release_callback(required_objects, table, tracer_)
         try:
             # Release the lock and yield to the caller.
             self.object_engine.commit()
@@ -650,7 +650,7 @@ class ObjectManager(FragmentManager):
 
         # Since we can free the minimum required amount of space, see if we can free even more as
         # per our settings (if we can't, we'll just delete as much as we can instead of failing).
-        required_space = max(required_space, int(self.eviction_min_fraction * self.cache_size))
+        required_space_ = max(required_space, int(self.eviction_min_fraction * self.cache_size))
 
         # Delete all orphaned objects first
         to_delete = orphaned_objects
@@ -665,7 +665,7 @@ class ObjectManager(FragmentManager):
 
         # Keep adding deletion candidates until we've freed enough space.
         for object_id, last_used in candidates:
-            if freed_space >= required_space:
+            if freed_space >= required_space_:
                 break
             last_useds.append(last_used)
             to_delete.append(object_id)

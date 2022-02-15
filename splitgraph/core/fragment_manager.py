@@ -113,7 +113,7 @@ def get_chunk_groups(
 
     # no tuple concatenation (typechecker complains)
 
-    chunks: List[Tuple[int, str, Any, Any]] = [
+    chunks_numbered: List[Tuple[int, str, Any, Any]] = [
         (i, chunk[0], chunk[1], chunk[2]) for i, chunk in enumerate(chunks)
     ]
     groups: List[List[Tuple[int, str, Any, Any]]] = []
@@ -122,7 +122,7 @@ def get_chunk_groups(
     current_group_end = None
 
     for original_id, chunk_id, start, end in sorted(
-        chunks, key=lambda c: _key(c[2])  # type:ignore
+        chunks_numbered, key=lambda c: _key(c[2])  # type:ignore
     ):
         if not current_group:
             current_group = [(original_id, chunk_id, start, end)]
@@ -148,7 +148,7 @@ def get_chunk_groups(
     groups.append(current_group)
 
     # Resort the chunks within groups again
-    return [[c[1:] for c in sorted(chunks)] for chunks in groups]
+    return [[c[1:] for c in sorted(cs)] for cs in groups]
 
 
 class Digest:
@@ -791,7 +791,6 @@ class FragmentManager(MetadataManager):
             source_query += SQL("FROM {}.{}").format(
                 Identifier(source_schema), Identifier(source_table)
             )
-        source_query_args = None
 
         if in_fragment_order:
             source_query += SQL(" ") + self._get_order_by_clause(in_fragment_order, table_schema)
@@ -801,7 +800,7 @@ class FragmentManager(MetadataManager):
             object_id=tmp_object_id,
             source_query=source_query,
             schema_spec=add_ud_flag_column(table_schema),
-            source_query_args=source_query_args,
+            source_query_args=None,
             overwrite=overwrite,
         )
 

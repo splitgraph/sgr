@@ -63,18 +63,18 @@ from .output import pluralise
 from .sql.queries import insert, select
 from .sql.splitfile_validation import validate_import_sql
 
+# Whilst these are enforced by PostgreSQL in the Splitgraph schema, it's good to
+# prevalidate namespace/repository values when the Repository object is constructed.
+_MAX_NAMESPACE_LEN = 64
+_MAX_REPOSITORY_LEN = 64
+_NAMESPACE_RE = re.compile(r"^[-A-Za-z0-9_]*$")
+_REPOSITORY_RE = re.compile(r"^[-A-Za-z0-9_]+$")
+
 
 class Repository:
     """
     Splitgraph repository API
     """
-
-    # Whilst these are enforced by PostgreSQL in the Splitgraph schema, it's good to
-    # prevalidate namespace/repository values when the Repository object is constructed.
-    _MAX_NAMESPACE_LEN = 64
-    _MAX_REPOSITORY_LEN = 64
-    _NAMESPACE_RE = re.compile(r"^[-A-Za-z0-9_]*$")
-    _REPOSITORY_RE = re.compile(r"^[-A-Za-z0-9_]+$")
 
     def __init__(
         self,
@@ -84,13 +84,13 @@ class Repository:
         object_engine: Optional[PostgresEngine] = None,
         object_manager: Optional[ObjectManager] = None,
     ) -> None:
-        if len(namespace) > self._MAX_NAMESPACE_LEN or not self._NAMESPACE_RE.match(namespace):
+        if len(namespace) > _MAX_NAMESPACE_LEN or not _NAMESPACE_RE.match(namespace):
             raise ValueError(
                 f"Invalid namespace '{namespace}'. Namespace must contain at most 64 "
                 "alphanumerics, dashes or underscores."
             )
 
-        if len(repository) > self._MAX_REPOSITORY_LEN or not self._REPOSITORY_RE.match(repository):
+        if len(repository) > _MAX_REPOSITORY_LEN or not _REPOSITORY_RE.match(repository):
             raise ValueError(
                 f"Invalid repository '{repository}'. Repository must contain at most 64 "
                 "alphanumerics, dashes or underscores."
@@ -157,7 +157,8 @@ class Repository:
             repr += " (object engine %s)" % self.object_engine.name
         return repr
 
-    __str__ = to_schema
+    def __str__(self) -> str:
+        return self.to_schema()
 
     def __hash__(self) -> int:
         return hash(self.namespace) * hash(self.repository)
@@ -236,11 +237,11 @@ class Repository:
         self.engine.commit()
 
     @property
-    def upstream(self):
+    def upstream(self) -> Optional["Repository"]:
         """
         The remote upstream repository that this local repository tracks.
         """
-        result = self.engine.run_sql(
+        result: Optional[Tuple[str, str, str]] = self.engine.run_sql(
             select(
                 "upstream",
                 "remote_name, remote_namespace, remote_repository",
@@ -266,12 +267,22 @@ class Repository:
         return Repository(namespace=result[1], repository=result[2], engine=engine)
 
     @upstream.setter
-    def upstream(self, remote_repository: "Repository"):
+    def upstream(self, remote_repository: Optional["Repository"]) -> None:
         """
         Sets the upstream remote + repository that this repository tracks.
 
         :param remote_repository: Remote Repository object
         """
+        if not remote_repository:
+            self.engine.run_sql(
+                SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA)
+                ),
+                (self.namespace, self.repository),
+                return_shape=None,
+            )
+            return
+
         self.engine.run_sql(
             SQL(
                 "INSERT INTO {0}.upstream (namespace, repository, "
@@ -291,18 +302,19 @@ class Repository:
             ),
         )
 
-    @upstream.deleter
-    def upstream(self):
-        """
-        Deletes the upstream remote + repository for a local repository.
-        """
-        self.engine.run_sql(
-            SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s").format(
-                Identifier(SPLITGRAPH_META_SCHEMA)
-            ),
-            (self.namespace, self.repository),
-            return_shape=None,
-        )
+    #
+    # @upstream.deleter
+    # def upstream(self) -> None:
+    #     """
+    #     Deletes the upstream remote + repository for a local repository.
+    #     """
+    #     self.engine.run_sql(
+    #         SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s").format(
+    #             Identifier(SPLITGRAPH_META_SCHEMA)
+    #         ),
+    #         (self.namespace, self.repository),
+    #         return_shape=None,
+    #     )
 
     def get_size(self) -> int:
         """

@@ -38,6 +38,7 @@ from .table import Table
 from .types import ProvenanceLine, TableColumn
 
 if TYPE_CHECKING:
+    from ..engine.postgres.engine import PostgresEngine
     from .repository import Repository
 
 IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_data"]
@@ -57,11 +58,11 @@ class Image(NamedTuple):
     repository: "Repository"
 
     @property
-    def engine(self):
+    def engine(self) -> "PostgresEngine":
         return self.repository.engine
 
     @property
-    def object_engine(self):
+    def object_engine(self) -> "PostgresEngine":
         return self.repository.object_engine
 
     def __eq__(self, other: object) -> bool:
