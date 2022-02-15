@@ -23,8 +23,8 @@ from splitgraph.config import (
     FDW_CLASS,
     SPLITGRAPH_API_SCHEMA,
     SPLITGRAPH_META_SCHEMA,
-    get_singleton,
 )
+from splitgraph.config.config import get_singleton
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 

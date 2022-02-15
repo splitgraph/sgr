@@ -1,8 +1,7 @@
 """Routines for exporting the config back into text."""
 from typing import Dict, cast
 
-from splitgraph.config import get_singleton
-from splitgraph.config.config import get_all_in_section
+from splitgraph.config.config import get_all_in_section, get_singleton
 from splitgraph.config.keys import DEFAULTS, KEYS, SENSITIVE_KEY_SUFFIXES, ConfigDict
 
 

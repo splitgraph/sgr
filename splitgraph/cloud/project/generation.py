@@ -9,10 +9,11 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import ruamel.yaml
 from pydantic import BaseModel, Field
-from ruamel.yaml import CommentedMap as CM
-from ruamel.yaml import CommentedSeq as CS
+from ruamel.yaml.comments import CommentedMap as CM
+from ruamel.yaml.comments import CommentedSeq as CS
 
-from splitgraph.cloud import GQLAPIClient, Plugin
+from splitgraph.cloud import GQLAPIClient
+from splitgraph.cloud.models import Plugin
 from splitgraph.cloud.project.dbt import (
     generate_dbt_plugin_params,
     generate_dbt_project,
@@ -120,7 +121,7 @@ def stub_plugin(plugin: Plugin, namespace: str, repository: str, is_live: bool =
     """
     Generate a splitgraph.yml file based on a plugin's JSONSchemas.
     """
-    yml = ruamel.yaml.YAML()
+    yml = ruamel.yaml.main.YAML()
     repositories_yaml = (
         SPLITGRAPH_YML_TEMPLATE.replace("CREDENTIAL_NAME", plugin.plugin_name)
         .replace("NAMESPACE", namespace)
@@ -179,7 +180,7 @@ def generate_project(
     decoded_seed = ProjectSeed.decode(seed)
     credentials, repositories, repository_info = generate_splitgraph_yml(all_plugins, decoded_seed)
 
-    yml = ruamel.yaml.YAML()
+    yml = ruamel.yaml.main.YAML()
     with open(os.path.join(basedir, "splitgraph.credentials.yml"), "w") as f:
         yml.dump(credentials, f)
 

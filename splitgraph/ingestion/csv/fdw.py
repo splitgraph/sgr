@@ -11,7 +11,7 @@ import requests
 from urllib3 import HTTPResponse
 
 import splitgraph.config
-from splitgraph.config import get_singleton
+from splitgraph.config.config import get_singleton
 from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.common import generate_column_names
 from splitgraph.ingestion.csv.common import (

@@ -66,10 +66,12 @@ from splitgraph.cloud.queries import (
     START_EXPORT,
     START_LOAD,
 )
-from splitgraph.config import CONFIG, create_config_dict, get_singleton
+from splitgraph.config import CONFIG
 from splitgraph.config.config import (
+    create_config_dict,
     get_all_in_subsection,
     get_from_subsection,
+    get_singleton,
     set_in_subsection,
 )
 from splitgraph.config.export import overwrite_config

@@ -5,7 +5,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import splitgraph.config
-from splitgraph.config import get_singleton
+from splitgraph.config.config import get_singleton
 from splitgraph.ingestion.socrata.querying import (
     cols_to_socrata,
     estimate_socrata_rows_width,

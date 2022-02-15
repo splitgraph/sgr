@@ -90,7 +90,8 @@ def _do_version_check():
     from packaging.version import Version
 
     from splitgraph.cloud import RESTAPIClient
-    from splitgraph.config import CONFIG, get_singleton
+    from splitgraph.config import CONFIG
+    from splitgraph.config.config import get_singleton
 
     api_client = RESTAPIClient(get_singleton(CONFIG, "SG_UPDATE_REMOTE"))
     latest = api_client.get_latest_version()

@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, List, Tuple
 
 from tqdm import tqdm
 
-from splitgraph.config import CONFIG, SG_CMD_ASCII, get_singleton
+from splitgraph.config import CONFIG, SG_CMD_ASCII
+from splitgraph.config.config import get_singleton
 from splitgraph.engine import ResultShape
 from splitgraph.engine.config import get_engine
 from splitgraph.engine.postgres.psycopg import PsycopgEngine

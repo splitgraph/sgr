@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from docker.types import LogConfig
-from ruamel.yaml import YAMLError
+from ruamel.yaml.error import YAMLError
 
 from splitgraph.ingestion.airbyte.docker_utils import (
     detect_network_mode,

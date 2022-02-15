@@ -29,8 +29,8 @@ from splitgraph.config import (
     FDW_CLASS,
     SPLITGRAPH_API_SCHEMA,
     SPLITGRAPH_META_SCHEMA,
-    get_singleton,
 )
+from splitgraph.config.config import get_singleton
 from splitgraph.core.fragment_manager import ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager

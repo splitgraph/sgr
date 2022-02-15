@@ -5,7 +5,7 @@ import logging
 from typing import TYPE_CHECKING, Callable, Optional
 
 import splitgraph.config
-from splitgraph.config import get_singleton
+from splitgraph.config.config import get_singleton
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.output import pretty_size
 from splitgraph.core.repository import Repository

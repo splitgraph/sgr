@@ -9,7 +9,8 @@ import click
 from tqdm import tqdm
 
 from splitgraph.__version__ import __version__
-from splitgraph.config import CONFIG, SG_CMD_ASCII, get_singleton
+from splitgraph.config import CONFIG, SG_CMD_ASCII
+from splitgraph.config.config import get_singleton
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.exceptions import DockerUnavailableError, EngineSetupError
 from splitgraph.utils.docker import copy_to_container, get_docker_client

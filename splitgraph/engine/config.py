@@ -1,8 +1,8 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Dict, Iterator, Optional, Union, cast
 
-from splitgraph.config import CONFIG, get_singleton
-from splitgraph.config.config import get_all_in_section
+from splitgraph.config import CONFIG
+from splitgraph.config.config import get_all_in_section, get_singleton
 from splitgraph.config.keys import ConfigDict
 
 if TYPE_CHECKING:

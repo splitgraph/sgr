@@ -1177,7 +1177,7 @@ def stub_c(remote, plugin_name, repository, output_file):
     if not plugin:
         raise click.UsageError("Plugin %s not found on remote %s" % (plugin_name, remote))
 
-    yml = ruamel.yaml.YAML()
+    yml = ruamel.yaml.main.YAML()
     output = stub_plugin(plugin, repository.namespace, repository.repository)
     yml.dump(output, output_file)
 

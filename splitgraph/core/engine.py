@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA, get_singleton
+from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA
+from splitgraph.config.config import get_singleton
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import RepositoryNotFoundError
 

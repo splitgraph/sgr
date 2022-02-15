@@ -29,7 +29,7 @@ def generate_dbt_project(repositories: List[str], basedir: Path) -> None:
         f.write(DBT_PROJECT_TEMPLATE)
 
     # Generate models/staging/sources.yml
-    yml = ruamel.yaml.YAML()
+    yml = ruamel.yaml.main.YAML()
     sources_yml = yml.load(SOURCES_YML_TEMPLATE)
     sources_yml["sources"][0]["name"] = get_source_name(repositories[0])
     sources_yml["sources"][0]["schema"] = repositories[0]

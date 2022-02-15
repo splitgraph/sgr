@@ -1,6 +1,6 @@
 from typing import Any
 
-from ruamel.yaml import YAML
+from ruamel.yaml.main import YAML
 
 
 def safe_load(stream) -> Any:
