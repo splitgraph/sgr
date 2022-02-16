@@ -1,9 +1,10 @@
 import re
 import threading
-from abc import ABC
+from abc import ABC, ABCMeta, abstractmethod
 from contextlib import contextmanager
 from typing import Any, Iterator, List, Optional, Sequence, Tuple, Union, cast
 
+from mypy_extensions import trait
 from psycopg2.sql import SQL, Composed, Identifier
 
 from splitgraph.core.types import TableColumn, TableSchema
@@ -21,7 +22,8 @@ class SavepointStack(threading.local):
         self.stack: List[str] = []
 
 
-class SQLEngine(ABC):
+@trait
+class SQLEngine(metaclass=ABCMeta):
     """Abstraction for a Splitgraph SQL backend. Requires any overriding classes to implement `run_sql` as well as
     a few other functions. Together with the `information_schema` (part of the SQL standard), this class uses those
     functions to implement some basic database management methods like listing, deleting, creating, dumping
@@ -47,22 +49,38 @@ class SQLEngine(ABC):
                 self._savepoint_stack.stack.pop()
                 self.run_sql(SQL("RELEASE SAVEPOINT ") + Identifier(name))
 
-    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
+    @abstractmethod
+    def run_sql(
+        self,
+        statement: Union[bytes, Composed, str, SQL],
+        arguments: Optional[Sequence[object]] = None,
+        return_shape: Optional[ResultShape] = ResultShape.MANY_MANY,
+        named: bool = False,
+    ):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results.
         If the statement doesn't return any results, return None. If named=True, return named
         tuples when possible."""
         raise NotImplementedError()
 
+    @abstractmethod
     def commit(self):
         """Commit the engine's backing connection"""
 
+    @abstractmethod
     def close(self):
         """Commit and close the engine's backing connection"""
 
+    @abstractmethod
     def rollback(self):
         """Rollback the engine's backing connection"""
 
-    def run_sql_batch(self, statement, arguments, schema=None):
+    @abstractmethod
+    def run_sql_batch(
+        self,
+        statement: Union[bytes, Composed, str, SQL],
+        arguments: Optional[Sequence[object]] = None,
+        schema: Optional[str] = None,
+    ):
         """Run a parameterized SQL statement against multiple sets of arguments.
 
         :param statement: Statement to run
@@ -73,8 +91,8 @@ class SQLEngine(ABC):
     def run_sql_in(
         self,
         schema: str,
-        sql: Union[Composed, str],
-        arguments: None = None,
+        sql: Union[bytes, Composed, str, SQL],
+        arguments: Optional[Sequence[object]] = None,
         return_shape: ResultShape = ResultShape.MANY_MANY,
     ) -> Any:
         """
@@ -368,15 +386,18 @@ class SQLEngine(ABC):
         raise NotImplementedError()
 
 
-class ChangeEngine(SQLEngine, ABC):
+@trait
+class ChangeEngine(SQLEngine, metaclass=ABCMeta):
     """An SQL engine that can perform change tracking on a set of tables."""
 
+    @abstractmethod
     def get_tracked_tables(self):
         """
         :return: A list of (table_schema, table_name) that the engine currently tracks for changes
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def track_tables(self, tables):
         """
         Start engine-specific change tracking on a list of tables.
@@ -385,6 +406,7 @@ class ChangeEngine(SQLEngine, ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def untrack_tables(self, tables):
         """
         Stop engine-specific change tracking on a list of tables and delete any pending changes.
@@ -393,18 +415,21 @@ class ChangeEngine(SQLEngine, ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def has_pending_changes(self, schema):
         """
         Return True if the tracked schema has pending changes and False if it doesn't.
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def discard_pending_changes(self, schema, table=None):
         """
         Discard recorded pending changes for a tracked table or the whole schema
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def get_pending_changes(self, schema, table, aggregate=False):
         """
         Return pending changes for a given tracked table
@@ -420,6 +445,7 @@ class ChangeEngine(SQLEngine, ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def get_changed_tables(self, schema):
         """
         List tracked tables that have pending changes
@@ -429,6 +455,7 @@ class ChangeEngine(SQLEngine, ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def get_change_key(self, schema: str, table: str) -> List[Tuple[str, str]]:
         """
         Returns the key used to identify a row in a change (list of column name, column type).
@@ -437,11 +464,13 @@ class ChangeEngine(SQLEngine, ABC):
         raise NotImplementedError()
 
 
-class ObjectEngine:
+@trait
+class ObjectEngine(metaclass=ABCMeta):
     """
     Routines for storing/applying objects as well as sharing them with other engines.
     """
 
+    @abstractmethod
     def get_object_schema(self, object_id):
         """
         Get the schema of a given object, returned as a list of
@@ -450,12 +479,14 @@ class ObjectEngine:
         :param object_id: ID of the object
         """
 
+    @abstractmethod
     def get_object_size(self, object_id):
         """
         Return the on-disk footprint of this object, in bytes
         :param object_id: ID of the object
         """
 
+    @abstractmethod
     def delete_objects(self, object_ids):
         """
         Delete one or more objects from the engine.
@@ -463,6 +494,7 @@ class ObjectEngine:
         :param object_ids: IDs of objects to delete
         """
 
+    @abstractmethod
     def store_fragment(
         self, inserted, deleted, schema, table, source_schema, source_table, source_schema_spec
     ):
@@ -479,6 +511,7 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def apply_fragments(
         self,
         objects,
@@ -505,6 +538,7 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def upload_objects(self, objects, remote_engine):
         """
         Upload objects from the local cache to the remote engine
@@ -514,6 +548,7 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def download_objects(self, objects, remote_engine):
         """
         Download objects from the remote engine to the local cache
@@ -525,6 +560,7 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def dump_object(self, object_id, stream, schema):
         """
         Dump an object into a series of SQL statements
@@ -535,6 +571,7 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def store_object(
         self,
         object_id: str,
@@ -542,7 +579,7 @@ class ObjectEngine:
         schema_spec: TableSchema,
         source_query_args: Optional[Sequence[Any]],
         overwrite: bool,
-    ):
+    ) -> None:
         """
         Stores a Splitgraph object using a source query in the actual format
         implemented by this engine.

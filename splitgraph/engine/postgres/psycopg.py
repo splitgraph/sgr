@@ -190,7 +190,7 @@ class PsycopgEngine(SQLEngine):
                 minconn=0,
                 maxconn=conn_params.get("SG_ENGINE_POOL", CONFIG["SG_ENGINE_POOL"]),
                 host=server,
-                port=int(cast(int, port)) if port is not None else None,
+                port=int(port) if port is not None else None,
                 user=username,
                 password=password,
                 dbname=dbname,
@@ -435,7 +435,7 @@ class PsycopgEngine(SQLEngine):
     def run_sql(
         self,
         statement: Union[bytes, Composed, str, SQL],
-        arguments: Optional[Sequence[Any]] = None,
+        arguments: Optional[Sequence[object]] = None,
         return_shape: Optional[ResultShape] = ResultShape.MANY_MANY,
         named: bool = False,
     ) -> Any:
@@ -496,9 +496,10 @@ class PsycopgEngine(SQLEngine):
                         logging.info(f"Connection to {self.name} lost. Reconnecting...")
                         self.close()
                         connection = self.connection
-                        continue
+                        # continue
 
-                    raise
+                    if attempt >= 2:
+                        raise
 
                 if cur.description is None:
                     return None
@@ -534,7 +535,7 @@ AND tc.table_name = %s
     def run_sql_batch(
         self,
         statement: Union[Composed, str],
-        arguments: Any,
+        arguments: Optional[Sequence[Any]] = None,
         schema: Optional[str] = None,
         max_size=API_MAX_QUERY_LENGTH,
     ) -> None:
@@ -601,9 +602,6 @@ AND tc.table_name = %s
         target_schema: Optional[str] = None,
         target_table: Optional[str] = None,
     ) -> None:
-        target_schema = target_schema or schema
-        target_table = target_table or table_name
-
         with self.connection.cursor() as cur:
             # Don't deserialize JSON into Python dicts (store it as a string)
             psycopg2.extras.register_default_json(cur, globally=False, loads=lambda x: x)
@@ -614,7 +612,7 @@ AND tc.table_name = %s
 
             stream.write(
                 SQL("INSERT INTO {}.{} VALUES \n")
-                .format(Identifier(target_schema), Identifier(target_table))
+                .format(Identifier(target_schema or schema), Identifier(target_table or table_name))
                 .as_string(self.connection)
             )
             stream.write(

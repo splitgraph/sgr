@@ -55,7 +55,7 @@ class Image(NamedTuple):
     created: datetime
     comment: str
     provenance_data: List[ProvenanceLine]
-    repository: "Repository"
+    repository: Repository
 
     @property
     def engine(self) -> "PostgresEngine":

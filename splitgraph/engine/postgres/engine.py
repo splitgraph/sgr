@@ -1,8 +1,10 @@
 """Default Splitgraph engine: uses PostgreSQL to store metadata and actual objects and an audit stored procedure
 to track changes, as well as the Postgres FDW interface to upload/download objects to/from other Postgres engines."""
+import abc
 import itertools
 import json
 import logging
+from abc import ABC, ABCMeta
 from contextlib import contextmanager
 from io import BytesIO, TextIOWrapper
 from pathlib import PurePosixPath
@@ -80,7 +82,7 @@ def _quote_ident(val: str) -> str:
     return '"%s"' % val.replace('"', '""')
 
 
-class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
+class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine, metaclass=ABCMeta):
     """Change tracking based on an audit trigger stored procedure"""
 
     def get_tracked_tables(self) -> List[Tuple[str, str]]:
@@ -205,6 +207,10 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
                 return_shape=ResultShape.MANY_ONE,
             ),
         )
+
+    @abc.abstractmethod
+    def get_change_key(self, schema: str, table: str) -> List[Tuple[str, str]]:
+        pass
 
 
 class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
@@ -351,7 +357,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def mount_object(
         self,
         object_id: str,
-        table: None = None,
+        table: Optional[str] = None,
         schema: str = SPLITGRAPH_META_SCHEMA,
         schema_spec: Optional["TableSchema"] = None,
     ) -> None:
