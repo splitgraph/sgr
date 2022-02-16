@@ -12,7 +12,7 @@ def pretty_size(size: Union[int, float]) -> str:
     :param size: Size in bytes
     """
     size = float(size)
-    power = 2 ** 10
+    power = 2**10
     base = 0
     while size > power:
         size /= power

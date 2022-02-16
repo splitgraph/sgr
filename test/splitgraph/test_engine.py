@@ -265,16 +265,13 @@ def test_client_query_batch_chunk_whole():
 
     # Return list of singletons
     engine.run_sql.side_effect = (["result_1", "result_2"], ["result_3"])
-    assert (
-        PsycopgEngine.run_chunked_sql(
-            engine,
-            query,
-            args,
-            return_shape=ResultShape.MANY_ONE,
-            chunk_size=2,
-        )
-        == ["result_1", "result_2", "result_3"]
-    )
+    assert PsycopgEngine.run_chunked_sql(
+        engine,
+        query,
+        args,
+        return_shape=ResultShape.MANY_ONE,
+        chunk_size=2,
+    ) == ["result_1", "result_2", "result_3"]
     assert engine.run_sql.mock_calls == [
         call(query, args[:2], ResultShape.MANY_ONE),
         call(query, args[2:], ResultShape.MANY_ONE),

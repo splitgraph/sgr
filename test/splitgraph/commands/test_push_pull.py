@@ -272,16 +272,13 @@ def test_push(local_engine_empty, pg_repo_remote):
     head_3 = PG_MNT.commit(snap_only=True, in_fragment_order={"fruits": ["name"]}, overwrite=True)
     assert head_3.get_table("fruits").objects == head_2.get_table("fruits").objects
 
-    assert (
-        PG_MNT.run_sql(
-            SQL("SELECT fruit_id FROM {}.{}").format(
-                Identifier(SPLITGRAPH_META_SCHEMA),
-                Identifier(head_2.get_table("fruits").objects[0]),
-            ),
-            return_shape=ResultShape.MANY_ONE,
-        )
-        == [1, 3, 2]
-    )
+    assert PG_MNT.run_sql(
+        SQL("SELECT fruit_id FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier(head_2.get_table("fruits").objects[0]),
+        ),
+        return_shape=ResultShape.MANY_ONE,
+    ) == [1, 3, 2]
 
     # Force push overwriting object meta and the actual object
     PG_MNT.push(
@@ -291,16 +288,13 @@ def test_push(local_engine_empty, pg_repo_remote):
         reupload_objects=True,
     )
 
-    assert (
-        pg_repo_remote.run_sql(
-            SQL("SELECT fruit_id FROM {}.{}").format(
-                Identifier(SPLITGRAPH_META_SCHEMA),
-                Identifier(head_2.get_table("fruits").objects[0]),
-            ),
-            return_shape=ResultShape.MANY_ONE,
-        )
-        == [1, 3, 2]
-    )
+    assert pg_repo_remote.run_sql(
+        SQL("SELECT fruit_id FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier(head_2.get_table("fruits").objects[0]),
+        ),
+        return_shape=ResultShape.MANY_ONE,
+    ) == [1, 3, 2]
     # apple, mayonnaise, orange (alphabetical order since we sorted on fruit name)
 
 

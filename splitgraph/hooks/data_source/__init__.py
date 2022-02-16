@@ -97,7 +97,7 @@ def _load_plugin_from_dir(
         spec.loader.exec_module(module)  # type:ignore
         if hasattr(module, "__plugin__"):
             logging.debug("Loading %s", plugin_file)
-            data_source = module.__plugin__  # type: ignore
+            data_source = module.__plugin__
             if not issubclass(data_source, DataSource):
                 logging.warning(
                     "Data source %s in %s isn't an instance of DataSource. Ignoring.",

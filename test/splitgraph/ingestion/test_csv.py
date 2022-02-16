@@ -437,13 +437,10 @@ def test_csv_data_source_s3(local_engine_empty):
         assert local_engine_empty.run_sql('SELECT COUNT(1) FROM temp_data."fruits.csv"') == [(4,)]
 
         # Test NULL "inference" for numbers
-        assert (
-            local_engine_empty.run_sql(
-                'SELECT number FROM temp_data."fruits.csv"',
-                return_shape=ResultShape.MANY_ONE,
-            )
-            == [1, 2, None, 4]
-        )
+        assert local_engine_empty.run_sql(
+            'SELECT number FROM temp_data."fruits.csv"',
+            return_shape=ResultShape.MANY_ONE,
+        ) == [1, 2, None, 4]
 
         assert local_engine_empty.run_sql(
             'SELECT COUNT(1) FROM temp_data."rdu-weather-history.csv"'
