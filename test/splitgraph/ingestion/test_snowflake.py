@@ -67,7 +67,7 @@ def test_snowflake_data_source_dburl_conversion_warehouse():
         "db_url": "snowflake://username:password@abcdef.eu-west-1.aws/SOME_DB/TPCH_SF100?warehouse=my_warehouse&role=role",
         "schema": "TPCH_SF100",
         "wrapper": "multicorn.sqlalchemyfdw.SqlAlchemyFdw",
-        "batch_size": 10000,
+        "batch_size": "10000",
     }
 
 
@@ -93,7 +93,7 @@ def test_snowflake_data_source_dburl_conversion_no_warehouse():
         "db_url": "snowflake://username:password@abcdef.eu-west-1.aws/SOME_DB/TPCH_SF100",
         "schema": "TPCH_SF100",
         "wrapper": "multicorn.sqlalchemyfdw.SqlAlchemyFdw",
-        "batch_size": 10000,
+        "batch_size": "10000",
     }
 
 
@@ -123,7 +123,7 @@ def test_snowflake_data_source_private_key(private_key):
         "schema": "TPCH_SF100",
         "wrapper": "multicorn.sqlalchemyfdw.SqlAlchemyFdw",
         "connect_args": mock.ANY,
-        "batch_size": 10000,
+        "batch_size": "10000",
     }
 
     assert json.loads(opts["connect_args"])["private_key"] == _sample_privkey_b64
