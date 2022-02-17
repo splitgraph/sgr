@@ -253,16 +253,16 @@ sgr mount csv target_schema -o@- <<EOF
 	"s3_secret_key": "abcd",
 	"connection":
 	{
-		 "connection_type": "s3",
-     "s3_bucket": "my-bucket-name",
-     "s3_endpoint": "s3.amazonaws.com",
-     "s3_region": "eu-west-3",
-     "s3_object_prefix": "",
-     "s3_object": "iris/iris.csv"
+        "connection_type": "s3",
+        "s3_bucket": "my-bucket-name",
+        "s3_endpoint": "s3.amazonaws.com",
+        "s3_region": "eu-west-3",
+        "s3_object_prefix": "",
+        "s3_object": "iris/iris.csv"
 	},
-  "autodetect_header": true,
-  "autodetect_dialect": true,
-  "autodetect_encoding": true
+    "autodetect_header": true,
+    "autodetect_dialect": true,
+    "autodetect_encoding": true
 }
 EOF
 ```

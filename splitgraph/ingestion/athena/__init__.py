@@ -19,6 +19,7 @@ class AmazonAthenaDataSource(ForeignDataWrapperDataSource):
             "aws_access_key_id": {"type": "string", "title": "AWS Access Key Id"},
             "aws_secret_access_key": {"type": "string", "title": "AWS Secret Access Key"},
         },
+        "required": ["aws_access_key_id", "aws_secret_access_key"],
     }
 
     params_schema = {
@@ -69,7 +70,7 @@ EOF
         build_commandline_help(credentials_schema) + "\n" + build_commandline_help(params_schema)
     )
 
-    _icon_file = "snowflake.svg"
+    _icon_file = "athena.svg"
 
     def __init__(
         self,
@@ -116,8 +117,8 @@ EOF
     def _build_db_url(self) -> str:
         """Construct the SQLAlchemy Amazon Athena db_url"""
 
-        aws_access_key_id = self.params["aws_access_key_id"]
-        aws_secret_access_key = self.params["aws_secret_access_key"]
+        aws_access_key_id = self.credentials["aws_access_key_id"]
+        aws_secret_access_key = self.credentials["aws_secret_access_key"]
         region_name = self.params["region_name"]
         schema_name = self.params["schema_name"]
         s3_staging_dir = self.params["s3_staging_dir"]
