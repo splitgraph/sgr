@@ -103,6 +103,7 @@ EOF
         options: Dict[str, Optional[str]] = {
             "wrapper": "multicorn.sqlalchemyfdw.SqlAlchemyFdw",
             "db_url": self._build_db_url(),
+            "cast_quals": "yes",
         }
 
         # For some reason, in SQLAlchemy, if this is not passed

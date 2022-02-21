@@ -979,6 +979,22 @@ def test_various_not_pushed_down(data_source, test_local_engine):
     result = test_local_engine.run_sql(query, return_shape=ResultShape.ONE_ONE)
     assert result == 1000
 
+    # Using a float in a qualifier against an integer column will not be pushed down
+    query = f"SELECT COUNT(firstname) FROM {data_source}.account WHERE age > 1000.0"
+
+    result = test_local_engine.run_sql("EXPLAIN " + query)
+
+    if data_source == "es":
+        assert _extract_es_queries_from_explain(result)[0] == _bare_es_sequential_scan
+    elif data_source == "pg":
+        assert _extract_pg_queries_from_explain(result)[0] == (
+            "SELECT public.account.firstname, public.account.age FROM public.account"
+        )
+
+    # Ensure results are correct
+    result = test_local_engine.run_sql(query, return_shape=ResultShape.ONE_ONE)
+    assert result == 0
+
     # COUNT DISTINCT queries are not going to be pushed down
     query = f"SELECT COUNT(DISTINCT state) FROM {data_source}.account"
 
