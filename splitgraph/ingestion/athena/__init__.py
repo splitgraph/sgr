@@ -1,7 +1,3 @@
-import base64
-import json
-import urllib.parse
-from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from splitgraph.core.types import Credentials, Params, TableInfo
@@ -103,7 +99,7 @@ EOF
         options: Dict[str, Optional[str]] = {
             "wrapper": "multicorn.sqlalchemyfdw.SqlAlchemyFdw",
             "db_url": self._build_db_url(),
-            "cast_quals": "yes",
+            "cast_quals": "true",
         }
 
         # For some reason, in SQLAlchemy, if this is not passed

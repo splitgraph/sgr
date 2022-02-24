@@ -546,7 +546,7 @@ def _assert_scd_data(repo):
 def _assert_normalized_data(repo, unique_key=False):
     expected = [
         {
-            "discovery": "2012-11-11T08:06:26Z",
+            "discovery": "2012-11-11T08:06:26.000000Z",
             "friendly": True,
             "binary_data": "YmludHN0AA==",
             "name": "portobello",
@@ -555,10 +555,10 @@ def _assert_normalized_data(repo, unique_key=False):
             "_airbyte_ab_id": mock.ANY,
             "_airbyte_emitted_at": mock.ANY,
             "_airbyte_normalized_at": mock.ANY,
-            "_airbyte_mushrooms_hashid": "e48f260f784baa48a5c4643ef36024af",
+            "_airbyte_mushrooms_hashid": "882da3c55d7481c75a8f8919fc8441e1",
         },
         {
-            "discovery": "2018-03-17T08:06:26Z",
+            "discovery": "2018-03-17T08:06:26.000000Z",
             "friendly": False,
             "binary_data": "AAAxMjMAAA==",
             "name": "deathcap",
@@ -567,7 +567,7 @@ def _assert_normalized_data(repo, unique_key=False):
             "_airbyte_ab_id": mock.ANY,
             "_airbyte_emitted_at": mock.ANY,
             "_airbyte_normalized_at": mock.ANY,
-            "_airbyte_mushrooms_hashid": "5257322455a690592e14baeb4d24069c",
+            "_airbyte_mushrooms_hashid": "7c835aeba7c53e3a13acb6f953820bb6",
         },
     ]
 
@@ -670,7 +670,7 @@ def _assert_raw_data(repo):
             "_airbyte_data": {
                 "name": "portobello",
                 "friendly": True,
-                "discovery": "2012-11-11T08:06:26Z",
+                "discovery": "2012-11-11T08:06:26.000000Z",
                 "binary_data": "YmludHN0AA==",
                 "mushroom_id": 1,
                 "varbinary_data": "fwAAAQ==",
@@ -682,7 +682,7 @@ def _assert_raw_data(repo):
             "_airbyte_data": {
                 "name": "deathcap",
                 "friendly": False,
-                "discovery": "2018-03-17T08:06:26Z",
+                "discovery": "2018-03-17T08:06:26.000000Z",
                 "binary_data": "AAAxMjMAAA==",
                 "mushroom_id": 2,
                 "varbinary_data": "fwAAAQ==",

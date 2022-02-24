@@ -24,7 +24,7 @@ def test_athena_data_source_options():
     assert source.get_server_options() == {
         "db_url": "awsathena+rest://key:secret@athena.eu-west-3.amazonaws.com:443/mydb?s3_staging_dir=s3://athena/results/",
         "wrapper": "multicorn.sqlalchemyfdw.SqlAlchemyFdw",
-        "cast_quals": "yes",
+        "cast_quals": "true",
     }
 
 
