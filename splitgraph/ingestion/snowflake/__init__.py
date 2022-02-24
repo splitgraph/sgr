@@ -228,6 +228,8 @@ EOF
 
         if "batch_size" in self.params:
             options["batch_size"] = str(self.params["batch_size"])
+        else:
+            options["batch_size"] = "10000"
 
         if self.credentials["secret"]["secret_type"] == "private_key":
             options["connect_args"] = json.dumps(

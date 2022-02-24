@@ -190,6 +190,11 @@ COPY ./engine/src/postgres-elasticsearch-fdw/pg_es_fdw /pg_es_fdw/pg_es_fdw
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
     pip install "git+https://github.com/splitgraph/snowflake-sqlalchemy.git@14e64cc0ef7374df0cecc91923ff6901b0d721b7"
 
+# Install PyAthena for Amazon Athena SQLAlchemy-based FDW, as well as pandas
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+    pip install "PyAthena>=2.4.1" && \
+    pip install "pandas>=1.0.0"
+
 ENV PATH "${PATH}:/splitgraph/bin"
 ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
 

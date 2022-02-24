@@ -241,23 +241,29 @@ class CSVDataSource(ForeignDataWrapperDataSource):
 
 If passed an URL, this will live query a CSV file on an HTTP server. If passed
 S3 access credentials, this will scan a bucket for CSV files, infer their schema
-and make them available to query over SQL.  
+and make them available to query over SQL.
 
-For example:  
+For example:
 
 \b
 ```
 sgr mount csv target_schema -o@- <<EOF
-  {
-    "s3_endpoint": "cdn.mycompany.com:9000",
-    "s3_access_key": "ABCDEF",
-    "s3_secret_key": "GHIJKL",
-    "s3_bucket": "data",
-    "s3_object_prefix": "csv_files/current/",
+{
+	"s3_access_key": "ABCD",
+	"s3_secret_key": "abcd",
+	"connection":
+	{
+        "connection_type": "s3",
+        "s3_bucket": "my-bucket-name",
+        "s3_endpoint": "s3.amazonaws.com",
+        "s3_region": "eu-west-3",
+        "s3_object_prefix": "",
+        "s3_object": "iris/iris.csv"
+	},
     "autodetect_header": true,
     "autodetect_dialect": true,
     "autodetect_encoding": true
-  }
+}
 EOF
 ```
 """
