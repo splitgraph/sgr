@@ -66,6 +66,7 @@ DEFAULTS: ConfigDict = {
         "csv": "splitgraph.ingestion.csv.CSVDataSource",
         "snowflake": "splitgraph.ingestion.snowflake.SnowflakeDataSource",
         "dbt": "splitgraph.ingestion.dbt.data_source.DBTDataSource",
+        "athena": "splitgraph.ingestion.athena.AmazonAthenaDataSource",
     },
 }
 
@@ -125,8 +126,8 @@ KEY_DOCS: Dict[str, str] = {
     "SG_ENGINE": """Current engine name in use by Splitgraph. By default, this is the local engine.
 
 This can be overridden to make `sgr` use a different engine in cases where the `--remote` flag is not supported.""",
-    "SG_LOGLEVEL": """Logging threshold (log messages not emitted below this).  
-Accepted values are CRITICAL, ERROR, WARNING, INFO and DEBUG.  
+    "SG_LOGLEVEL": """Logging threshold (log messages not emitted below this).
+Accepted values are CRITICAL, ERROR, WARNING, INFO and DEBUG.
 This can also be changed by passing `--verbosity` to `sgr`, e.g. `sgr --verbosity DEBUG init`.""",
     "SG_ENGINE_PREFIX": "Prefix for Docker containers that are treated as Splitgraph engines by `sgr engine`.",
     "SG_NAMESPACE": "Namespace used by default when pushing to this engine, if not explicitly specified. Normally this is set to the user's username on the registry.",
