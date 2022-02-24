@@ -13,6 +13,7 @@ poetry install -E pandas
 python -m venv "$DBT_VENV"
 . "$DBT_VENV"/bin/activate
 pip install dbt-core==1.0.0 dbt-postgres==1.0.0
+pip install --force--reinstall --update markupsafe==2.0.1
 
 # Singer tap integration test
 python -m venv "$TAP_MYSQL_VENV"
