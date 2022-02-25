@@ -1,4 +1,5 @@
 import base64
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from splitgraph.core.types import Credentials, Params, TableInfo
@@ -13,10 +14,44 @@ class BigQueryDataSource(ForeignDataWrapperDataSource):
     credentials_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
-            "credentials_path": {
-                "type": "string",
-                "title": "Location of the GCP credentials",
-                "description": "The json credentials file need not be supplied when running inside a GCP VM",
+            "credentials": {
+                "type": "object",
+                "title": "Google credentials",
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "required": ["secret_type", "path"],
+                        "properties": {
+                            "secret_type": {
+                                "type": "string",
+                                "const": "file",
+                                "title": "Secret type",
+                            },
+                            "path": {
+                                "type": "string",
+                                "title": "Location of the GCP credentials",
+                                "description": "The json credentials file path",
+                            },
+                        },
+                    },
+                    {
+                        "type": "object",
+                        "required": ["secret_type", "credentials_str"],
+                        "properties": {
+                            "secret_type": {
+                                "type": "string",
+                                "const": "raw",
+                                "title": "Secret type",
+                            },
+                            "credentials_str": {
+                                "type": "string",
+                                "title": "GCP credentials",
+                                "description": "GCP credentials in string format",
+                            },
+                        },
+                    },
+                ],
+                "description": "The credentials need not be supplied when running inside a GCP VM",
             },
         },
     }
@@ -48,7 +83,7 @@ This will mount a Big Query dataset:
 
 \b
 ```
-$ sgr mount big_query bq -o@- <<EOF
+$ sgr mount bigquery bq -o@- <<EOF
 {
     "credentials_path": "/path/to/my/creds.json",
     "project": "my-project-name",
@@ -62,7 +97,7 @@ EOF
         build_commandline_help(credentials_schema) + "\n" + build_commandline_help(params_schema)
     )
 
-    _icon_file = "big_query.svg"
+    _icon_file = "bigquery.svg"
 
     def __init__(
         self,
@@ -83,6 +118,21 @@ EOF
     @classmethod
     def get_description(cls) -> str:
         return "Query data in GCP Big Query datasets"
+
+    @classmethod
+    def from_commandline(cls, engine, commandline_kwargs) -> "BigQueryDataSource":
+        params = deepcopy(commandline_kwargs)
+        credentials = Credentials({})
+
+        if "credentials" in params and params["credentials"]["secret_type"] == "file":
+            # base64 encode the credentials file content
+            with open(params["credentials"].pop("path"), "r") as credentials_file:
+                credentials_str = credentials_file.read()
+
+            params.pop("credentials")
+            credentials["credentials"] = {"secret_type": "raw", "credentials_str": credentials_str}
+
+        return cls(engine, credentials, params)
 
     def get_table_options(
         self, table_name: str, tables: Optional[TableInfo] = None
@@ -111,12 +161,9 @@ EOF
 
         db_url = f"bigquery://{self.params['project']}/{self.params['dataset_name']}"
 
-        if "credentials_path" in self.credentials:
-            # base64 encode the credentials file content
-            with open(self.credentials["credentials_path"], "r") as credentials_file:
-                credentials_str = credentials_file.read()
-                credentials_base64 = base64.urlsafe_b64encode(credentials_str.encode()).decode()
-
+        if "credentials" in self.credentials:
+            credentials_str = self.credentials["credentials"]["credentials_str"]
+            credentials_base64 = base64.urlsafe_b64encode(credentials_str.encode()).decode()
             db_url += f"?credentials_base64={credentials_base64}"
 
         return db_url

@@ -67,7 +67,7 @@ DEFAULTS: ConfigDict = {
         "snowflake": "splitgraph.ingestion.snowflake.SnowflakeDataSource",
         "dbt": "splitgraph.ingestion.dbt.data_source.DBTDataSource",
         "athena": "splitgraph.ingestion.athena.AmazonAthenaDataSource",
-        "big_query": "splitgraph.ingestion.big_query.BigQueryDataSource",
+        "bigquery": "splitgraph.ingestion.bigquery.BigQueryDataSource",
     },
 }
 
