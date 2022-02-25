@@ -13,7 +13,11 @@ class BigQueryDataSource(ForeignDataWrapperDataSource):
     credentials_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
-            "credentials_path": {"type": "string", "title": "Location of the GCP credentials"},
+            "credentials_path": {
+                "type": "string",
+                "title": "Location of the GCP credentials",
+                "description": "The json credentials file need not be supplied when running inside a GCP VM",
+            },
         },
     }
 
@@ -31,6 +35,7 @@ class BigQueryDataSource(ForeignDataWrapperDataSource):
                 "description": "Name of the dataset in Big Query",
             },
         },
+        "required": ["project", "dataset_name"],
     }
 
     supports_mount = True
@@ -39,7 +44,7 @@ class BigQueryDataSource(ForeignDataWrapperDataSource):
 
     commandline_help = """Mount a GCP Big Query project/dataset.
 
-This will mount Big Query project/dataset:
+This will mount a Big Query dataset:
 
 \b
 ```
@@ -47,7 +52,7 @@ $ sgr mount big_query bq -o@- <<EOF
 {
     "credentials_path": "/path/to/my/creds.json",
     "project": "my-project-name",
-    "dataset_name": "hacker_news"
+    "dataset_name": "my_dataset"
 }
 EOF
 ```
@@ -57,7 +62,7 @@ EOF
         build_commandline_help(credentials_schema) + "\n" + build_commandline_help(params_schema)
     )
 
-    _icon_file = "athena.svg"
+    _icon_file = "big_query.svg"
 
     def __init__(
         self,
@@ -104,18 +109,15 @@ EOF
     def _build_db_url(self) -> str:
         """Construct the SQLAlchemy GCP Big Query db_url"""
 
-        db_url = "bigquery://"
-
-        if "project" in self.params:
-            db_url += self.params["project"] + "/" + self.params["dataset_name"]
+        db_url = f"bigquery://{self.params['project']}/{self.params['dataset_name']}"
 
         if "credentials_path" in self.credentials:
             # base64 encode the credentials file content
             with open(self.credentials["credentials_path"], "r") as credentials_file:
-                creds = credentials_file.read()
-                encoded_creds = base64.urlsafe_b64encode(creds.encode()).decode()
+                credentials_str = credentials_file.read()
+                credentials_base64 = base64.urlsafe_b64encode(credentials_str.encode()).decode()
 
-            db_url += f"?credentials_base64={encoded_creds}"
+            db_url += f"?credentials_base64={credentials_base64}"
 
         return db_url
 
