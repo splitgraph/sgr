@@ -195,6 +195,10 @@ RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
     pip install "PyAthena>=2.4.1" && \
     pip install "pandas>=1.0.0"
 
+# Install Google's Big Query SQLAlchemy dialect lib
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+    pip install "sqlalchemy-bigquery"
+
 ENV PATH "${PATH}:/splitgraph/bin"
 ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
 
