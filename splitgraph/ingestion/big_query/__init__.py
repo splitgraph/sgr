@@ -1,3 +1,4 @@
+import base64
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from splitgraph.core.types import Credentials, Params, TableInfo
@@ -109,8 +110,12 @@ EOF
             db_url += self.params["project"] + "/" + self.params["dataset_name"]
 
         if "credentials_path" in self.credentials:
-            # base64 encode and append as `credentials_base64` param
-            pass
+            # base64 encode the credentials file content
+            with open(self.credentials["credentials_path"], "r") as credentials_file:
+                creds = credentials_file.read()
+                encoded_creds = base64.urlsafe_b64encode(creds.encode()).decode()
+
+            db_url += f"?credentials_base64={encoded_creds}"
 
         return db_url
 
