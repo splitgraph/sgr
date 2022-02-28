@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.7 (2022-02-28)
+
+  * Add Google BigQuery data plugin (https://github.com/splitgraph/splitgraph/pull/638)
+  * Add Amazon Athena data plugin (https://github.com/splitgraph/splitgraph/pull/634)
+  * Skip pushdown of aggregations with `WHERE` clause downcasting (https://github.com/splitgraph/Multicorn/pull/6)
+
 ## v0.3.6 (2022-02-02)
 
   * Fix `libffi` crashes when using the Snowflake FDW (https://github.com/splitgraph/splitgraph/pull/623)
@@ -43,7 +49,7 @@ Fleshing out the `splitgraph.yml` (aka `repositories.yml`) format that defines a
 
 Existing users of `repositories.yml` don't need to change anything, though note that `sgr cloud` commands using the YAML format will now default to `splitgraph.yml` unless explicitly set to `repositories.yml`.
 
-### New `sgr cloud` commands 
+### New `sgr cloud` commands
 
 See https://github.com/splitgraph/splitgraph/pull/582 and https://github.com/splitgraph/splitgraph/pull/587
 
@@ -53,7 +59,7 @@ These let users manipulate Splitgraph Cloud and ingestion jobs from the CLI:
   * `sgr cloud logs`: view job logs
   * `sgr cloud upload`: upload a CSV file to Splitgraph Cloud (without using the engine)
   * `sgr cloud sync`: trigger a one-off load of a dataset
-  * `sgr cloud stub`: generate a `splitgraph.yml` file 
+  * `sgr cloud stub`: generate a `splitgraph.yml` file
   * `sgr cloud seed`: generate a Splitgraph Cloud project with a `splitgraph.yml`, GitHub Actions, dbt etc
   * `sgr cloud validate`: merge multiple project files and output the result (like `docker-compose config`)
   * `sgr cloud download`: download a query result from Splitgraph Cloud as a CSV file, bypassing time/query size limits.
@@ -121,7 +127,7 @@ Full set of changes: [`v0.2.13...v0.2.14`](https://github.com/splitgraph/splitgr
   * Data source refactor (https://github.com/splitgraph/splitgraph/pull/438):
     * MySQL: parameter `remote_schema` has been renamed to `dbname`
     * Mongo: parameter `coll` has been renamed to `collection`; `db` to `database`
-    * Table options are now a separate parameter that is passed to the 
+    * Table options are now a separate parameter that is passed to the
     * Introspection now returns a dictionary of tables and proposed table options OR error classes for tables that we weren't able to introspect (allowing for partial failures)
     * Mounting can now return a list of mount errors (caller can choose to ignore).
     * CSV data source: allow passing a partially initialized list of table options without a schema, making it introspect just those S3 keys and fill out the missing table options.
@@ -198,7 +204,7 @@ Full set of changes: [`v0.2.4...v0.2.5`](https://github.com/splitgraph/splitgrap
   * Added `sgr singer target`, a Singer-compatible target that can read [Singer tap](https://github.com/singer-io/getting-started/blob/master/docs/SPEC.md#singer-specification) output from stdin and build Splitgraph images. It's based on a fork of https://github.com/transferwise/pipelinewise-singer-python with additions that let us produce deltas and ingest them directly as Splitgraph objects.
   * Support for dynamically loading plugins without specifying them in `.sgconfig`, by looking up plugins in a certain directory (see https://github.com/splitgraph/splitgraph/pull/329)
 
-Full set of changes: [`v0.2.3...v0.2.4`](https://github.com/splitgraph/splitgraph/compare/v0.2.3...v0.2.4)    
+Full set of changes: [`v0.2.3...v0.2.4`](https://github.com/splitgraph/splitgraph/compare/v0.2.3...v0.2.4)
 
 ## v0.2.3 (2020-09-16)
 
@@ -233,7 +239,7 @@ Full set of changes: [`v0.2.0...v0.2.1`](https://github.com/splitgraph/splitgrap
   * `sgr cloud sql` to query the Splitgraph DDN
   * `sgr cloud search`, a CLI wrapper around https://www.splitgraph.com/search
 * Add daily update check to `sgr`.
- 
+
 Full set of changes: [`v0.1.4...v0.2.0`](https://github.com/splitgraph/splitgraph/compare/v0.1.4...v0.2.0)
 
 ## v0.1.4 (2020-07-19)

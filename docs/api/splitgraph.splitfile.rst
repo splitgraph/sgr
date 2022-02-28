@@ -1,6 +1,14 @@
 splitgraph.splitfile package
 ============================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   splitgraph.splitfile.generation
+
 Submodules
 ----------
 

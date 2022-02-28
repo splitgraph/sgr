@@ -8,6 +8,8 @@ Subpackages
    :maxdepth: 4
 
    splitgraph.ingestion.airbyte
+   splitgraph.ingestion.athena
+   splitgraph.ingestion.bigquery
    splitgraph.ingestion.csv
    splitgraph.ingestion.dbt
    splitgraph.ingestion.singer
