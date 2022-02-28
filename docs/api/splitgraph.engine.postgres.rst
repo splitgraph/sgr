@@ -12,6 +12,14 @@ splitgraph.engine.postgres.engine module
    :undoc-members:
    :show-inheritance:
 
+splitgraph.engine.postgres.psycopg module
+-----------------------------------------
+
+.. automodule:: splitgraph.engine.postgres.psycopg
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

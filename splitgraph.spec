@@ -26,6 +26,8 @@ a = Analysis(
         "splitgraph.ingestion.socrata.querying",
         "splitgraph.ingestion.dbt.data_source",
         "splitgraph.ingestion.snowflake",
+        "splitgraph.ingestion.athena",
+        "splitgraph.ingestion.bigquery",
         # https://github.com/pypa/setuptools/issues/1963#issuecomment-574265532
         "pkg_resources.py2_warn",
         "target_postgres",
