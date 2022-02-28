@@ -85,7 +85,10 @@ This will mount a Big Query dataset:
 ```
 $ sgr mount bigquery bq -o@- <<EOF
 {
-    "credentials_path": "/path/to/my/creds.json",
+    "credentials": {
+        "secret_type": "file",
+        "path": "/path/to/my/creds.json"
+    },
     "project": "my-project-name",
     "dataset_name": "my_dataset"
 }
@@ -125,7 +128,6 @@ EOF
         credentials = Credentials({})
 
         if "credentials" in params and params["credentials"]["secret_type"] == "file":
-            # base64 encode the credentials file content
             with open(params["credentials"].pop("path"), "r") as credentials_file:
                 credentials_str = credentials_file.read()
 
@@ -162,6 +164,7 @@ EOF
         db_url = f"bigquery://{self.params['project']}/{self.params['dataset_name']}"
 
         if "credentials" in self.credentials:
+            # base64 encode the credentials
             credentials_str = self.credentials["credentials"]["credentials_str"]
             credentials_base64 = base64.urlsafe_b64encode(credentials_str.encode()).decode()
             db_url += f"?credentials_base64={credentials_base64}"
