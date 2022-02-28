@@ -15,43 +15,9 @@ class BigQueryDataSource(ForeignDataWrapperDataSource):
         "type": "object",
         "properties": {
             "credentials": {
-                "type": "object",
-                "title": "Google credentials",
-                "oneOf": [
-                    {
-                        "type": "object",
-                        "required": ["secret_type", "path"],
-                        "properties": {
-                            "secret_type": {
-                                "type": "string",
-                                "const": "file",
-                                "title": "Secret type",
-                            },
-                            "path": {
-                                "type": "string",
-                                "title": "Location of the GCP credentials",
-                                "description": "The json credentials file path",
-                            },
-                        },
-                    },
-                    {
-                        "type": "object",
-                        "required": ["secret_type", "credentials_str"],
-                        "properties": {
-                            "secret_type": {
-                                "type": "string",
-                                "const": "raw",
-                                "title": "Secret type",
-                            },
-                            "credentials_str": {
-                                "type": "string",
-                                "title": "GCP credentials",
-                                "description": "GCP credentials in string format",
-                            },
-                        },
-                    },
-                ],
-                "description": "The credentials need not be supplied when running inside a GCP VM",
+                "type": "string",
+                "title": "GCP credentials",
+                "description": "GCP credentials in JSON format",
             },
         },
     }
@@ -85,10 +51,7 @@ This will mount a Big Query dataset:
 ```
 $ sgr mount bigquery bq -o@- <<EOF
 {
-    "credentials": {
-        "secret_type": "file",
-        "path": "/path/to/my/creds.json"
-    },
+    "credentials": "/path/to/my/creds.json",
     "project": "my-project-name",
     "dataset_name": "my_dataset"
 }
@@ -116,23 +79,23 @@ EOF
 
     @classmethod
     def get_name(cls) -> str:
-        return "Google Big Query"
+        return "Google BigQuery"
 
     @classmethod
     def get_description(cls) -> str:
-        return "Query data in GCP Big Query datasets"
+        return "Query data in GCP BigQuery datasets"
 
     @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "BigQueryDataSource":
         params = deepcopy(commandline_kwargs)
         credentials = Credentials({})
 
-        if "credentials" in params and params["credentials"]["secret_type"] == "file":
-            with open(params["credentials"].pop("path"), "r") as credentials_file:
+        if "credentials" in params:
+            with open(params["credentials"], "r") as credentials_file:
                 credentials_str = credentials_file.read()
 
             params.pop("credentials")
-            credentials["credentials"] = {"secret_type": "raw", "credentials_str": credentials_str}
+            credentials["credentials"] = credentials_str
 
         return cls(engine, credentials, params)
 
@@ -165,7 +128,7 @@ EOF
 
         if "credentials" in self.credentials:
             # base64 encode the credentials
-            credentials_str = self.credentials["credentials"]["credentials_str"]
+            credentials_str = self.credentials["credentials"]
             credentials_base64 = base64.urlsafe_b64encode(credentials_str.encode()).decode()
             db_url += f"?credentials_base64={credentials_base64}"
 

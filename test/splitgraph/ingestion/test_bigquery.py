@@ -13,10 +13,7 @@ def test_bigquery_data_source_options_creds_file(local_engine_empty):
     source = BigQueryDataSource.from_commandline(
         local_engine_empty,
         {
-            "credentials": {
-                "secret_type": "file",
-                "path": "test/resources/ingestion/bigquery/dummy_credentials.json",
-            },
+            "credentials": "test/resources/ingestion/bigquery/dummy_credentials.json",
             "project": "bigquery-public-data",
             "dataset_name": "hacker_news",
         },
@@ -35,9 +32,7 @@ def test_bigquery_data_source_options_creds_file(local_engine_empty):
 def test_bigquery_data_source_options_creds_raw():
     source = BigQueryDataSource(
         Mock(),
-        credentials=Credentials(
-            {"credentials": {"secret_type": "raw", "credentials_str": "test-raw-creds"}}
-        ),
+        credentials=Credentials({"credentials": "test-raw-creds"}),
         params=Params(
             {
                 "project": "bigquery-public-data",
