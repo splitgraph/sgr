@@ -52,7 +52,7 @@ def jsonschema_object_to_example(obj: Any, type_override=None) -> Any:
     """
     Get an example value for a JSONSchema property
     """
-    obj_type = type_override or obj["type"]
+    obj_type = type_override or obj.get("type", "string")
     if obj_type in _SCALARS:
         if "examples" in obj:
             return obj["examples"][0]
@@ -66,7 +66,7 @@ def jsonschema_object_to_example(obj: Any, type_override=None) -> Any:
             return {"string": "", "integer": 0, "boolean": False}.get(obj_type)
     elif obj_type == "array":
         # For simple lists of scalars, don't drill down and just return an empty list
-        if obj["items"]["type"] in _SCALARS:
+        if obj["items"].get("type", "string") in _SCALARS:
             seq = CS([])
         else:
             example = jsonschema_object_to_example(obj["items"])
