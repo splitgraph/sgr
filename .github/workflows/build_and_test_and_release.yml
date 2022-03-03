@@ -202,16 +202,18 @@ jobs:
           name: dist
           path: dist
       - name: Build the binary
+        # Build as a directory to avoid startup slowness on post-Catalina OSX
         run: |
           pip install dist/splitgraph-*-py3-none-any.whl
           pip install pyinstaller
-          pyinstaller -F splitgraph.spec
-          dist/sgr --version
+          pyinstaller splitgraph_darwin.spec
+          dist/sgr/sgr --version
+          cd dist/sgr && tar zcvf ../sgr.tar.gz .
       - name: Upload binary as artifact
         uses: actions/upload-artifact@v2
         with:
           name: sgr-osx
-          path: dist/sgr
+          path: dist/sgr.tar.gz
 
 
   upload_release:
@@ -230,14 +232,14 @@ jobs:
         run: |
           mv artifacts/sgr-windows/sgr.exe artifacts/sgr-windows-x86_64.exe
           mv artifacts/sgr-linux/sgr artifacts/sgr-linux-x86_64
-          mv artifacts/sgr-osx/sgr artifacts/sgr-osx-x86_64
+          mv artifacts/sgr-osx/sgr.tar.gz artifacts/sgr-osx-x86_64.tar.gz
       - name: Release artifacts
         uses: softprops/action-gh-release@v1
         with:
           files: |
             artifacts/sgr-windows-x86_64.exe
             artifacts/sgr-linux-x86_64
-            artifacts/sgr-osx-x86_64
+            artifacts/sgr-osx-x86_64.tar.gz
             artifacts/dist/sgr-docs-bin.tar.gz
             artifacts/dist/install.sh
           draft: true

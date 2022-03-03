@@ -13,7 +13,7 @@
 set -eo pipefail
 
 SGR_VERSION=${SGR_VERSION-0.3.7}
-INSTALL_DIR=${INSTALL_DIR-$HOME/.splitgraph}
+INSTALL_DIR=${INSTALL_DIR-$HOME/.splitgraph/bin}
 # Set IGNORE_SGR_EXISTS to keep going if sgr already exists.
 # Set SKIP_BINARY=1 to skip downloading sgr
 # Set SKIP_ENGINE=1 to skip setting up the engine.
@@ -62,7 +62,7 @@ _get_binary_name() {
   if [ "$os" == Linux ]; then
     BINARY="sgr-linux-x86_64"
   elif [ "$os" == Darwin ]; then
-    BINARY="sgr-osx-x86_64"
+    BINARY="sgr-osx-x86_64.tgz"
   else
     _die "This installation method only supported on Linux/OSX. Please see https://www.splitgraph.com/docs/installation/ for other installation methods."
   fi
@@ -79,8 +79,15 @@ _install_binary () {
   URL="https://github.com/splitgraph/splitgraph/releases/download/v${SGR_VERSION}"/$BINARY
   echo "Installing the sgr binary from $URL into $INSTALL_DIR"
   mkdir -p "$INSTALL_DIR"
-  curl -fsL "$URL" > "$INSTALL_DIR/sgr"
-  chmod +x "$INSTALL_DIR/sgr"
+
+  if [ "$os" == Linux ]; then
+    curl -fsL "$URL" > "$INSTALL_DIR/sgr"
+    chmod +x "$INSTALL_DIR/sgr"
+  elif [ "$os" == Darwin ]; then
+    curl -fsL "$URL" > "$INSTALL_DIR"
+    (cd "$INSTALL_DIR" && tar -xzf "$BINARY" && rm "$BINARY")
+  fi
+
   "$INSTALL_DIR/sgr" --version
   echo "sgr binary installed."
   echo

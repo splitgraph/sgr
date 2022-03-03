@@ -1,10 +1,7 @@
 # -*- mode: python -*-
-# Running:
-# * LD_LIBRARY_PATH=`echo $(python3-config --prefix)/lib` pyinstaller -F splitgraph.spec
-#   produces a single sgr binary in the dist/ folder with libc being the only dynamic dependency
-#   (python interpreter included)
-# * can also do poetry install && poetry run pyinstaller -F splitgraph.spec to build the binary
-#   inside of the poetry's venv.
+# Version of splitgraph.spec that builds in a "single directory mode" to avoid a 10s startup
+# on OSX Catalina where it scans binaries every time sgr extracts them:
+# https://github.com/docker/compose/pull/7010
 
 import os
 import importlib
@@ -12,10 +9,6 @@ import importlib
 block_cipher = None
 
 datas = []
-# Commented out, here for reference (adding extra package files to PyInstaller)
-# for package, files in [("singer", ["logging.conf"])]:
-#     proot = os.path.dirname(importlib.import_module(package).__file__)
-#     datas.extend((os.path.join(proot, f), package) for f in files)
 
 a = Analysis(
     ["bin/sgr"],
@@ -59,4 +52,16 @@ exe = EXE(
     upx=True,
     runtime_tmpdir=None,
     console=True,
+)
+
+
+coll = COLLECT(exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='sgr'
 )
