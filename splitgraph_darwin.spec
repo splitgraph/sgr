@@ -38,21 +38,15 @@ a = Analysis(
 a.datas += Tree("./splitgraph/resources", "splitgraph/resources")
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name="sgr",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    runtime_tmpdir=None,
-    console=True,
-)
+exe = EXE(pyz,
+          a.scripts,
+          exclude_binaries=True,
+          name='sgr',
+          debug=False,
+          strip=False,
+          upx=True,
+          console=True,
+          bootloader_ignore_signals=True)
 
 
 coll = COLLECT(exe,
