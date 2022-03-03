@@ -28,82 +28,82 @@ jobs:
         with:
           path: ~/.cache/pip
           key: pip_cache
-      - name: "Run pre-commit hooks (typechecks and the formatter)"
-        run: |
-          pip install -U pip
-          pip install pre-commit
-          # NB this uses mypy in .pre-commit-config.yaml
-          pre-commit run --all-files
+#      - name: "Run pre-commit hooks (typechecks and the formatter)"
+#        run: |
+#          pip install -U pip
+#          pip install pre-commit
+#          # NB this uses mypy in .pre-commit-config.yaml
+#          pre-commit run --all-files
       - name: "Install prerequisites"
         run: "./.ci/install_prereqs.sh"
-      - name: "Install package"
-        run: ./.ci/install.sh
-      - uses: actions/cache@v1
-        with:
-          path: ~/docker_images
-          key: docker_cache
-      - name: "Build the Splitgraph engine"
-        run: |
-          docker load -i /home/runner/docker_images/engine.tar || true
-          docker images
-          cd engine && make with_postgis=1
-      - name: "Save Docker cache"
-        run: |
-          mkdir -p ~/docker_images
-          docker images
-          docker save -o ~/docker_images/engine.tar $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG
-          echo "Saved engine $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG to cache"
-          ls -lah ~/docker_images
-      - name: "Start the test Compose stack"
-        if: "!contains(github.event.head_commit.message, '[skip test]')"
-        run: ./.ci/up_architecture.sh
-      - name: "Run the tests"
-        if: "!contains(github.event.head_commit.message, '[skip test]')"
-        run: |
-          source "$HOME"/.poetry/env
-          poetry run pytest test/ -v -m "not mounting and not example"
-          ./wait-for-test-architecture.sh --mounting
-          export PATH=$PATH:$TAP_MYSQL_VENV/bin
-          poetry run pytest test/ -v -m "mounting and not example" --cov-append
-          ./.ci/down_architecture.sh
-      - name: "Run example tests"
-        # Don't run example tests if we're doing a release -- we'll be
-        # recording all of them as Asciinemas anyway, so this is redundant.
-        if: "!startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip test]')"
-        run: |
-          source "$HOME"/.poetry/env
-          export PATH=$PATH:$(readlink -f $DBT_VENV/bin)
-          poetry run pytest examples/ -sv -m "example" --cov-append
-      - name: "Submit coverage to Coveralls"
-        if: "!contains(github.event.head_commit.message, '[skip test]')"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          source "$HOME"/.poetry/env
-          poetry run coveralls --service=github
-      - name: "Push out Docker engine (tags only)"
-        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip engine]')"
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo "Uploading engine image to Docker Hub"
-          ./.ci/push_engine.sh
-      - name: "Build doc / Asciicast bundle"
-        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip docs]')"
-        env:
-          SG_DEMO_KEY: ${{ secrets.SG_DEMO_KEY }}
-          SG_DEMO_SECRET: ${{ secrets.SG_DEMO_SECRET }}
-        run: |
-          echo "Building Asciicast/doc bundle"
-          export PATH=$PATH:$(readlink -f $DBT_VENV/bin)
-          ./.ci/build_docs.sh
-          cp ./install.sh dist
-          # TODO figure out if we want to do poetry upload here (can only do once, so will fail
-          # if we're retrying an upload)
-          # "$HOME"/.poetry/bin/poetry build
+#      - name: "Install package"
+#        run: ./.ci/install.sh
+#      - uses: actions/cache@v1
+#        with:
+#          path: ~/docker_images
+#          key: docker_cache
+#      - name: "Build the Splitgraph engine"
+#        run: |
+#          docker load -i /home/runner/docker_images/engine.tar || true
+#          docker images
+#          cd engine && make with_postgis=1
+#      - name: "Save Docker cache"
+#        run: |
+#          mkdir -p ~/docker_images
+#          docker images
+#          docker save -o ~/docker_images/engine.tar $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG
+#          echo "Saved engine $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG to cache"
+#          ls -lah ~/docker_images
+#      - name: "Start the test Compose stack"
+#        if: "!contains(github.event.head_commit.message, '[skip test]')"
+#        run: ./.ci/up_architecture.sh
+#      - name: "Run the tests"
+#        if: "!contains(github.event.head_commit.message, '[skip test]')"
+#        run: |
+#          source "$HOME"/.poetry/env
+#          poetry run pytest test/ -v -m "not mounting and not example"
+#          ./wait-for-test-architecture.sh --mounting
+#          export PATH=$PATH:$TAP_MYSQL_VENV/bin
+#          poetry run pytest test/ -v -m "mounting and not example" --cov-append
+#          ./.ci/down_architecture.sh
+#      - name: "Run example tests"
+#        # Don't run example tests if we're doing a release -- we'll be
+#        # recording all of them as Asciinemas anyway, so this is redundant.
+#        if: "!startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip test]')"
+#        run: |
+#          source "$HOME"/.poetry/env
+#          export PATH=$PATH:$(readlink -f $DBT_VENV/bin)
+#          poetry run pytest examples/ -sv -m "example" --cov-append
+#      - name: "Submit coverage to Coveralls"
+#        if: "!contains(github.event.head_commit.message, '[skip test]')"
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: |
+#          source "$HOME"/.poetry/env
+#          poetry run coveralls --service=github
+#      - name: "Push out Docker engine (tags only)"
+#        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip engine]')"
+#        env:
+#          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+#          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+#        run: |
+#          echo "Uploading engine image to Docker Hub"
+#          ./.ci/push_engine.sh
+#      - name: "Build doc / Asciicast bundle"
+#        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip docs]')"
+#        env:
+#          SG_DEMO_KEY: ${{ secrets.SG_DEMO_KEY }}
+#          SG_DEMO_SECRET: ${{ secrets.SG_DEMO_SECRET }}
+#        run: |
+#          echo "Building Asciicast/doc bundle"
+#          export PATH=$PATH:$(readlink -f $DBT_VENV/bin)
+#          ./.ci/build_docs.sh
+#          cp ./install.sh dist
+#          # TODO figure out if we want to do poetry upload here (can only do once, so will fail
+#          # if we're retrying an upload)
+#          # "$HOME"/.poetry/bin/poetry build
       - name: "Build and publish wheel"
-        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip wheel]')"
+#        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip wheel]')"
         env:
           PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
         # We could split this out into a separate stage but it would mean installing Poetry, Compose and this package all over again.
@@ -188,7 +188,7 @@ jobs:
 
   osx_binary:
     runs-on: macOS-latest
-    if: "startsWith(github.ref, 'refs/tags/')"
+#    if: "startsWith(github.ref, 'refs/tags/')"
     needs: build_and_test
     steps:
       - uses: actions/checkout@v1
@@ -214,33 +214,33 @@ jobs:
         with:
           name: sgr-osx
           path: dist/sgr.tar.gz
-
-
-  upload_release:
-    runs-on: ubuntu-18.04
-    if: "startsWith(github.ref, 'refs/tags/')"
-    needs:
-      - windows_binary
-      - linux_binary
-      - osx_binary
-    steps:
-      - name: Get artifacts
-        uses: actions/download-artifact@v2
-        with:
-          path: artifacts
-      - name: Rename artifacts
-        run: |
-          mv artifacts/sgr-windows/sgr.exe artifacts/sgr-windows-x86_64.exe
-          mv artifacts/sgr-linux/sgr artifacts/sgr-linux-x86_64
-          mv artifacts/sgr-osx/sgr.tar.gz artifacts/sgr-osx-x86_64.tar.gz
-      - name: Release artifacts
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/sgr-windows-x86_64.exe
-            artifacts/sgr-linux-x86_64
-            artifacts/sgr-osx-x86_64.tar.gz
-            artifacts/dist/sgr-docs-bin.tar.gz
-            artifacts/dist/install.sh
-          draft: true
-          fail_on_unmatched_files: false
+#
+#
+#  upload_release:
+#    runs-on: ubuntu-18.04
+#    if: "startsWith(github.ref, 'refs/tags/')"
+#    needs:
+#      - windows_binary
+#      - linux_binary
+#      - osx_binary
+#    steps:
+#      - name: Get artifacts
+#        uses: actions/download-artifact@v2
+#        with:
+#          path: artifacts
+#      - name: Rename artifacts
+#        run: |
+#          mv artifacts/sgr-windows/sgr.exe artifacts/sgr-windows-x86_64.exe
+#          mv artifacts/sgr-linux/sgr artifacts/sgr-linux-x86_64
+#          mv artifacts/sgr-osx/sgr.tar.gz artifacts/sgr-osx-x86_64.tar.gz
+#      - name: Release artifacts
+#        uses: softprops/action-gh-release@v1
+#        with:
+#          files: |
+#            artifacts/sgr-windows-x86_64.exe
+#            artifacts/sgr-linux-x86_64
+#            artifacts/sgr-osx-x86_64.tar.gz
+#            artifacts/dist/sgr-docs-bin.tar.gz
+#            artifacts/dist/install.sh
+#          draft: true
+#          fail_on_unmatched_files: false
