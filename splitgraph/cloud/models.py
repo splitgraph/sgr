@@ -244,7 +244,7 @@ class UpdateExternalCredentialResponse(BaseModel):
 
 class ExternalTableRequest(BaseModel):
     options: Dict[str, Any] = {}
-    schema_: Optional[Dict[str, str]] = Field(alias="schema")
+    schema_: Dict[str, str] = Field(alias="schema", default={})
 
 
 class AddExternalRepositoryRequest(BaseModel):
