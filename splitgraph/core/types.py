@@ -95,7 +95,7 @@ def dict_to_table_schema_params(
         t: (
             [
                 TableColumn(i + 1, cname, ctype, False, None)
-                for (i, (cname, ctype)) in enumerate((tsp.schema_ or {}).items())
+                for (i, (cname, ctype)) in enumerate(tsp.schema_.items())
             ],
             TableParams(tsp.options),
         )
