@@ -1,9 +1,8 @@
 import logging
 import os
 import types
-from copy import deepcopy
 from importlib import import_module
-from typing import Any, Dict, List, Optional, Type, cast
+from typing import Dict, List, Optional, Type, cast
 
 from ...config import CONFIG
 from ...config.config import get_all_in_section, get_singleton
@@ -151,12 +150,3 @@ def _load_source(source_name, source_class_name):
             get_singleton(CONFIG, "SG_CONFIG_FILE"),
         )
     return data_source
-
-
-def merge_jsonschema(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
-    result = deepcopy(left)
-    result["properties"] = {**result["properties"], **right.get("properties", {})}
-    result["required"] = result.get("required", []) + [
-        r for r in right.get("required", []) if r not in result.get("required", [])
-    ]
-    return result

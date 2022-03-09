@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from splitgraph.core.types import Credentials, Params, TableInfo
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
+from splitgraph.hooks.data_source.utils import merge_jsonschema
 from splitgraph.ingestion.common import build_commandline_help
 
 if TYPE_CHECKING:
@@ -110,16 +111,19 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
         "required": ["database"],
     }
 
-    table_params_schema = {
-        "type": "object",
-        "properties": {
-            "subquery": {
-                "type": "string",
-                "title": "Subquery",
-                "description": "Subquery for this table to run on the server side",
-            }
+    table_params_schema = merge_jsonschema(
+        ForeignDataWrapperDataSource.table_params_schema,
+        {
+            "type": "object",
+            "properties": {
+                "subquery": {
+                    "type": "string",
+                    "title": "Subquery",
+                    "description": "Subquery for this table to run on the server side",
+                }
+            },
         },
-    }
+    )
     supports_mount = True
     supports_load = True
     supports_sync = False

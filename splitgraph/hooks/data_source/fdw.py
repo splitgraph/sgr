@@ -8,26 +8,44 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, cas
 import psycopg2
 from psycopg2.sql import SQL, Composed, Identifier
 
+from splitgraph.config import DEFAULT_CHUNK_SIZE
+from splitgraph.core.common import get_temporary_table_id
+from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     Credentials,
     IntrospectionResult,
     MountError,
     PreviewResult,
+    SyncState,
     TableColumn,
     TableInfo,
     TableParams,
     TableSchema,
     dict_to_table_schema_params,
 )
+from splitgraph.engine import ResultShape
 from splitgraph.engine.base import validate_type
-from splitgraph.exceptions import DataSourceError, get_exception_name
-from splitgraph.hooks.data_source.base import LoadableDataSource, MountableDataSource
+from splitgraph.exceptions import (
+    DataSourceError,
+    TableNotFoundError,
+    get_exception_name,
+)
+from splitgraph.hooks.data_source.base import (
+    MountableDataSource,
+    SyncableDataSource,
+    get_ingestion_state,
+    prepare_new_image,
+)
+from splitgraph.hooks.data_source.utils import merge_jsonschema
+from splitgraph.ingestion.airbyte.data_source import delete_schema_at_end
+from splitgraph.ingestion.common import add_timestamp_tags
+from splitgraph.ingestion.singer.common import store_ingestion_state
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
-class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC):
+class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC):
     credentials_schema: Dict[str, Any] = {
         "type": "object",
     }
@@ -38,6 +56,16 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
     table_params_schema: Dict[str, Any] = {
         "type": "object",
+        "properties": {
+            "cursor_columns": {
+                "type": "array",
+                "items": {"type": "string"},
+                "title": "Replication cursor",
+                "description": "Column(s) to use as a replication cursor. "
+                "This must be always increasing in the source table and is used to track "
+                "which rows should be replicated.",
+            }
+        },
     }
 
     commandline_help: str = ""
@@ -45,6 +73,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
     supports_mount = True
     supports_load = True
+    supports_sync = True
 
     @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "ForeignDataWrapperDataSource":
@@ -93,6 +122,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
             for k, v in tables.get(table_name, cast(Tuple[TableSchema, TableParams], ({}, {})))[
                 1
             ].items()
+            if k != "cursor_fields"
         }
 
     def get_table_schema(self, table_name: str, table_schema: TableSchema) -> TableSchema:
@@ -274,20 +304,35 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
             self.engine.delete_schema(tmp_schema)
             self.engine.commit()
 
-    def _load(self, schema: str, tables: Optional[TableInfo] = None):
+    def load(self, repository: "Repository", tables: Optional[TableInfo] = None) -> str:
+        return self.sync(repository, image_hash=None, tables=tables, use_state=False)
+
+    def _load(self, schema: str, tables: Optional[TableInfo] = None) -> None:
+        pass
+
+    def _mount_and_copy(
+        self,
+        schema: str,
+        tables: Optional[TableInfo] = None,
+        cursor_values: Optional[Dict[str, Dict[str, str]]] = None,
+    ) -> None:
         from splitgraph.core.common import get_temporary_table_id
+
+        cursor_values = cursor_values or {}
 
         tmp_schema = get_temporary_table_id()
         try:
             errors = self.mount(tmp_schema, tables=tables)
             if errors:
-                raise DataSourceError("Error mounting tables for load")
+                raise DataSourceError("Error mounting tables for ingestion")
 
             self.engine.commit()
 
             for t in self.engine.get_all_tables(tmp_schema):
                 try:
-                    self.engine.copy_table(tmp_schema, t, schema, t)
+                    self.engine.copy_table(
+                        tmp_schema, t, schema, t, cursor_fields=cursor_values.get(t)
+                    )
                     self.engine.commit()
                 except psycopg2.DatabaseError as e:
                     logging.exception("Error ingesting table %s", t, exc_info=e)
@@ -298,6 +343,119 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
             self.engine.rollback()
             self.engine.delete_schema(tmp_schema)
             self.engine.commit()
+
+    def _sync(
+        self,
+        schema: str,
+        state: Optional[SyncState] = None,
+        tables: Optional[TableInfo] = None,
+    ) -> SyncState:
+        # We override the main sync() instead
+        pass
+
+    def _get_cursor_value(self, schema: str, table: str, cursor_fields: List[str]) -> List[str]:
+        query = (
+            SQL("SELECT ")
+            + SQL(",").join(Identifier(p) for p in cursor_fields)
+            + SQL(" FROM {}.{} ORDER BY ").format(Identifier(schema), Identifier(table))
+            + SQL(",").join(Identifier(p) + SQL(" DESC") for p in cursor_fields)
+        ) + SQL(" LIMIT 1")
+
+        return [str(r) for r in self.engine.run_sql(query, return_shape=ResultShape.ONE_MANY)]
+
+    def sync(
+        self,
+        repository: Repository,
+        image_hash: Optional[str] = None,
+        tables: Optional[TableInfo] = None,
+        use_state: bool = True,
+    ) -> str:
+
+        self._validate_table_params(tables)
+        tables = tables or self.tables
+
+        # Load ingestion state
+        base_image, new_image_hash = prepare_new_image(
+            repository, image_hash, comment=f"{self.get_name()} data load"
+        )
+        state = get_ingestion_state(repository, image_hash) if use_state else None
+        logging.info("Current ingestion state: %s", state)
+
+        # Set up a staging schema for the data
+        staging_schema = get_temporary_table_id()
+
+        with delete_schema_at_end(repository.object_engine, staging_schema):
+            repository.object_engine.delete_schema(staging_schema)
+            repository.object_engine.create_schema(staging_schema)
+            repository.commit_engines()
+
+            self._mount_and_copy(
+                staging_schema,
+                tables,
+                cursor_values=None if not state else state.get("cursor_values"),
+            )
+
+            logging.info("Storing tables as Splitgraph images")
+            for table_name in repository.object_engine.get_all_tables(staging_schema):
+                logging.info("Storing %s", table_name)
+                new_schema = repository.object_engine.get_full_table_schema(
+                    staging_schema, table_name
+                )
+
+                if base_image:
+                    try:
+                        current_schema = base_image.get_table(table_name).table_schema
+                        if current_schema != new_schema:
+                            raise AssertionError(
+                                "Schema for %s changed! Old: %s, new: %s"
+                                % (
+                                    table_name,
+                                    current_schema,
+                                    new_schema,
+                                )
+                            )
+                    except TableNotFoundError:
+                        pass
+
+                repository.objects.record_table_as_base(
+                    repository,
+                    table_name,
+                    new_image_hash,
+                    chunk_size=DEFAULT_CHUNK_SIZE,
+                    source_schema=staging_schema,
+                    source_table=table_name,
+                    table_schema=new_schema,
+                )
+
+            # Get and store the new cursor value(s)
+            new_state: Dict[str, Any] = {"cursor_values": {}}
+
+            cursor_fields: Dict[str, List[str]] = {}
+            if tables and isinstance(tables, dict):
+                for table, (_, table_params) in tables.items():
+                    cursor_fields[table] = list(table_params["cursor_fields"])
+
+            for table_name in repository.object_engine.get_all_tables(staging_schema):
+                if table_name in cursor_fields:
+                    table_cursor_fields = cursor_fields[table_name]
+                    new_state["cursor_values"][table_name] = {
+                        c: v
+                        for c, v in zip(
+                            table_cursor_fields,
+                            self._get_cursor_value(staging_schema, table_name, table_cursor_fields),
+                        )
+                    }
+
+            store_ingestion_state(
+                repository,
+                new_image_hash,
+                current_state=state,
+                new_state=json.dumps(new_state) if new_state else "{}",
+            )
+            add_timestamp_tags(repository, new_image_hash)
+            repository.commit_engines()
+
+        return new_image_hash
 
 
 def init_fdw(
@@ -487,8 +645,6 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
         "required": ["host", "port", "dbname", "remote_schema"],
     }
 
-    table_params_schema = {"type": "object"}
-
     commandline_help: str = """Mount a Postgres database.
 
 Mounts a schema on a remote Postgres database as a set of foreign tables locally."""
@@ -546,14 +702,17 @@ class MongoDataSource(ForeignDataWrapperDataSource):
         "required": ["host", "port"],
     }
 
-    table_params_schema = {
-        "type": "object",
-        "properties": {
-            "database": {"type": "string", "title": "Database name"},
-            "collection": {"type": "string", "title": "Collection name"},
+    table_params_schema = merge_jsonschema(
+        ForeignDataWrapperDataSource.table_params_schema,
+        {
+            "type": "object",
+            "properties": {
+                "database": {"type": "string", "title": "Database name"},
+                "collection": {"type": "string", "title": "Collection name"},
+            },
+            "required": ["database", "collection"],
         },
-        "required": ["database", "collection"],
-    }
+    )
 
     commandline_help = """Mount a Mongo database.
 
@@ -681,45 +840,48 @@ class ElasticSearchDataSource(ForeignDataWrapperDataSource):
         "required": ["host", "port"],
     }
 
-    table_params_schema = {
-        "type": "object",
-        "properties": {
-            "index": {
-                "type": "string",
-                "title": "Index name or pattern",
-                "description": 'ES index name or pattern to use, for example, "events-*"',
+    table_params_schema = merge_jsonschema(
+        ForeignDataWrapperDataSource.table_params_schema,
+        {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "string",
+                    "title": "Index name or pattern",
+                    "description": 'ES index name or pattern to use, for example, "events-*"',
+                },
+                "type": {
+                    "type": "string",
+                    "title": "doc_type (ES6 or earlier)",
+                    "description": "Pre-ES7 doc_type, not required in ES7 or later",
+                },
+                "query_column": {
+                    "type": "string",
+                    "title": "Query column name",
+                    "description": "Allows you to do `WHERE query = '{" "match" ": ...}'`",
+                    "default": "query",
+                },
+                "score_column": {
+                    "type": "string",
+                    "title": "Score column name",
+                    "description": "Name of the column with the document score",
+                },
+                "scroll_size": {
+                    "type": "integer",
+                    "title": "Scroll size",
+                    "description": "Fetch size, default 1000",
+                    "default": 1000,
+                },
+                "scroll_duration": {
+                    "type": "string",
+                    "title": "Scroll duration",
+                    "description": "How long to hold the scroll context open for, default 10m",
+                    "default": "10m",
+                },
             },
-            "type": {
-                "type": "string",
-                "title": "doc_type (ES6 or earlier)",
-                "description": "Pre-ES7 doc_type, not required in ES7 or later",
-            },
-            "query_column": {
-                "type": "string",
-                "title": "Query column name",
-                "description": "Allows you to do `WHERE query = '{" "match" ": ...}'`",
-                "default": "query",
-            },
-            "score_column": {
-                "type": "string",
-                "title": "Score column name",
-                "description": "Name of the column with the document score",
-            },
-            "scroll_size": {
-                "type": "integer",
-                "title": "Scroll size",
-                "description": "Fetch size, default 1000",
-                "default": 1000,
-            },
-            "scroll_duration": {
-                "type": "string",
-                "title": "Scroll duration",
-                "description": "How long to hold the scroll context open for, default 10m",
-                "default": "10m",
-            },
+            "required": ["index"],
         },
-        "required": ["index"],
-    }
+    )
 
     commandline_help = """Mount an ElasticSearch instance.
 

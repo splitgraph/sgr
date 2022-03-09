@@ -12,7 +12,7 @@ from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn, TableParams
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import DataSourceError
-from splitgraph.hooks.data_source import merge_jsonschema
+from splitgraph.hooks.data_source.utils import merge_jsonschema
 from splitgraph.ingestion.airbyte.data_source import AirbyteDataSource
 from splitgraph.ingestion.airbyte.models import (
     AirbyteCatalog,
