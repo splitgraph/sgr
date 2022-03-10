@@ -12,6 +12,7 @@ from splitgraph.hooks.data_source.fdw import (
     ForeignDataWrapperDataSource,
     create_foreign_table,
 )
+from splitgraph.hooks.data_source.utils import merge_jsonschema
 
 
 class SocrataDataSource(ForeignDataWrapperDataSource):
@@ -38,13 +39,19 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         "required": ["domain"],
     }
 
-    table_params_schema = {
-        "type": "object",
-        "properties": {
-            "socrata_id": {"type": "string", "description": "Socrata dataset ID, e.g. xzkq-xp2w"}
+    table_params_schema = merge_jsonschema(
+        ForeignDataWrapperDataSource.table_params_schema,
+        {
+            "type": "object",
+            "properties": {
+                "socrata_id": {
+                    "type": "string",
+                    "description": "Socrata dataset ID, e.g. xzkq-xp2w",
+                }
+            },
+            "required": ["socrata_id"],
         },
-        "required": ["socrata_id"],
-    }
+    )
 
     _icon_file = "socrata.svg"
 

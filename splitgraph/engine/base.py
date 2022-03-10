@@ -1,8 +1,9 @@
+import itertools
 import re
 import threading
 from abc import ABC
 from contextlib import contextmanager
-from typing import Any, Iterator, List, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union, cast
 
 from psycopg2.sql import SQL, Composed, Identifier
 
@@ -134,22 +135,42 @@ class SQLEngine(ABC):
         target_schema: str,
         target_table: str,
         with_pk_constraints: bool = True,
+        cursor_fields: Optional[Dict[str, str]] = None,
     ) -> None:
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
 
+        if cursor_fields:
+            where_clause = (
+                SQL(" WHERE (")
+                + SQL(",").join(map(Identifier, cursor_fields))
+                + SQL(") > (")
+                + SQL(",").join(itertools.repeat(SQL("%s"), len(cursor_fields)))
+                + SQL(")")
+            )
+            query_args = list(cursor_fields.values())
+        else:
+            where_clause = SQL("")
+            query_args = []
+
         if not self.table_exists(target_schema, target_table):
-            query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
-                Identifier(target_schema),
-                Identifier(target_table),
-                Identifier(source_schema),
-                Identifier(source_table),
+            query = (
+                SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
+                    Identifier(target_schema),
+                    Identifier(target_table),
+                    Identifier(source_schema),
+                    Identifier(source_table),
+                )
+                + where_clause
             )
         else:
-            query = SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
-                Identifier(target_schema),
-                Identifier(target_table),
-                Identifier(source_schema),
-                Identifier(source_table),
+            query = (
+                SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
+                    Identifier(target_schema),
+                    Identifier(target_table),
+                    Identifier(source_schema),
+                    Identifier(source_table),
+                )
+                + where_clause
             )
         pks = self.get_primary_keys(source_schema, source_table)
 
@@ -161,7 +182,7 @@ class SQLEngine(ABC):
                 + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
                 + SQL(")")
             )
-        self.run_sql(query)
+        self.run_sql(query, query_args)
 
     def delete_table(self, schema: str, table: str) -> None:
         """Drop a table from a schema if it exists"""

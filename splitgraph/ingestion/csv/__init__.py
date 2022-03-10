@@ -18,6 +18,7 @@ from splitgraph.hooks.data_source.fdw import (
     ForeignDataWrapperDataSource,
     import_foreign_schema,
 )
+from splitgraph.hooks.data_source.utils import merge_jsonschema
 from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
 from splitgraph.ingestion.csv.common import dump_options, load_options
 
@@ -217,19 +218,26 @@ class CSVDataSource(ForeignDataWrapperDataSource):
         },
     }
 
-    table_params_schema: Dict[str, Any] = {
-        "type": "object",
-        "properties": {
-            "url": {"type": "string", "description": "HTTP URL to the CSV file", "title": "URL"},
-            "s3_object": {
-                "type": "string",
-                "description": "S3 object of the CSV file",
-                "title": "S3 object",
+    table_params_schema: Dict[str, Any] = merge_jsonschema(
+        ForeignDataWrapperDataSource.table_params_schema,
+        {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "HTTP URL to the CSV file",
+                    "title": "URL",
+                },
+                "s3_object": {
+                    "type": "string",
+                    "description": "S3 object of the CSV file",
+                    "title": "S3 object",
+                },
+                # Add various CSV dialect overrides to the table params schema.
+                **{k: v for k, v in params_schema["properties"].items() if k != "connection"},
             },
-            # Add various CSV dialect overrides to the table params schema.
-            **{k: v for k, v in params_schema["properties"].items() if k != "connection"},
         },
-    }
+    )
 
     supports_mount = True
     supports_load = True
