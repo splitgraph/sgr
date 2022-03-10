@@ -378,7 +378,21 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
         base_image, new_image_hash = prepare_new_image(
             repository, image_hash, comment=f"{self.get_name()} data load"
         )
-        state = get_ingestion_state(repository, image_hash) if use_state else None
+
+        if use_state:
+            # If we are doing sync-after-load, the previous image won't have an_sg_ingestion_state
+            # table. Luckily, we can just query the previous image to find out the max values of
+            # our cursors (this is going to be slower than storing the state in the image, but
+            # then we don't want to do that after a load).
+            state = get_ingestion_state(repository, image_hash)
+            if state:
+                cursor_values = state.get("cursor_values")
+            elif base_image:
+                with base_image.query_schema() as s:
+                    cursor_values = self._get_cursor_values(s, tables)
+        else:
+            state = None
+            cursor_values = None
         logging.info("Current ingestion state: %s", state)
 
         # Set up a staging schema for the data
@@ -392,7 +406,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
             self._mount_and_copy(
                 staging_schema,
                 tables,
-                cursor_values=None if not state else state.get("cursor_values"),
+                cursor_values=cursor_values,
             )
 
             logging.info("Storing tables as Splitgraph images")
@@ -427,36 +441,44 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
                     table_schema=new_schema,
                 )
 
-            # Get and store the new cursor value(s)
-            new_state: Dict[str, Any] = {"cursor_values": {}}
-
-            cursor_fields: Dict[str, List[str]] = {}
-            if tables and isinstance(tables, dict):
-                for table, (_, table_params) in tables.items():
-                    if "cursor_fields" in table_params:
-                        cursor_fields[table] = list(table_params["cursor_fields"])
-
-            for table_name in repository.object_engine.get_all_tables(staging_schema):
-                if table_name in cursor_fields:
-                    table_cursor_fields = cursor_fields[table_name]
-                    new_state["cursor_values"][table_name] = {
-                        c: v
-                        for c, v in zip(
-                            table_cursor_fields,
-                            self._get_cursor_value(staging_schema, table_name, table_cursor_fields),
-                        )
-                    }
-
-            store_ingestion_state(
-                repository,
-                new_image_hash,
-                current_state=state,
-                new_state=json.dumps(new_state) if new_state else "{}",
-            )
+            # Store the ingestion state if we're running a sync (instead of a full reload).
+            # This is so that we don't have a _sg_ingestion_state table hanging around
+            # when doing something like a CSV upload.
+            if use_state:
+                new_state = {"cursor_values": self._get_cursor_values(staging_schema, tables)}
+                store_ingestion_state(
+                    repository,
+                    new_image_hash,
+                    current_state=state,
+                    new_state=json.dumps(new_state) if new_state else "{}",
+                )
             add_timestamp_tags(repository, new_image_hash)
             repository.commit_engines()
 
         return new_image_hash
+
+    def _get_cursor_values(
+        self, schema: str, tables: Optional[TableInfo]
+    ) -> Dict[str, Dict[str, str]]:
+        cursor_values: Dict[str, Dict[str, str]] = {}
+        cursor_fields: Dict[str, List[str]] = {}
+
+        if tables and isinstance(tables, dict):
+            for table, (_, table_params) in tables.items():
+                if "cursor_fields" in table_params:
+                    cursor_fields[table] = list(table_params["cursor_fields"])
+
+        for table_name in self.engine.get_all_tables(schema):
+            if table_name in cursor_fields:
+                table_cursor_fields = cursor_fields[table_name]
+                cursor_values[table_name] = {
+                    c: v
+                    for c, v in zip(
+                        table_cursor_fields,
+                        self._get_cursor_value(schema, table_name, table_cursor_fields),
+                    )
+                }
+        return cursor_values
 
 
 def init_fdw(

@@ -154,21 +154,15 @@ def test_fdw_data_source_with_cursors(pg_repo_local):
     output = Repository("test", "fdw_sync")
     image_hash_1 = handler.load(output)
 
+    # Load: don't store the state in the image
     assert len(output.images()) == 1
     image = output.images[image_hash_1]
-    assert sorted(image.get_tables()) == ["_sg_ingestion_state", "fruits"]
+    assert sorted(image.get_tables()) == ["fruits"]
     image.checkout()
 
     assert output.run_sql("SELECT COUNT(*) FROM fruits") == [(2,)]
-    assert _get_state(output) == {
-        "cursor_values": {
-            "fruits": {
-                "fruit_id": "2",
-            },
-        }
-    }
 
-    # Add a row to the table and sync again
+    # Add a row to the table and sync
     pg_repo_local.run_sql("INSERT INTO fruits (name) VALUES ('banana')")
     pg_repo_local.commit_engines()
 
@@ -188,6 +182,8 @@ def test_fdw_data_source_with_cursors(pg_repo_local):
     }
 
     # Check that we made an object with a single new row instead of overwriting the table
+    # Even though there was no state stored, we fell back to reading the max values from the
+    # actual table
     table = image.get_table("fruits")
     assert len(table.objects) == 2
     assert engine.run_sql(
@@ -276,14 +272,6 @@ def test_fdw_data_source_with_composite_cursors(pg_repo_local):
     output.images[image_hash_1].checkout()
 
     assert output.run_sql("SELECT COUNT(*) FROM fruits") == [(2,)]
-    assert _get_state(output) == {
-        "cursor_values": {
-            "fruits": {
-                "fruit_id": "2",
-                "name": "orange",
-            },
-        }
-    }
 
     # Add a row to the table (greatest is 2, orange but we only use the second field as a
     # tiebreaker, so its value doesn't need to be greater)
