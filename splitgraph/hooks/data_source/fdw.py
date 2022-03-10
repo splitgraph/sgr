@@ -57,7 +57,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
     table_params_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
-            "cursor_columns": {
+            "cursor_fields": {
                 "type": "array",
                 "items": {"type": "string"},
                 "title": "Replication cursor",
@@ -433,7 +433,8 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
             cursor_fields: Dict[str, List[str]] = {}
             if tables and isinstance(tables, dict):
                 for table, (_, table_params) in tables.items():
-                    cursor_fields[table] = list(table_params["cursor_fields"])
+                    if "cursor_fields" in table_params:
+                        cursor_fields[table] = list(table_params["cursor_fields"])
 
             for table_name in repository.object_engine.get_all_tables(staging_schema):
                 if table_name in cursor_fields:
