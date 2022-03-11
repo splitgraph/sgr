@@ -228,6 +228,22 @@ def test_fdw_data_source_with_cursors(pg_repo_local):
         }
     }
 
+    # Do a sync without changes
+    image_hash_4 = handler.sync(output, image_hash=image_hash_3, tables=tables)
+    image = output.images[image_hash_4]
+    image.checkout()
+
+    assert output.run_sql("SELECT COUNT(*) FROM fruits") == [(4,)]
+    assert output.run_sql("SELECT COUNT(*) FROM vegetables") == [(2,)]
+    assert _get_state(output) == {
+        "cursor_values": {
+            "fruits": {
+                "fruit_id": "4",
+            },
+            "vegetables": {"vegetable_id": "2"},
+        }
+    }
+
 
 def test_fdw_data_source_with_composite_cursors(pg_repo_local):
     # Same as previous test, but make sure it still works with composite cursors (more than one

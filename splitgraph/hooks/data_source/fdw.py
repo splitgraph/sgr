@@ -353,7 +353,9 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
         # We override the main sync() instead
         pass
 
-    def _get_cursor_value(self, schema: str, table: str, cursor_fields: List[str]) -> List[str]:
+    def _get_cursor_value(
+        self, schema: str, table: str, cursor_fields: List[str]
+    ) -> Optional[List[str]]:
         query = (
             SQL("SELECT ")
             + SQL(",").join(Identifier(p) for p in cursor_fields)
@@ -361,7 +363,8 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
             + SQL(",").join(Identifier(p) + SQL(" DESC") for p in cursor_fields)
         ) + SQL(" LIMIT 1")
 
-        return [str(r) for r in self.engine.run_sql(query, return_shape=ResultShape.ONE_MANY)]
+        result = self.engine.run_sql(query, return_shape=ResultShape.ONE_MANY)
+        return [str(r) for r in result] if result else None
 
     def sync(
         self,
@@ -389,7 +392,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
                 cursor_values = state.get("cursor_values")
             elif base_image:
                 with base_image.query_schema() as s:
-                    cursor_values = self._get_cursor_values(s, tables)
+                    cursor_values = self._get_cursor_values(s, tables, {})
         else:
             state = None
             cursor_values = None
@@ -445,7 +448,11 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
             # This is so that we don't have a _sg_ingestion_state table hanging around
             # when doing something like a CSV upload.
             if use_state:
-                new_state = {"cursor_values": self._get_cursor_values(staging_schema, tables)}
+                new_state = {
+                    "cursor_values": self._get_cursor_values(
+                        staging_schema, tables, old_cursor_values=cursor_values or {}
+                    )
+                }
                 store_ingestion_state(
                     repository,
                     new_image_hash,
@@ -458,7 +465,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
         return new_image_hash
 
     def _get_cursor_values(
-        self, schema: str, tables: Optional[TableInfo]
+        self, schema: str, tables: Optional[TableInfo], old_cursor_values: Dict[str, Dict[str, str]]
     ) -> Dict[str, Dict[str, str]]:
         cursor_values: Dict[str, Dict[str, str]] = {}
         cursor_fields: Dict[str, List[str]] = {}
@@ -471,13 +478,14 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
         for table_name in self.engine.get_all_tables(schema):
             if table_name in cursor_fields:
                 table_cursor_fields = cursor_fields[table_name]
-                cursor_values[table_name] = {
-                    c: v
-                    for c, v in zip(
-                        table_cursor_fields,
-                        self._get_cursor_value(schema, table_name, table_cursor_fields),
-                    )
-                }
+                cursor_value = self._get_cursor_value(schema, table_name, table_cursor_fields)
+
+                if cursor_value:
+                    cursor_values[table_name] = dict(zip(table_cursor_fields, cursor_value))
+
+                elif old_cursor_values.get(table_name):
+                    cursor_values[table_name] = old_cursor_values[table_name]
+
         return cursor_values
 
 
