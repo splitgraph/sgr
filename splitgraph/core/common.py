@@ -82,9 +82,15 @@ def manage_audit_triggers(
         return
 
     from splitgraph.core.engine import get_current_repositories
+    from splitgraph.hooks.data_source.base import WRITE_LOWER_PREFIX
 
     repos_tables = [
-        (r.to_schema(), t)
+        (
+            r.to_schema(),
+            WRITE_LOWER_PREFIX + t
+            if object_engine.get_table_type(r.to_schema(), t) == "VIEW"
+            else t,
+        )
         for r, head in get_current_repositories(engine)
         if head is not None
         for t in set(object_engine.get_all_tables(r.to_schema())) & set(head.get_tables())

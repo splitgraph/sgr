@@ -183,6 +183,10 @@ class Image(NamedTuple):
         # Use a per-schema "foreign server" for layered queries for now
 
         # Circular import
+        from splitgraph.hooks.data_source.base import (
+            WRITE_LOWER_PREFIX,
+            initialize_write_overlays,
+        )
         from splitgraph.hooks.data_source.fdw import init_fdw
 
         target_schema = target_schema or self.repository.to_schema()
@@ -216,7 +220,11 @@ class Image(NamedTuple):
                 table_name,
                 target_schema,
             )
-            self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
+            table = self.get_table(table_name)
+            table.materialize(WRITE_LOWER_PREFIX + table_name, target_schema, lq_server=server_id)
+
+            # Add overlays for writing
+            initialize_write_overlays(table, target_schema)
 
     @contextmanager
     def query_schema(

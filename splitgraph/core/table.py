@@ -350,7 +350,7 @@ class Table:
             query, args = create_foreign_table(
                 destination_schema,
                 lq_server,
-                self.table_name,
+                destination,
                 self.table_schema,
                 extra_options={"table": self.table_name},
             )

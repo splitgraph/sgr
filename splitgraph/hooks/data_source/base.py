@@ -12,6 +12,7 @@ from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.image_mounting import DefaultImageMounter, ImageMounter
 from splitgraph.core.repository import Repository
+from splitgraph.core.table import Table
 from splitgraph.core.types import (
     Credentials,
     IntrospectionResult,
@@ -22,6 +23,7 @@ from splitgraph.core.types import (
     TableInfo,
 )
 from splitgraph.engine import ResultShape
+from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from splitgraph.ingestion.common import add_timestamp_tags
 from splitgraph.resources import icons
 
@@ -33,6 +35,11 @@ INGESTION_STATE_SCHEMA = [
     TableColumn(1, "timestamp", "timestamp", True, None),
     TableColumn(2, "state", "json", False, None),
 ]
+
+
+SG_ROW_SEQ = "_sg_row_seq"
+WRITE_LOWER_PREFIX = "_sgov_lower_"
+WRITE_UPPER_PREFIX = "_sgov_upper_"
 
 
 class DataSource(ABC):
@@ -302,3 +309,83 @@ def prepare_new_image(
         base_image = None
         repository.images.add(parent_id=None, image=new_image_hash, comment=comment)
     return base_image, new_image_hash
+
+
+def initialize_write_overlays(table: Table, schema: str) -> None:
+    engine = table.repository.object_engine
+
+    # Create the "upper" table that actual writes will be recorded in (staging area for
+    # new objects)
+    engine.run_sql(
+        SQL(
+            "CREATE UNLOGGED TABLE {0}.{1} (LIKE {0}.{2});"
+            "ALTER TABLE {0}.{1} ADD COLUMN {3} BOOLEAN DEFAULT FALSE;"
+            "ALTER TABLE {0}.{1} ADD COLUMN {4} SERIAL;"
+        ).format(
+            Identifier(schema),
+            Identifier(WRITE_UPPER_PREFIX + table.table_name),
+            Identifier(WRITE_LOWER_PREFIX + table.table_name),
+            Identifier(SG_UD_FLAG),
+            Identifier(SG_ROW_SEQ),
+        )
+    )
+
+    columns = SQL(", ").join(Identifier(column.name) for column in table.table_schema)
+
+    # Create a view to see the latest writes on reads to uncommited images
+    engine.run_sql(
+        SQL("CREATE VIEW {0}.{1} AS (SELECT").format(
+            Identifier(schema), Identifier(table.table_name)
+        )
+        + columns
+        + SQL("FROM {0}.{1} EXCEPT SELECT").format(
+            Identifier(schema), Identifier(WRITE_LOWER_PREFIX + table.table_name)
+        )
+        + columns
+        + SQL("FROM {0}.{1} UNION ALL SELECT").format(
+            Identifier(schema), Identifier(WRITE_UPPER_PREFIX + table.table_name)
+        )
+        + columns
+        + SQL("FROM {0}.{1} WHERE {2} IS TRUE);").format(
+            Identifier(schema),
+            Identifier(WRITE_UPPER_PREFIX + table.table_name),
+            Identifier(SG_UD_FLAG),
+        )
+    )
+
+    # Create a trigger
+    engine.run_sql(
+        SQL(
+            """CREATE OR REPLACE FUNCTION {0}.{1}()
+    RETURNS TRIGGER
+    AS $$
+BEGIN
+    IF OLD IS NOT NULL AND NEW IS NULL THEN
+        -- Delete
+        INSERT INTO {0}.{2} VALUES (OLD.*, FALSE);
+    ELSIF OLD IS NOT NULL AND NEW IS NOT NULL THEN
+        -- Update
+        INSERT INTO {0}.{2} VALUES (OLD.*, FALSE);
+        INSERT INTO {0}.{2} VALUES (NEW.*, TRUE);
+    ELSE
+        -- Insert
+        INSERT INTO {0}.{2} VALUES (NEW.*, TRUE);
+    END IF;
+
+    IF NEW IS NOT NULL THEN
+        RETURN NEW;
+    END IF;
+    RETURN OLD;
+END
+$$
+LANGUAGE plpgsql;
+CREATE TRIGGER {1} INSTEAD OF INSERT OR UPDATE OR DELETE ON {0}.{1}
+    FOR EACH ROW EXECUTE FUNCTION {0}.{1}();
+"""
+        ).format(
+            Identifier(schema),
+            Identifier(table.table_name),
+            Identifier(WRITE_UPPER_PREFIX + table.table_name),
+        )
+    )
+    engine.commit()
