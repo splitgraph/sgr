@@ -330,26 +330,44 @@ def initialize_write_overlays(table: Table, schema: str) -> None:
         )
     )
 
-    columns = SQL(", ").join(Identifier(column.name) for column in table.table_schema)
+    columns = SQL(", ").join([Identifier(column.name) for column in table.table_schema])
 
     # Create a view to see the latest writes on reads to uncommited images
     engine.run_sql(
-        SQL("CREATE VIEW {0}.{1} AS (SELECT").format(
-            Identifier(schema), Identifier(table.table_name)
-        )
-        + columns
-        + SQL("FROM {0}.{1} EXCEPT SELECT").format(
-            Identifier(schema), Identifier(WRITE_LOWER_PREFIX + table.table_name)
-        )
-        + columns
-        + SQL("FROM {0}.{1} UNION ALL SELECT").format(
-            Identifier(schema), Identifier(WRITE_UPPER_PREFIX + table.table_name)
-        )
-        + columns
-        + SQL("FROM {0}.{1} WHERE {2} IS TRUE);").format(
+        SQL(
+            """CREATE VIEW {0}.{1} AS
+            -- Get the most recent version of every row
+            WITH _sg_flattened AS (
+                SELECT DISTINCT ON ({2}) 
+                    {2}, {3}
+                FROM {0}.{4}
+                ORDER BY {2}, {5} DESC
+            )
+            
+            -- Include rows from the base table that aren't overwritten
+            (
+                SELECT {2} FROM {0}.{6}
+                EXCEPT
+                SELECT {2} FROM _sg_flattened
+            )
+            
+            UNION ALL
+            
+            -- Include all (potentially repeated) rows that were inserted or updated,
+            -- except the ones for which the most recent command was deletion
+            SELECT {2} FROM {0}.{4} 
+            WHERE {3} IS TRUE AND ({2}) NOT IN (
+                SELECT {2} FROM _sg_flattened WHERE {3} IS FALSE
+            )
+        """
+        ).format(
             Identifier(schema),
-            Identifier(WRITE_UPPER_PREFIX + table.table_name),
+            Identifier(table.table_name),
+            columns,
             Identifier(SG_UD_FLAG),
+            Identifier(WRITE_UPPER_PREFIX + table.table_name),
+            Identifier(SG_ROW_SEQ),
+            Identifier(WRITE_LOWER_PREFIX + table.table_name),
         )
     )
 
