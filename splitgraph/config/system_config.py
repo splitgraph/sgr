@@ -128,10 +128,10 @@ def get_config_file(default_return: None = None) -> Optional[str]:
 
     valid_dirs = [os.getcwd()]
 
-    if os.environ.get("HOME", None) and os.path.isdir(
-        os.path.join(os.environ["HOME"], HOME_SUB_DIR)
-    ):
-        valid_dirs.append(os.path.join(os.environ["HOME"], HOME_SUB_DIR))
+    home = os.path.expanduser("~")
+    directory = os.path.join(home, HOME_SUB_DIR)
+    if home and os.path.isdir(directory):
+        valid_dirs.append(directory)
 
     explicit_dirs = get_explicit_config_file_dirs()
 
