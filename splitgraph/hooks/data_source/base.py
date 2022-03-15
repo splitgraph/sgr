@@ -336,37 +336,35 @@ def initialize_write_overlays(table: Table, schema: str) -> None:
     engine.run_sql(
         SQL(
             """CREATE VIEW {0}.{1} AS
-            -- Get the most recent version of every row
-            WITH _sg_flattened AS (
-                SELECT DISTINCT ON ({2}) 
-                    {2}, {3}
-                FROM {0}.{4}
-                ORDER BY {2}, {5} DESC
+            WITH _sg_pending_writes AS (
+                SELECT {2}, {3}, max({3})
+                    FILTER (WHERE {4} IS FALSE)
+                    OVER (PARTITION BY {2}) AS _latest_delete_seq
+                FROM {0}.{5}
             )
             
             -- Include rows from the base table that aren't overwritten
-            (
-                SELECT {2} FROM {0}.{6}
-                EXCEPT
-                SELECT {2} FROM _sg_flattened
+            SELECT {2} FROM {0}.{6}
+            WHERE ({2}) NOT IN (
+                SELECT DISTINCT ON ({2})
+                    {2}
+                FROM {0}.{5}
             )
             
             UNION ALL
             
             -- Include all (potentially repeated) rows that were inserted or updated,
-            -- except the ones for which the most recent command was deletion
-            SELECT {2} FROM {0}.{4} 
-            WHERE {3} IS TRUE AND ({2}) NOT IN (
-                SELECT {2} FROM _sg_flattened WHERE {3} IS FALSE
-            )
+            -- after the most recent deletion command
+            SELECT {2} FROM _sg_pending_writes
+            WHERE _latest_delete_seq IS NULL OR {3} > _latest_delete_seq
         """
         ).format(
             Identifier(schema),
             Identifier(table.table_name),
             columns,
+            Identifier(SG_ROW_SEQ),
             Identifier(SG_UD_FLAG),
             Identifier(WRITE_UPPER_PREFIX + table.table_name),
-            Identifier(SG_ROW_SEQ),
             Identifier(WRITE_LOWER_PREFIX + table.table_name),
         )
     )
