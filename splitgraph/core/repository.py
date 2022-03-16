@@ -7,6 +7,7 @@ import logging
 import re
 from contextlib import contextmanager
 from datetime import datetime
+from functools import cached_property
 from io import TextIOWrapper
 from random import getrandbits
 from typing import (
@@ -150,6 +151,10 @@ class Repository:
     def to_schema(self) -> str:
         """Returns the engine schema that this repository gets checked out into."""
         return self.namespace + "/" + self.repository if self.namespace else self.repository
+
+    def lq_server_name(self) -> str:
+        """The name of the foreign server used in the layered querying checkout mode"""
+        return f"{self.to_schema()}_lq_checkout_server"
 
     def __repr__(self) -> str:
         repr = "Repository %s on %s" % (self.to_schema(), self.engine.name)
@@ -482,6 +487,11 @@ class Repository:
                 previous objects belonging to the last revision.
             * Otherwise, the table is stored as a conflated (1 change per PK) patch.
         """
+        from splitgraph.hooks.data_source.base import (
+            WRITE_LOWER_PREFIX,
+            WRITE_UPPER_PREFIX,
+        )
+
         schema = schema or self.to_schema()
         extra_indexes: Dict[str, ExtraIndexInfo] = extra_indexes or {}
         in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
@@ -490,15 +500,29 @@ class Repository:
         changed_tables = self.object_engine.get_changed_tables(schema)
         tracked_tables = self.object_engine.get_tracked_tables()
 
-        for table in self.object_engine.get_all_tables(schema):
-            if self.object_engine.get_table_type(schema, table) == "VIEW":
-                logging.warning(
-                    "Table %s.%s is a view. Splitgraph currently doesn't "
-                    "support views and this table will not be in the image.",
-                    schema,
-                    table,
-                )
-                continue
+        tables = self.object_engine.get_all_tables(schema)
+        for table in tables:
+            if self.is_lq_checkout:
+                if table.startswith(WRITE_UPPER_PREFIX) or table.startswith(WRITE_LOWER_PREFIX):
+                    logging.debug("Table %s.%s is part of the lq overlay, skipping.", schema, table)
+                    continue
+
+                if self.object_engine.get_table_type(schema, table) == "VIEW":
+                    assert (
+                        WRITE_UPPER_PREFIX + table in tables
+                    ), "LQ checkout overlay missing upper table"
+                    assert (
+                        WRITE_LOWER_PREFIX + table in tables
+                    ), "LQ checkout overlay missing lower table"
+            else:
+                if self.object_engine.get_table_type(schema, table) == "VIEW":
+                    logging.warning(
+                        "Table %s.%s is a view. Splitgraph currently doesn't "
+                        "support views and this table will not be in the image.",
+                        schema,
+                        table,
+                    )
+                    continue
 
             try:
                 table_info: Optional[Table] = head.get_table(table) if head else None
@@ -1077,6 +1101,23 @@ class Repository:
         # Materialize both tables and compare them side-by-side.
         # TODO we can aggregate chunks in a similar way that LQ does it.
         return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
+
+    @cached_property
+    def is_lq_checkout(self) -> bool:
+        """
+        Check whether the schema was checkout with layered querying, by examining the presence of the foreign server.
+        """
+
+        return cast(
+            bool,
+            self.object_engine.run_sql(
+                SQL(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.foreign_servers WHERE foreign_server_name=%s)"
+                ),
+                (self.lq_server_name(),),
+                return_shape=ResultShape.ONE_ONE,
+            ),
+        )
 
 
 def import_table_from_remote(

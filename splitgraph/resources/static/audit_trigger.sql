@@ -139,7 +139,6 @@ CREATE OR REPLACE FUNCTION splitgraph_audit.audit_table (
     RETURNS void
     AS $body$
 DECLARE
-    stm_targets text = 'INSERT OR UPDATE OR DELETE OR TRUNCATE';
     _q_txt text;
 BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_row ON ' || target_table;

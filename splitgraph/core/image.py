@@ -190,7 +190,7 @@ class Image(NamedTuple):
         from splitgraph.hooks.data_source.fdw import init_fdw
 
         target_schema = target_schema or self.repository.to_schema()
-        server_id = "%s_lq_checkout_server" % target_schema
+        server_id = self.repository.lq_server_name()
         engine = self.repository.engine
         object_engine = self.repository.object_engine
 
