@@ -109,8 +109,9 @@ def test_auth_api_access_token_property_not_expired():
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_auth_api_access_token_property_expired():
-    client = RESTAPIClient(_REMOTE)
+@pytest.mark.parametrize("read_only_config", [True, False])
+def test_auth_api_access_token_property_expired(read_only_config):
+    client = RESTAPIClient(_REMOTE, read_only_config=read_only_config)
 
     # strictly speaking, we should use freezegun or patch time here,
     # but by default AuthClient is supposed to refresh the token 30s
@@ -139,17 +140,28 @@ def test_auth_api_access_token_property_expired():
         },
     ):
         with patch("splitgraph.cloud.overwrite_config") as oc:
-            client.access_token
+            token = client.access_token
 
-    oc.assert_called_once_with(
-        {
-            "remotes": {
-                _REMOTE: {
-                    "SG_CLOUD_ACCESS_TOKEN": new_token,
-                    "SG_CLOUD_REFRESH_TOKEN": refresh_token,
-                }
+    # Check the token is cached in memory
+    assert token == client._access_token
+
+    if read_only_config:
+        assert oc.mock_calls == []
+
+        # Try getting the token again, check we don't even try hitting the config
+        with patch("splitgraph.cloud.create_config_dict") as ccd:
+            assert token == client.access_token
+            assert ccd.mock_calls == []
+    else:
+        oc.assert_called_once_with(
+            {
+                "remotes": {
+                    _REMOTE: {
+                        "SG_CLOUD_ACCESS_TOKEN": new_token,
+                        "SG_CLOUD_REFRESH_TOKEN": refresh_token,
+                    }
+                },
+                "SG_CONFIG_FILE": ".sgconfig",
             },
-            "SG_CONFIG_FILE": ".sgconfig",
-        },
-        ".sgconfig",
-    )
+            ".sgconfig",
+        )
