@@ -369,7 +369,7 @@ def eval_c(i_know_what_im_doing, command, arg):
     _eval(command, arg)
 
 
-def _get_binary_url_for(system, release: str = "latest") -> Tuple[str, str]:
+def _get_binary_url_for(system: str, release: str = "latest") -> Tuple[str, str]:
     import requests
 
     from splitgraph.cloud import get_headers
@@ -390,6 +390,8 @@ def _get_binary_url_for(system, release: str = "latest") -> Tuple[str, str]:
     executable = "sgr-%s-x86_64" % system
     if system == "windows":
         executable += ".exe"
+    if system == "osx":
+        executable += ".tar.gz"
     asset = [a for a in body["assets"] if a["name"] == executable]
     if not asset:
         raise ValueError("No releases found for tag %s, system %s!" % (release, system))
@@ -445,6 +447,11 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     # Download the file
 
     temp_path, final_path = _get_download_paths(path, download_url)
+    new_binary_path = str(temp_path)
+
+    # If on OSX: the "binary" is actually an archive
+    if system == "osx":
+        temp_path = temp_path.with_suffix(".tar.gz")
 
     # Delete the temporary file at exit if we crash
 
@@ -468,19 +475,39 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
                 f.write(chunk)
                 pbar.update(len(chunk))
 
+    if system == "osx":
+        # Extract the binary
+        target_dir = os.path.splitext(temp_path)[0]
+        click.echo("Extracting sgr into %s" % target_dir)
+        os.makedirs(target_dir)
+        subprocess.check_call(["tar", "-C", target_dir, "-xzf", temp_path])
+        new_binary_path = os.path.join(target_dir, "sgr")
+    else:
+        st = os.stat(new_binary_path)
+        os.chmod(new_binary_path, st.st_mode | stat.S_IEXEC)
+
     # Test the new binary
-    st = os.stat(str(temp_path))
-    os.chmod(str(temp_path), st.st_mode | stat.S_IEXEC)
-    subprocess.check_call([str(temp_path), "--version"])
+    subprocess.check_call([new_binary_path, "--version"])
 
     # Upgrade the default engine
     if not skip_engine_upgrade:
         containers = list_engines(include_all=True, prefix=CONFIG["SG_ENGINE_PREFIX"])
         if containers:
             click.echo("Upgrading the default engine...")
-            subprocess.check_call([str(temp_path), "engine", "upgrade"])
+            subprocess.check_call([new_binary_path, "engine", "upgrade"])
 
     def _finalize():
+        if system == "osx":
+            # On OSX we're installing in a directory. It's complex to support all upgrade paths
+            # (e.g. dir -> dir, existing binary -> dir etc) and correctly clean up the old directory,
+            # so we tell the user to do it instead.
+            click.echo(
+                "New sgr has been extracted to %s. Note this routine doesn't remove the existing"
+                " installation. Please change your $PATH or move the directory as appropriate."
+                % target_dir
+            )
+            exit(0)
+
         # On Windows we can't replace a running executable + probably should keep a backup anyway.
         # We hence rename ourselves to a .old file and ask the user to delete it if needed.
         if final_path.exists():
