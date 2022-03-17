@@ -77,13 +77,11 @@ _install_binary () {
   _check_sgr_exists
 
   URL="https://github.com/splitgraph/splitgraph/releases/download/v${SGR_VERSION}"/$BINARY
-  echo "Installing the sgr binary from $URL into $INSTALL_DIR"
-  mkdir -p "$INSTALL_DIR"
-  curl -fsL "$URL" > "$INSTALL_DIR/sgr"
-  chmod +x "$INSTALL_DIR/sgr"
-  "$INSTALL_DIR/sgr" --version
-  echo "sgr binary installed."
-  echo
+  # on OS X, splitgraph.spec is called with --onedir to output .tgz of exe and shlibs
+  if [ "$BINARY" == "sgr-osx-x86_64.tgz" ] ; then
+    echo "Installing the compressed sgr binary and deps from $URL into $INSTALL_DIR"
+    echo "Installing sgr binary and deps into $INSTALL_DIR/pkg"
+  fi
 
 }
 

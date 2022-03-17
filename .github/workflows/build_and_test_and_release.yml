@@ -8,8 +8,8 @@ jobs:
     runs-on: ubuntu-18.04
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     env:
-      COMPOSE_VERSION: '1.25.4'
-      POETRY_VERSION: '1.1.6'
+      COMPOSE_VERSION: "1.25.4"
+      POETRY_VERSION: "1.1.6"
       DOCKER_REPO: splitgraph
       DOCKER_ENGINE_IMAGE: engine
       DOCKER_TAG: development
@@ -23,7 +23,7 @@ jobs:
       - name: Setup Python 3.8
         uses: actions/setup-python@v2
         with:
-          python-version: '3.8'
+          python-version: "3.8"
       - uses: actions/cache@v1
         with:
           path: ~/.cache/pip
@@ -212,7 +212,16 @@ jobs:
         with:
           name: sgr-osx
           path: dist/sgr
-
+      - name: Build the multi-file binary
+        run: |
+          pyinstaller --clean --noconfirm --onedir splitgraph.osx.spec
+          dist/sgr-pkg/sgr --version
+          cd dist/sgr-pkg && tar zcvf ../sgr.tgz .
+      - name: Upload multi-file binary.gz as artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: sgr-osx.tgz
+          path: dist/sgr.tgz
 
   upload_release:
     runs-on: ubuntu-18.04
