@@ -62,7 +62,15 @@ _get_binary_name() {
   if [ "$os" == Linux ]; then
     BINARY="sgr-linux-x86_64"
   elif [ "$os" == Darwin ]; then
-    BINARY="sgr-osx-x86_64"
+    if [ -n "$FORCE_ONEFILE" ] ; then
+      echo "Forcing --onefile installation on OS X because \$FORCE_ONEFILE is set."
+      BINARY="sgr-osx-x86_64"
+    else
+      # OS X has bad single-file executable support (pyinstaller --onefile), so we default to --onedir variant
+      echo "Installing optimized package for OS X (built with pyinstaller --onedir instead of --onefile)"
+      echo "To force install single-file executable (not recommended), set FORCE_ONEFILE=1"
+      BINARY="sgr-osx-x86_64.tgz"
+    fi
   else
     _die "This installation method only supported on Linux/OSX. Please see https://www.splitgraph.com/docs/installation/ for other installation methods."
   fi
@@ -77,14 +85,34 @@ _install_binary () {
   _check_sgr_exists
 
   URL="https://github.com/splitgraph/splitgraph/releases/download/v${SGR_VERSION}"/$BINARY
-  echo "Installing the sgr binary from $URL into $INSTALL_DIR"
-  mkdir -p "$INSTALL_DIR"
-  curl -fsL "$URL" > "$INSTALL_DIR/sgr"
-  chmod +x "$INSTALL_DIR/sgr"
-  "$INSTALL_DIR/sgr" --version
-  echo "sgr binary installed."
-  echo
+  # on OS X, splitgraph.spec is called with --onedir to output .tgz of exe and shlibs
+  if [ "$BINARY" == "sgr-osx-x86_64.tgz" ] ; then
+    echo "Installing the compressed sgr binary and deps from $URL into $INSTALL_DIR"
+    echo "Installing sgr binary and deps into $INSTALL_DIR/pkg"
 
+    if [ -d "$INSTALL_DIR/pkg/sgr" ] ; then
+      echo "Removing existing $INSTALL_DIR/pkg/sgr"
+      rm -rf "$INSTALL_DIR/pkg/sgr"
+    fi
+
+    mkdir -p "$INSTALL_DIR/pkg/sgr"
+
+    curl -fsL "$URL" > "$INSTALL_DIR/pkg/sgr/sgr.tgz"
+
+    echo "Extract sgr binary and deps into $INSTALL_DIR/pkg/sgr (necessary on MacOS)"
+    (cd "$INSTALL_DIR"/pkg/sgr && tar xfz sgr.tgz && rm sgr.tgz)
+    echo "Main sgr binary is at $INSTALL_DIR/pkg/sgr/sgr"
+    echo "Link $INSTALL_DIR/sgr -> $INSTALL_DIR/pkg/sgr/sgr"
+    ln -fs "$INSTALL_DIR"/pkg/sgr/sgr "$INSTALL_DIR"/sgr
+  else
+    echo "Installing the sgr binary from $URL into $INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+    curl -fsL "$URL" > "$INSTALL_DIR/sgr"
+    chmod +x "$INSTALL_DIR/sgr"
+  fi
+
+  "$INSTALL_DIR/sgr" --version && echo "sgr binary installed." && echo && return 0
+  _die "Installation apparently failed. got non-zero exit code from: $INSTALL_DIR/sgr --version"
 }
 
 _setup_engine() {

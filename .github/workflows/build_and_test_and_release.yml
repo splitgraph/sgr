@@ -8,8 +8,8 @@ jobs:
     runs-on: ubuntu-18.04
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     env:
-      COMPOSE_VERSION: '1.25.4'
-      POETRY_VERSION: '1.1.6'
+      COMPOSE_VERSION: "1.25.4"
+      POETRY_VERSION: "1.1.6"
       DOCKER_REPO: splitgraph
       DOCKER_ENGINE_IMAGE: engine
       DOCKER_TAG: development
@@ -23,7 +23,7 @@ jobs:
       - name: Setup Python 3.8
         uses: actions/setup-python@v2
         with:
-          python-version: '3.8'
+          python-version: "3.8"
       - uses: actions/cache@v1
         with:
           path: ~/.cache/pip
@@ -113,6 +113,15 @@ jobs:
           # TODO figure out if we want to do poetry upload here (can only do once, so will fail
           # if we're retrying an upload)
           # "$HOME"/.poetry/bin/poetry build
+      - name: "Build wheel only (do not configure publish)"
+        # The {windows,linux,osx}_binary stage will run if ref is tag, or msg contains "[artifacts]""
+        # If no tag, but [artifacts], we still need to build the wheel, but with NO_PUBLISH=1
+        # But if tag _and_ [artifacts], we want to skip this stage, to not build the wheel twice
+        if: "!startsWith(github.ref, 'refs/tags/') && contains(github.event.head_commit.message, '[artifacts]')"
+        env:
+          NO_PUBLISH: "1"
+        run: |
+          ./.ci/build_wheel.sh
       - name: "Upload release artifacts"
         uses: actions/upload-artifact@v2
         with:
@@ -121,7 +130,7 @@ jobs:
 
   windows_binary:
     runs-on: windows-latest
-    if: "startsWith(github.ref, 'refs/tags/')"
+    if: "startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[artifacts]')"
     needs: build_and_test
     steps:
       - uses: actions/checkout@v1
@@ -150,7 +159,7 @@ jobs:
 
   linux_binary:
     runs-on: ubuntu-18.04
-    if: "startsWith(github.ref, 'refs/tags/')"
+    if: "startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[artifacts]')"
     needs: build_and_test
     steps:
       - uses: actions/checkout@v1
@@ -188,7 +197,7 @@ jobs:
 
   osx_binary:
     runs-on: macOS-latest
-    if: "startsWith(github.ref, 'refs/tags/')"
+    if: "startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[artifacts]')"
     needs: build_and_test
     steps:
       - uses: actions/checkout@v1
@@ -201,18 +210,27 @@ jobs:
         with:
           name: dist
           path: dist
-      - name: Build the binary
+      - name: Build the single-file binary
         run: |
           pip install dist/splitgraph-*-py3-none-any.whl
           pip install pyinstaller
           pyinstaller -F splitgraph.spec
           dist/sgr --version
-      - name: Upload binary as artifact
+      - name: Upload single-file binary as artifact
         uses: actions/upload-artifact@v2
         with:
           name: sgr-osx
           path: dist/sgr
-
+      - name: Build the multi-file binary.gz
+        run: |
+          pyinstaller --clean --noconfirm --onedir splitgraph.spec
+          dist/sgr-pkg/sgr --version
+          cd dist/sgr-pkg && tar zcvf ../sgr.tgz .
+      - name: Upload multi-file binary.gz as artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: sgr-osx.tgz
+          path: dist/sgr.tgz
 
   upload_release:
     runs-on: ubuntu-18.04
@@ -231,6 +249,7 @@ jobs:
           mv artifacts/sgr-windows/sgr.exe artifacts/sgr-windows-x86_64.exe
           mv artifacts/sgr-linux/sgr artifacts/sgr-linux-x86_64
           mv artifacts/sgr-osx/sgr artifacts/sgr-osx-x86_64
+          mv artifacts/sgr-osx/sgr.tgz artifacts/sgr-osx-x86_64.tgz
       - name: Release artifacts
         uses: softprops/action-gh-release@v1
         with:
@@ -238,6 +257,7 @@ jobs:
             artifacts/sgr-windows-x86_64.exe
             artifacts/sgr-linux-x86_64
             artifacts/sgr-osx-x86_64
+            artifacts/sgr-osx-x86_64.tgz
             artifacts/dist/sgr-docs-bin.tar.gz
             artifacts/dist/install.sh
           draft: true
