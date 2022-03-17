@@ -66,7 +66,7 @@ def register_c(username, password, email, remote, accept_tos, skip_inject):
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
 
-    client = RESTAPIClient(remote)
+    client = RESTAPIClient(remote, read_only_config=False)
     tos = client.tos()
 
     if tos and not accept_tos:
@@ -177,7 +177,7 @@ def login_c(username, password, remote, overwrite, skip_inject):
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
 
-    client = RESTAPIClient(remote)
+    client = RESTAPIClient(remote, read_only_config=False)
 
     if not password:
         profile_url = _construct_user_profile_url(client.endpoint)
@@ -256,7 +256,7 @@ def login_api_c(api_key, api_secret, remote, skip_inject):
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
 
-    client = RESTAPIClient(remote)
+    client = RESTAPIClient(remote, read_only_config=False)
     access = cast(str, client.get_access_token_from_api(api_key, api_secret))
 
     namespace = get_token_claim(access, "username")
@@ -331,7 +331,7 @@ def curl_c(remote, request_type, image, request_params, curl_args):
 
     # Craft a request
     config = cast(Dict[str, str], CONFIG["remotes"][remote])
-    access_token = RESTAPIClient(remote).access_token
+    access_token = RESTAPIClient(remote, read_only_config=False).access_token
     headers = get_headers()
     headers.update({"Authorization": "Bearer " + access_token})
 
@@ -659,7 +659,7 @@ def load_c(
     gql_client = GQLAPIClient(remote)
 
     if not skip_external:
-        rest_client = RESTAPIClient(remote)
+        rest_client = RESTAPIClient(remote, read_only_config=False)
 
         filter_credential_names = [
             r.external.credential for r in repositories if r.external and r.external.credential
@@ -780,7 +780,7 @@ def token_c(remote):
     """Output an up-to-date access token for a remote."""
     from splitgraph.cloud import RESTAPIClient
 
-    client = RESTAPIClient(remote)
+    client = RESTAPIClient(remote, read_only_config=False)
     click.echo(client.access_token)
 
 

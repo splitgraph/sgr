@@ -215,7 +215,7 @@ class RESTAPIClient:
     Client for various Splitgraph Registry REST APIs: auth token generation, external repo setup...
     """
 
-    def __init__(self, remote: str) -> None:
+    def __init__(self, remote: str, read_only_config: bool = True) -> None:
         """
         :param remote: Name of the remote engine that this auth client communicates with,
             as specified in the config.
@@ -232,6 +232,9 @@ class RESTAPIClient:
 
         # How soon before the token expiry to refresh the token, in seconds.
         self.access_token_expiry_tolerance = 30
+
+        self.read_only_config = read_only_config
+        self._access_token: Optional[str] = None
 
     @expect_result(["tos"])
     def tos(self) -> Response:
@@ -330,6 +333,11 @@ class RESTAPIClient:
             self.endpoint + "/access_token", json=body, verify=self.verify, headers=get_headers()
         )
 
+    def _token_up_to_date(self, token: str) -> bool:
+        exp = int(get_token_claim(token, "exp"))
+        now = time.time()
+        return now < exp - self.access_token_expiry_tolerance
+
     @property
     def access_token(self) -> str:
         """
@@ -340,8 +348,10 @@ class RESTAPIClient:
         :return: Access token.
         """
 
-        config = create_config_dict()
+        if self._access_token and self._token_up_to_date(self._access_token):
+            return self._access_token
 
+        config = create_config_dict()
         with contextlib.suppress(KeyError):
             current_access_token = get_from_subsection(
                 config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
@@ -371,8 +381,14 @@ class RESTAPIClient:
                     + "Log into the registry using sgr cloud login."
                 ) from e
 
-        set_in_subsection(config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN", new_access_token)
-        overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
+        # Cache the token in-memory to avoid having to read it every time
+        self._access_token = new_access_token
+
+        if not self.read_only_config:
+            set_in_subsection(
+                config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN", new_access_token
+            )
+            overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
         return new_access_token
 
     @property
@@ -583,6 +599,7 @@ class GQLAPIClient:
         remote: Optional[str],
         endpoint: Optional[str] = None,
         access_token: Optional[str] = None,
+        read_only_config: bool = True,
     ):
         if not remote and not endpoint:
             raise ValueError(
@@ -598,7 +615,9 @@ class GQLAPIClient:
                     "Using %s automatically. Replace SG_GQL_API to make this message go away. ",
                     self.endpoint,
                 )
-            self._auth_client: Optional[RESTAPIClient] = RESTAPIClient(remote)
+            self._auth_client: Optional[RESTAPIClient] = RESTAPIClient(
+                remote, read_only_config=read_only_config
+            )
             self._access_token: Optional[str] = access_token
         elif endpoint:
             self.endpoint = endpoint
