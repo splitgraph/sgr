@@ -356,9 +356,7 @@ class RESTAPIClient:
             current_access_token = get_from_subsection(
                 config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
             )
-            exp = get_token_claim(current_access_token, "exp")
-            now = time.time()
-            if now < exp - self.access_token_expiry_tolerance:
+            if self._token_up_to_date(current_access_token):
                 return current_access_token
 
         # Token expired or non-existent, get a new one.
