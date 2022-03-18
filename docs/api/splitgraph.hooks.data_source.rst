@@ -20,6 +20,14 @@ splitgraph.hooks.data\_source.fdw module
    :undoc-members:
    :show-inheritance:
 
+splitgraph.hooks.data\_source.utils module
+------------------------------------------
+
+.. automodule:: splitgraph.hooks.data_source.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

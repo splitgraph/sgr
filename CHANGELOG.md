@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.3.8 (2022-03-18)
+
+  * Fix slow startup of `sgr` binary on Mac OS / Darwin (https://github.com/splitgraph/splitgraph/pull/656)
+    * Add new release artifact `sgr-osx-x86_64.tgz` including executable sgr, shared libraries, and resources
+    * Change `install.sh` on Darwin to default to the `.tgz` artifact (for previous behavior, set `FORCE_ONEFILE=1`)
+    * Extract the archive to `~/.splitgraph/pkg/sgr` and symlink `~/.splitgraph/sgr -> ~/.splitgraph/pkg/sgr/sgr`
+  * Add support for incremental loads to FDW plugins (https://github.com/splitgraph/splitgraph/pull/647)
+    * Add a `cursor_columns` field to the table parameters of FDW data sources
+  * Fix bug on Windows where `sgr` failed to locate `.sgconfig` in non-existent `$HOME` directory (https://github.com/splitgraph/splitgraph/pull/651) _Thanks @harrybiddle!_
+    * Switch to cross-platform path expansion when adding home directory to config search paths
+
+Starting from this version, all future releases will include `sgr-osx-x86_64.tgz`, which we recommend installing on Mac OS. The `install.sh` script will default to it.
+
+Note: if you download an executable directly from this release page, using a web browser, then Mac will quarantine the file and refuse to execute it. Command line HTTP clients like `curl` do not have this limitation, and the recommended installation method is to run the `install.sh` script included as a part of every release. See [the pull request adding `sgr-osx-x86_64.tgz`](https://github.com/splitgraph/splitgraph/pull/656) for more details.
+
 ## v0.3.7 (2022-02-28)
 
   * Add Google BigQuery data plugin (https://github.com/splitgraph/splitgraph/pull/638)
