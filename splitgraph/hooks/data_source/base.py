@@ -21,6 +21,7 @@ from splitgraph.core.types import (
     SyncState,
     TableColumn,
     TableInfo,
+    TableSchema,
 )
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
@@ -311,31 +312,33 @@ def prepare_new_image(
     return base_image, new_image_hash
 
 
-def initialize_write_overlays(table: Table, schema: str) -> None:
-    engine = table.repository.object_engine
-
+def init_write_overlay(
+    object_engine: "PostgresEngine", schema: str, table: str, table_schema: TableSchema
+) -> None:
     # Create the "upper" table that actual writes will be recorded in (staging area for
     # new objects)
-    engine.run_sql(
+    object_engine.run_sql(
         SQL(
+            "DROP TABLE IF EXISTS {0}.{1};"
             "CREATE UNLOGGED TABLE {0}.{1} (LIKE {0}.{2});"
             "ALTER TABLE {0}.{1} ADD COLUMN {3} BOOLEAN DEFAULT FALSE;"
             "ALTER TABLE {0}.{1} ADD COLUMN {4} SERIAL;"
         ).format(
             Identifier(schema),
-            Identifier(WRITE_UPPER_PREFIX + table.table_name),
-            Identifier(WRITE_LOWER_PREFIX + table.table_name),
+            Identifier(WRITE_UPPER_PREFIX + table),
+            Identifier(WRITE_LOWER_PREFIX + table),
             Identifier(SG_UD_FLAG),
             Identifier(SG_ROW_SEQ),
         )
     )
 
-    columns = SQL(", ").join([Identifier(column.name) for column in table.table_schema])
+    columns = SQL(", ").join([Identifier(column.name) for column in table_schema])
 
     # Create a view to see the latest writes on reads to uncommited images
-    engine.run_sql(
+    object_engine.run_sql(
         SQL(
-            """CREATE VIEW {0}.{1} AS
+            """DROP VIEW IF EXISTS {0}.{1};
+            CREATE VIEW {0}.{1} AS
             WITH _sg_pending_writes AS (
                 SELECT {2}, {3}, max({3})
                     FILTER (WHERE {4} IS FALSE)
@@ -356,21 +359,21 @@ def initialize_write_overlays(table: Table, schema: str) -> None:
             -- Include all (potentially repeated) rows that were inserted or updated,
             -- after the most recent deletion command
             SELECT {2} FROM _sg_pending_writes
-            WHERE _latest_delete_seq IS NULL OR {3} > _latest_delete_seq
+            WHERE _latest_delete_seq IS NULL OR {3} > _latest_delete_seq;
         """
         ).format(
             Identifier(schema),
-            Identifier(table.table_name),
+            Identifier(table),
             columns,
             Identifier(SG_ROW_SEQ),
             Identifier(SG_UD_FLAG),
-            Identifier(WRITE_UPPER_PREFIX + table.table_name),
-            Identifier(WRITE_LOWER_PREFIX + table.table_name),
+            Identifier(WRITE_UPPER_PREFIX + table),
+            Identifier(WRITE_LOWER_PREFIX + table),
         )
     )
 
     # Create a trigger
-    engine.run_sql(
+    object_engine.run_sql(
         SQL(
             """CREATE OR REPLACE FUNCTION {0}.{1}()
     RETURNS TRIGGER
@@ -400,8 +403,7 @@ CREATE TRIGGER {1} INSTEAD OF INSERT OR UPDATE OR DELETE ON {0}.{1}
 """
         ).format(
             Identifier(schema),
-            Identifier(table.table_name),
-            Identifier(WRITE_UPPER_PREFIX + table.table_name),
+            Identifier(table),
+            Identifier(WRITE_UPPER_PREFIX + table),
         )
     )
-    engine.commit()

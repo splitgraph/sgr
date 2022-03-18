@@ -202,7 +202,7 @@ class SQLEngine(ABC):
             )
         else:
             self.run_sql(
-                SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
+                SQL("DROP FOREIGN TABLE IF EXISTS {}.{} CASCADE").format(
                     Identifier(schema), Identifier(table)
                 )
             )
@@ -226,7 +226,7 @@ class SQLEngine(ABC):
         )
 
     def get_table_type(self, schema: str, table: str) -> Optional[str]:
-        """Get the type of the table (BASE or FOREIGN)"""
+        """Get the type of the table (BASE TABLE, FOREIGN or VIEW)"""
         result = self.run_sql(
             "SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
             " AND table_name = %s",

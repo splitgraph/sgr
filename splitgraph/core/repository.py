@@ -7,7 +7,7 @@ import logging
 import re
 from contextlib import contextmanager
 from datetime import datetime
-from functools import cached_property
+from functools import lru_cache
 from io import TextIOWrapper
 from random import getrandbits
 from typing import (
@@ -490,6 +490,7 @@ class Repository:
         from splitgraph.hooks.data_source.base import (
             WRITE_LOWER_PREFIX,
             WRITE_UPPER_PREFIX,
+            init_write_overlay,
         )
 
         schema = schema or self.to_schema()
@@ -497,33 +498,49 @@ class Repository:
         in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
         chunk_size = chunk_size or int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE"))
 
+        all_tables = self.object_engine.get_all_tables(schema)
+        tables = []
         changed_tables = self.object_engine.get_changed_tables(schema)
         tracked_tables = self.object_engine.get_tracked_tables()
 
-        tables = self.object_engine.get_all_tables(schema)
+        # Filter eligible tables for persisting
+        for table in all_tables:
+            # In the case of LQ checkout, we do not keep track of the changes via the audit triggers
+            # but instead use the upper/lower table mechanism with a view on top to merge the latest writes.
+            # Consequently, we cannot include internal overlay tables in the list of all tables, and must populate
+            # changed and tracked tables in a proper manner.
+            # See `init_write_overlay` for more details.
+
+            if self.is_overlay_view(table):
+                # Add the overlay view to the list of tables to process
+                tables.append(table)
+                # Add the overlay view to the tracked tables list
+                tracked_tables.append((schema, table))
+
+                table_not_empty = self.object_engine.run_sql(
+                    SQL("SELECT EXISTS(SELECT 1 FROM {}.{})").format(
+                        Identifier(schema), Identifier(WRITE_UPPER_PREFIX + table)
+                    ),
+                    return_shape=ResultShape.ONE_ONE,
+                )
+                if table_not_empty:
+                    # There are pending writes
+                    changed_tables.append(table)
+            elif self.object_engine.get_table_type(schema, table) == "VIEW":
+                logging.warning(
+                    "Table %s.%s is a view. Splitgraph currently doesn't "
+                    "support views and this table will not be in the image.",
+                    schema,
+                    table,
+                )
+                continue
+            elif not table.startswith(WRITE_UPPER_PREFIX) and not table.startswith(
+                WRITE_LOWER_PREFIX
+            ):
+                # Tables of BASE TABLE or FOREIGN table type which are not part of an overlay
+                tables.append(table)
+
         for table in tables:
-            if self.is_lq_checkout:
-                if table.startswith(WRITE_UPPER_PREFIX) or table.startswith(WRITE_LOWER_PREFIX):
-                    logging.debug("Table %s.%s is part of the lq overlay, skipping.", schema, table)
-                    continue
-
-                if self.object_engine.get_table_type(schema, table) == "VIEW":
-                    assert (
-                        WRITE_UPPER_PREFIX + table in tables
-                    ), "LQ checkout overlay missing upper table"
-                    assert (
-                        WRITE_LOWER_PREFIX + table in tables
-                    ), "LQ checkout overlay missing lower table"
-            else:
-                if self.object_engine.get_table_type(schema, table) == "VIEW":
-                    logging.warning(
-                        "Table %s.%s is a view. Splitgraph currently doesn't "
-                        "support views and this table will not be in the image.",
-                        schema,
-                        table,
-                    )
-                    continue
-
             try:
                 table_info: Optional[Table] = head.get_table(table) if head else None
             except TableNotFoundError:
@@ -549,10 +566,8 @@ class Repository:
                     in_fragment_order=in_fragment_order.get(table),
                     overwrite=overwrite,
                 )
-                continue
-
-            # If the table has changed, look at the audit log and store it as a delta.
-            if table in changed_tables:
+            # Else, if the table has changed, look at the audit log/upper overlay table and store it as a delta.
+            elif table in changed_tables:
                 self.objects.record_table_as_patch(
                     table_info,
                     schema,
@@ -562,13 +577,17 @@ class Repository:
                     extra_indexes=extra_indexes.get(table),
                     in_fragment_order=in_fragment_order.get(table),
                     overwrite=overwrite,
+                    overlay_view=self.is_overlay_view(table),
                 )
-                continue
-
             # If the table wasn't changed, point the image to the old table
-            self.objects.register_tables(
-                self, [(image_hash, table, new_schema, table_info.objects)]
-            )
+            else:
+                self.objects.register_tables(
+                    self, [(image_hash, table, new_schema, table_info.objects)]
+                )
+
+            if self.is_overlay_view(table):
+                # Re-initialize overlay for writing
+                init_write_overlay(self.object_engine, schema, table, new_schema)
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
@@ -1102,22 +1121,25 @@ class Repository:
         # TODO we can aggregate chunks in a similar way that LQ does it.
         return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
 
-    @cached_property
-    def is_lq_checkout(self) -> bool:
+    @lru_cache(maxsize=None)
+    def is_overlay_view(self, table_name: str) -> bool:
         """
-        Check whether the schema was checkout with layered querying, by examining the presence of the foreign server.
+        Check whether the provided table is actually the write overlay mechanism, merging lower and upper/staging table.
         """
-
-        return cast(
-            bool,
-            self.object_engine.run_sql(
-                SQL(
-                    "SELECT EXISTS(SELECT 1 FROM information_schema.foreign_servers WHERE foreign_server_name=%s)"
-                ),
-                (self.lq_server_name(),),
-                return_shape=ResultShape.ONE_ONE,
-            ),
+        from splitgraph.hooks.data_source.base import (
+            WRITE_LOWER_PREFIX,
+            WRITE_UPPER_PREFIX,
         )
+
+        is_view = self.object_engine.get_table_type(self.to_schema(), table_name) == "VIEW"
+        lower_table_exists = self.object_engine.table_exists(
+            self.to_schema(), WRITE_LOWER_PREFIX + table_name
+        )
+        upper_table_exists = self.object_engine.table_exists(
+            self.to_schema(), WRITE_UPPER_PREFIX + table_name
+        )
+
+        return is_view and lower_table_exists and upper_table_exists
 
 
 def import_table_from_remote(

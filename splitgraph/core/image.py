@@ -185,7 +185,7 @@ class Image(NamedTuple):
         # Circular import
         from splitgraph.hooks.data_source.base import (
             WRITE_LOWER_PREFIX,
-            initialize_write_overlays,
+            init_write_overlay,
         )
         from splitgraph.hooks.data_source.fdw import init_fdw
 
@@ -223,8 +223,10 @@ class Image(NamedTuple):
             table = self.get_table(table_name)
             table.materialize(WRITE_LOWER_PREFIX + table_name, target_schema, lq_server=server_id)
 
-            # Add overlays for writing
-            initialize_write_overlays(table, target_schema)
+            # Add overlay for writing
+            init_write_overlay(object_engine, target_schema, table_name, table.table_schema)
+
+        object_engine.commit()
 
     @contextmanager
     def query_schema(

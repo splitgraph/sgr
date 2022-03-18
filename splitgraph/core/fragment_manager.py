@@ -571,6 +571,7 @@ class FragmentManager(MetadataManager):
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
+        overlay_view: bool = False,
     ) -> None:
         """
         Flushes the pending changes from the audit table for a given table and records them,
@@ -582,6 +583,9 @@ class FragmentManager(MetadataManager):
         :param new_schema_spec: New schema of the table (use the old table's schema by default).
         :param split_changeset: See `Repository.commit` for reference
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
+        :param in_fragment_order: Key to sort data inside each chunk by.
+        :param overwrite: Overwrite physical objects that already exist.
+        :param overlay_view: True if table is actually an overlay view for merging pending writes.
         """
 
         # TODO does the reasoning in the docstring actually make sense? If the point is to, say, for a query
@@ -962,7 +966,7 @@ class FragmentManager(MetadataManager):
         # We need to do multiple things here in a specific way to not tank the performance:
         #  * Chunk the table up ordering by PK (or potentially another chunk key in the future)
         #  * Run LTHash on added rows in every chunk
-        #  * Copy each chunk into a CStore table (adding ranges/bloom filter intex to it
+        #  * Copy each chunk into a CStore table (adding ranges/bloom filter index to it
         #    in the metadata).
         #
         # Chunking is very slow to do with
