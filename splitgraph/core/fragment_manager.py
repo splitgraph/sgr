@@ -571,7 +571,6 @@ class FragmentManager(MetadataManager):
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
-        overlay_view: bool = False,
     ) -> None:
         """
         Flushes the pending changes from the audit table for a given table and records them,
@@ -585,7 +584,6 @@ class FragmentManager(MetadataManager):
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :param in_fragment_order: Key to sort data inside each chunk by.
         :param overwrite: Overwrite physical objects that already exist.
-        :param overlay_view: True if table is actually an overlay view for merging pending writes.
         """
 
         # TODO does the reasoning in the docstring actually make sense? If the point is to, say, for a query
@@ -644,6 +642,138 @@ class FragmentManager(MetadataManager):
                 old_table.repository,
                 [(image_hash, old_table.table_name, new_schema_spec, old_table.objects)],
             )
+
+    def record_overlay_table_as_patch(
+        self,
+        old_table: "Table",
+        schema: str,
+        image_hash: str,
+        new_schema_spec: TableSchema = None,
+    ) -> None:
+        """
+        Flushes the pending changes from the staging (aka upper) table for a given overlay table (i.e. view) and records
+        them, registering the new objects.
+
+        :param old_table: Table object pointing to the current HEAD table
+        :param schema: Schema the table is checked out into.
+        :param image_hash: Image hash to store the table under
+        :param new_schema_spec: New schema of the table (use the old table's schema by default).
+        """
+        from splitgraph.hooks.data_source.base import SG_ROW_SEQ, WRITE_UPPER_PREFIX
+
+        upper_table = WRITE_UPPER_PREFIX + old_table.table_name
+        new_schema_spec = new_schema_spec or old_table.table_schema
+
+        pk_cols, non_pk_cols = self.object_engine.schema_spec_to_cols(new_schema_spec)
+        pk_cols_s = SQL(",").join(map(Identifier, pk_cols))
+        all_cols = SQL(",").join(Identifier(c.name) for c in new_schema_spec)
+
+        # Remove redundant rows in the object
+        object_select = (
+            # Group by the primary key and order by the row version
+            # for conflicting rows
+            SQL("WITH _sg_flattened AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY ")
+            + pk_cols_s
+            + SQL(" ORDER BY {0} DESC) AS _sg_row_order FROM {1}.{2}) SELECT ").format(
+                Identifier(SG_ROW_SEQ), Identifier(schema), Identifier(upper_table)
+            )
+            # Stage 3: select the latest versions of every PK.
+            + all_cols
+            + SQL(", ")
+            + Identifier(SG_UD_FLAG)
+            + SQL("FROM _sg_flattened WHERE _sg_row_order = 1 ORDER BY {0} ASC").format(
+                Identifier(SG_ROW_SEQ)
+            )
+        )
+
+        tmp_table = get_temporary_table_id()
+        self.object_engine.run_sql(
+            SQL("CREATE TEMPORARY TABLE {} AS (").format(Identifier(tmp_table))
+            + object_select
+            + SQL(")")
+        )
+
+        # Calculate the object ID, continue if there are deleted or inserted rows
+        schema_hash = self._calculate_schema_hash(new_schema_spec)
+
+        deletion_hash, rows_deleted = self.calculate_content_hash(
+            "pg_temp",
+            tmp_table,
+            new_schema_spec,
+            chunk_condition_sql=SQL("WHERE {} IS FALSE").format(Identifier(SG_UD_FLAG)),
+        )
+        insertion_hash, rows_inserted = self.calculate_content_hash(
+            "pg_temp",
+            tmp_table,
+            new_schema_spec,
+            chunk_condition_sql=SQL("WHERE {} IS TRUE").format(Identifier(SG_UD_FLAG)),
+        )
+
+        if rows_inserted != 0 or rows_deleted != 0:
+            content_hash = (insertion_hash - deletion_hash).hex()
+
+            object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
+
+            with self.object_engine.savepoint("object_rename"):
+                source_query = SQL("SELECT * FROM {}").format(Identifier(tmp_table))
+
+                try:
+                    self.object_engine.store_object(
+                        object_id=object_id,
+                        source_query=source_query,
+                        schema_spec=add_ud_flag_column(new_schema_spec),
+                        source_query_args=None,
+                    )
+                except UniqueViolation:
+                    logging.info(
+                        "Object %s already exists, continuing...",
+                        object_id,
+                    )
+
+            with self.metadata_engine.savepoint("object_register"):
+                try:
+                    # Register the object: this also indexes it and (in the case of our custom object
+                    # manager) marks it as external/uploads it to S3.
+                    self._register_object(
+                        object_id,
+                        namespace=old_table.repository.namespace,
+                        insertion_hash=content_hash,
+                        deletion_hash="0" * 64,
+                        table_schema=new_schema_spec,
+                        rows_inserted=rows_inserted,
+                        rows_deleted=0,
+                    )
+                except UniqueViolation:
+                    logging.info(
+                        "Object %s already exists, continuing...",
+                        object_id,
+                    )
+
+            self.register_tables(
+                old_table.repository,
+                [
+                    (
+                        image_hash,
+                        old_table.table_name,
+                        new_schema_spec,
+                        old_table.objects + [object_id],
+                    )
+                ],
+            )
+
+        # Truncate the upper table to prepare for the next write
+        self.object_engine.run_sql(
+            SQL("TRUNCATE TABLE {}.{}").format(Identifier(schema), Identifier(upper_table))
+        )
+        self.object_engine.run_sql(SQL("DROP TABLE {}").format(Identifier(tmp_table)))
+
+        # Finally, point the LQ FDW to the latest image to pick up the new changes after truncating the upper table
+        self.object_engine.run_sql(
+            SQL("ALTER SERVER {} OPTIONS (SET image_hash %s)").format(
+                Identifier(old_table.repository.lq_server_name()),
+            ),
+            (image_hash,),
+        )
 
     def split_changeset_boundaries(
         self, changeset: Changeset, change_key: List[Tuple[str, str]], objects: List[str]
@@ -727,7 +857,7 @@ class FragmentManager(MetadataManager):
         table_schema: Optional[TableSchema] = None,
         chunk_condition_sql: Optional[Composable] = None,
         chunk_condition_args: Optional[List[Any]] = None,
-    ) -> Tuple[str, int]:
+    ) -> Tuple[Digest, int]:
         """
         Calculates the homomorphic hash of table contents.
 
@@ -757,7 +887,7 @@ class FragmentManager(MetadataManager):
         )
 
         return (
-            reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex(),
+            reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests), Digest.empty()),
             len(row_digests),
         )
 
@@ -815,7 +945,9 @@ class FragmentManager(MetadataManager):
             tmp_object_id,
             table_schema,
         )
-        object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
+        object_id = (
+            "o" + sha256((content_hash.hex() + schema_hash).encode("ascii")).hexdigest()[:-2]
+        )
         try:
             # Check if the object metadata and the object files exist. Sometimes we might have
             # one but not the other, in which case we want to get out of this invalid state.
@@ -845,7 +977,7 @@ class FragmentManager(MetadataManager):
             self._register_object(
                 object_id,
                 namespace=namespace,
-                insertion_hash=content_hash,
+                insertion_hash=content_hash.hex(),
                 deletion_hash="0" * 64,
                 table_schema=table_schema,
                 extra_indexes=extra_indexes,

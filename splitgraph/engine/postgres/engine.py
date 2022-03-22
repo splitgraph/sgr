@@ -539,7 +539,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self._set_object_schema(object_id, schema_spec)
 
     @staticmethod
-    def _schema_spec_to_cols(schema_spec: "TableSchema") -> Tuple[List[str], List[str]]:
+    def schema_spec_to_cols(schema_spec: "TableSchema") -> Tuple[List[str], List[str]]:
         pk_cols = [p.name for p in schema_spec if p.is_pk]
         non_pk_cols = [p.name for p in schema_spec if not p.is_pk]
 
@@ -612,7 +612,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         schema_spec = schema_spec or self.get_full_table_schema(target_schema, target_table)
         # Assume that the target table already has the required schema (including PKs)
         # and use that to generate queries to apply fragments.
-        cols = self._schema_spec_to_cols(schema_spec)
+        cols = self.schema_spec_to_cols(schema_spec)
 
         if progress_every:
             batches = list(chunk(objects, chunk_size=progress_every))

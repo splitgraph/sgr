@@ -566,28 +566,32 @@ class Repository:
                     in_fragment_order=in_fragment_order.get(table),
                     overwrite=overwrite,
                 )
-            # Else, if the table has changed, look at the audit log/upper overlay table and store it as a delta.
             elif table in changed_tables:
-                self.objects.record_table_as_patch(
-                    table_info,
-                    schema,
-                    image_hash,
-                    new_schema_spec=new_schema,
-                    split_changeset=split_changeset,
-                    extra_indexes=extra_indexes.get(table),
-                    in_fragment_order=in_fragment_order.get(table),
-                    overwrite=overwrite,
-                    overlay_view=self.is_overlay_view(table),
-                )
+                # Else, if the table has changed, look at the audit log/upper overlay table and store it as a delta.
+                if not self.is_overlay_view(table):
+                    self.objects.record_table_as_patch(
+                        table_info,
+                        schema,
+                        image_hash,
+                        new_schema_spec=new_schema,
+                        split_changeset=split_changeset,
+                        extra_indexes=extra_indexes.get(table),
+                        in_fragment_order=in_fragment_order.get(table),
+                        overwrite=overwrite,
+                    )
+                # In case of overlay tables we store the changes in the upper table and need to use a separate mechanism
+                else:
+                    self.objects.record_overlay_table_as_patch(
+                        table_info,
+                        schema,
+                        image_hash,
+                        new_schema_spec=new_schema,
+                    )
             # If the table wasn't changed, point the image to the old table
             else:
                 self.objects.register_tables(
                     self, [(image_hash, table, new_schema, table_info.objects)]
                 )
-
-            if self.is_overlay_view(table):
-                # Re-initialize overlay for writing
-                init_write_overlay(self.object_engine, schema, table, new_schema)
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).

@@ -315,6 +315,10 @@ def prepare_new_image(
 def init_write_overlay(
     object_engine: "PostgresEngine", schema: str, table: str, table_schema: TableSchema
 ) -> None:
+
+    upper_table = WRITE_UPPER_PREFIX + table
+    lower_table = WRITE_LOWER_PREFIX + table
+
     # Create the "upper" table that actual writes will be recorded in (staging area for
     # new objects)
     object_engine.run_sql(
@@ -325,50 +329,52 @@ def init_write_overlay(
             "ALTER TABLE {0}.{1} ADD COLUMN {4} SERIAL;"
         ).format(
             Identifier(schema),
-            Identifier(WRITE_UPPER_PREFIX + table),
-            Identifier(WRITE_LOWER_PREFIX + table),
+            Identifier(upper_table),
+            Identifier(lower_table),
             Identifier(SG_UD_FLAG),
             Identifier(SG_ROW_SEQ),
         )
     )
 
-    columns = SQL(", ").join([Identifier(column.name) for column in table_schema])
+    pk_cols, _ = object_engine.schema_spec_to_cols(table_schema)
+    pk_cols_s = SQL(",").join(map(Identifier, pk_cols))
+    all_cols = SQL(",").join([Identifier(column.name) for column in table_schema])
 
     # Create a view to see the latest writes on reads to uncommited images
     object_engine.run_sql(
         SQL(
-            """DROP VIEW IF EXISTS {0}.{1};
-            CREATE VIEW {0}.{1} AS
-            WITH _sg_pending_writes AS (
-                SELECT {2}, {3}, max({3})
-                    FILTER (WHERE {4} IS FALSE)
-                    OVER (PARTITION BY {2}) AS _latest_delete_seq
-                FROM {0}.{5}
+            """DROP VIEW IF EXISTS {schema}.{table};
+            CREATE VIEW {schema}.{table} AS
+            WITH _sg_flattened AS (
+                SELECT DISTINCT ON ({pks})
+                    {all_cols}, {sg_ud_flag}
+                FROM {schema}.{upper}
+                ORDER BY {pks}, {sg_row_seq} DESC
             )
             
             -- Include rows from the base table that aren't overwritten
-            SELECT {2} FROM {0}.{6}
-            WHERE ({2}) NOT IN (
-                SELECT DISTINCT ON ({2})
-                    {2}
-                FROM {0}.{5}
+            SELECT {all_cols} FROM {schema}.{lower}
+            WHERE ({pks}) NOT IN (
+                SELECT DISTINCT ON ({pks})
+                    {all_cols}
+                FROM {schema}.{upper}
             )
             
             UNION ALL
             
-            -- Include all (potentially repeated) rows that were inserted or updated,
-            -- after the most recent deletion command
-            SELECT {2} FROM _sg_pending_writes
-            WHERE _latest_delete_seq IS NULL OR {3} > _latest_delete_seq;
+            -- Include all the upserted rows
+            SELECT {all_cols} FROM _sg_flattened
+            WHERE {sg_ud_flag} IS TRUE
         """
         ).format(
-            Identifier(schema),
-            Identifier(table),
-            columns,
-            Identifier(SG_ROW_SEQ),
-            Identifier(SG_UD_FLAG),
-            Identifier(WRITE_UPPER_PREFIX + table),
-            Identifier(WRITE_LOWER_PREFIX + table),
+            schema=Identifier(schema),
+            table=Identifier(table),
+            pks=pk_cols_s,
+            all_cols=all_cols,
+            lower=Identifier(lower_table),
+            upper=Identifier(upper_table),
+            sg_row_seq=Identifier(SG_ROW_SEQ),
+            sg_ud_flag=Identifier(SG_UD_FLAG),
         )
     )
 
@@ -404,6 +410,6 @@ CREATE TRIGGER {1} INSTEAD OF INSERT OR UPDATE OR DELETE ON {0}.{1}
         ).format(
             Identifier(schema),
             Identifier(table),
-            Identifier(WRITE_UPPER_PREFIX + table),
+            Identifier(upper_table),
         )
     )
