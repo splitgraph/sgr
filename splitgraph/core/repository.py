@@ -489,7 +489,6 @@ class Repository:
         from splitgraph.hooks.data_source.base import (
             WRITE_LOWER_PREFIX,
             WRITE_UPPER_PREFIX,
-            init_write_overlay,
         )
 
         schema = schema or self.to_schema()

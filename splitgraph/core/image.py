@@ -185,6 +185,7 @@ class Image(NamedTuple):
         # Circular import
         from splitgraph.hooks.data_source.base import (
             WRITE_LOWER_PREFIX,
+            WRITE_UPPER_PREFIX,
             init_write_overlay,
         )
         from splitgraph.hooks.data_source.fdw import init_fdw
@@ -210,7 +211,12 @@ class Image(NamedTuple):
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():
-            if only_tables and table_name not in only_tables:
+            if (
+                only_tables
+                and table_name not in only_tables
+                or table_name.startswith(WRITE_UPPER_PREFIX)
+                or table_name.startswith(WRITE_LOWER_PREFIX)
+            ):
                 continue
 
             logging.debug(
