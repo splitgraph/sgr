@@ -601,12 +601,24 @@ class Repository:
         """
         Detects if the repository has any pending changes (schema changes, table additions/deletions, content changes).
         """
+        from splitgraph.hooks.data_source.base import (
+            WRITE_LOWER_PREFIX,
+            WRITE_UPPER_PREFIX,
+        )
+
         head = self.head
         if not head:
             # If the repo isn't checked out, no point checking for changes.
             return False
         for table in self.object_engine.get_all_tables(self.to_schema()):
-            diff = self.diff(table, head.image_hash, None, aggregate=True)
+            if table.startswith(WRITE_LOWER_PREFIX) or table.startswith(WRITE_UPPER_PREFIX):
+                continue
+            elif self.is_overlay_view(table):
+                # TODO: fix LQ overlay diff
+                diff = None
+            else:
+                diff = self.diff(table, head.image_hash, None, aggregate=True)
+
             if diff != (0, 0, 0) and diff is not None:
                 return True
         return False

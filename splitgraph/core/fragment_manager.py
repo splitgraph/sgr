@@ -204,6 +204,11 @@ class Digest:
             tuple((left - right) & 0xFFFF for left, right in zip(self.shorts, other.shorts))
         )
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Digest):
+            return NotImplemented
+        return self.hex() == other.hex()
+
     def __neg__(self) -> "Digest":
         return Digest(tuple(-v & 0xFFFF for v in self.shorts))
 
