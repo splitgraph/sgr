@@ -7,7 +7,6 @@ import logging
 import re
 from contextlib import contextmanager
 from datetime import datetime
-from functools import lru_cache
 from io import TextIOWrapper
 from random import getrandbits
 from typing import (
@@ -1125,7 +1124,6 @@ class Repository:
         # TODO we can aggregate chunks in a similar way that LQ does it.
         return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
 
-    @lru_cache(maxsize=None)
     def is_overlay_view(self, table_name: str) -> bool:
         """
         Check whether the provided table is actually the write overlay mechanism, merging lower and upper/staging table.

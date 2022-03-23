@@ -355,9 +355,7 @@ def init_write_overlay(
             -- Include rows from the base table that aren't overwritten
             SELECT {all_cols} FROM {schema}.{lower}
             WHERE ({pks}) NOT IN (
-                SELECT DISTINCT ON ({pks})
-                    {all_cols}
-                FROM {schema}.{upper}
+                SELECT {pks} FROM {schema}.{upper}
             )
             
             UNION ALL
