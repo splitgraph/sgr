@@ -333,6 +333,8 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         expected_tables = [
             "_airbyte_raw_mushrooms",
             "_sg_ingestion_state",
+            "_sgov_lower__airbyte_raw_mushrooms",
+            "_sgov_upper__airbyte_raw_mushrooms",
             "mushrooms",
             # slowly changing dimension, used for incremental replication
             "mushrooms_scd",
@@ -343,6 +345,8 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         expected_tables = [
             "_airbyte_raw_mushrooms",
             "_sg_ingestion_state",
+            "_sgov_lower__airbyte_raw_mushrooms",
+            "_sgov_upper__airbyte_raw_mushrooms",
             "mushrooms",
         ]
 
@@ -366,6 +370,8 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         assert sorted(image.get_tables()) == [
             "_airbyte_raw_mushrooms",
             "_sg_ingestion_state",
+            "_sgov_lower__airbyte_raw_mushrooms",
+            "_sgov_upper__airbyte_raw_mushrooms",
             "mushrooms",
             "mushrooms_scd",
         ]
@@ -399,6 +405,8 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         assert sorted(image.get_tables()) == [
             "_airbyte_raw_mushrooms",
             "_sg_ingestion_state",
+            "_sgov_lower__airbyte_raw_mushrooms",
+            "_sgov_upper__airbyte_raw_mushrooms",
             "mushrooms",
         ]
         image.checkout()
@@ -467,6 +475,8 @@ def test_airbyte_mysql_source_custom_normalization(local_engine_empty):
     expected_tables = [
         "_airbyte_raw_mushrooms",
         "_sg_ingestion_state",
+        "_sgov_lower__airbyte_raw_mushrooms",
+        "_sgov_upper__airbyte_raw_mushrooms",
         "dim_mushrooms",
     ]
 
