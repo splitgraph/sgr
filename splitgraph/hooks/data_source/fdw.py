@@ -422,7 +422,10 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
                 if base_image:
                     try:
                         current_schema = base_image.get_table(table_name).table_schema
-                        if current_schema != new_schema:
+                        # Compare schemas ignoring ordinals/comments
+                        if [(c.name, c.pg_type, c.is_pk) for c in current_schema] != [
+                            (c.name, c.pg_type, c.is_pk) for c in new_schema
+                        ]:
                             raise AssertionError(
                                 "Schema for %s changed! Old: %s, new: %s"
                                 % (
