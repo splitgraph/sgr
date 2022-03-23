@@ -186,48 +186,46 @@ class DbSyncProxy(DbSync):
         # into a cstore_fdw file.
 
         assert self._sg_schema() == old_table.table_schema
-        with old_table.image.query_schema(commit=False):
-            # If hard_delete is set, check the sdc_removed_at flag in the table: if it's
-            # not NULL, we mark rows as deleted instead.
-            hard_delete = bool(self.connection_config.get("hard_delete"))
 
-            # Find PKs that have been upserted and deleted (make fake changeset)
-            changeset = _make_changeset(
-                self.image.object_engine,
-                "pg_temp",
-                temp_table,
-                old_table.table_schema,
-                upsert_condition="_sdc_removed_at IS NOT DISTINCT FROM NULL"
-                if hard_delete
-                else "TRUE",
-            )
+        # If hard_delete is set, check the sdc_removed_at flag in the table: if it's
+        # not NULL, we mark rows as deleted instead.
+        hard_delete = bool(self.connection_config.get("hard_delete"))
 
-            inserted = sum(1 for v in changeset.values() if v[0] and not v[1])
-            updated = sum(1 for v in changeset.values() if v[0] and v[1])
-            deleted = sum(1 for v in changeset.values() if not v[0])
-            self.logger.info(
-                "Table %s: inserted %d, updated %d, deleted %d",
-                get_table_name(self.stream_schema_message),
-                inserted,
-                updated,
-                deleted,
-            )
+        # Find PKs that have been upserted and deleted (make fake changeset)
+        changeset = _make_changeset(
+            self.image.object_engine,
+            "pg_temp",
+            temp_table,
+            old_table.table_schema,
+            upsert_condition="_sdc_removed_at IS NOT DISTINCT FROM NULL" if hard_delete else "TRUE",
+        )
 
-            # Split the changeset according to the original fragment boundaries so that a single
-            # change spanning multiple fragments doesn't force materialization.
-            split_changesets = self.image.repository.objects.split_changeset_boundaries(
-                changeset, get_change_key(old_table.table_schema), old_table.objects
-            )
-            self.logger.info(
-                "Table %s: split changeset into %d fragment(s)",
-                get_table_name(self.stream_schema_message),
-                len(split_changesets),
-            )
+        inserted = sum(1 for v in changeset.values() if v[0] and not v[1])
+        updated = sum(1 for v in changeset.values() if v[0] and v[1])
+        deleted = sum(1 for v in changeset.values() if not v[0])
+        self.logger.info(
+            "Table %s: inserted %d, updated %d, deleted %d",
+            get_table_name(self.stream_schema_message),
+            inserted,
+            updated,
+            deleted,
+        )
 
-            # Store the changeset as a new SG object
-            object_ids = self.image.repository.objects._store_changesets(
-                old_table, split_changesets, "pg_temp", table_name=temp_table
-            )
+        # Split the changeset according to the original fragment boundaries so that a single
+        # change spanning multiple fragments doesn't force materialization.
+        split_changesets = self.image.repository.objects.split_changeset_boundaries(
+            changeset, get_change_key(old_table.table_schema), old_table.objects
+        )
+        self.logger.info(
+            "Table %s: split changeset into %d fragment(s)",
+            get_table_name(self.stream_schema_message),
+            len(split_changesets),
+        )
+
+        # Store the changeset as a new SG object
+        object_ids = self.image.repository.objects._store_changesets(
+            old_table, split_changesets, "pg_temp", table_name=temp_table
+        )
 
         # Add the new object to the table.
         # add_table (called by register_tables) does that by default (appends

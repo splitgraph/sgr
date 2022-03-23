@@ -13,7 +13,6 @@ from click.testing import CliRunner
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
-from splitgraph.ingestion.singer.commandline import singer_target
 from splitgraph.ingestion.singer.data_source import (
     GenericSingerDataSource,
     MySQLSingerDataSource,

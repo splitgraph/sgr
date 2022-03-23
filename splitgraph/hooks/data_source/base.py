@@ -376,6 +376,18 @@ def init_write_overlay(
         )
     )
 
+    # Transfer comment from original table to the view
+    query = SQL("")
+    args = []
+    for col in table_schema:
+        if col.comment:
+            query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
+                Identifier(schema), Identifier(table), Identifier(col.name)
+            )
+            args.append(col.comment)
+    if len(args) > 0:
+        object_engine.run_sql(query, args)
+
     # Create a trigger
     object_engine.run_sql(
         SQL(
