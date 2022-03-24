@@ -396,14 +396,11 @@ def init_write_overlay(
     AS $$
 BEGIN
     IF OLD IS NOT NULL AND NEW IS NULL THEN
-        -- Delete
         INSERT INTO {0}.{2} VALUES (OLD.*, FALSE);
     ELSIF OLD IS NOT NULL AND NEW IS NOT NULL THEN
-        -- Update
         INSERT INTO {0}.{2} VALUES (OLD.*, FALSE);
         INSERT INTO {0}.{2} VALUES (NEW.*, TRUE);
-    ELSE
-        -- Insert
+    ELSIF OLD IS NULL AND NEW IS NOT NULL THEN
         INSERT INTO {0}.{2} VALUES (NEW.*, TRUE);
     END IF;
 
