@@ -486,17 +486,14 @@ class Repository:
                 previous objects belonging to the last revision.
             * Otherwise, the table is stored as a conflated (1 change per PK) patch.
         """
-        from splitgraph.hooks.data_source.base import (
-            WRITE_LOWER_PREFIX,
-            WRITE_UPPER_PREFIX,
-        )
+        from splitgraph.hooks.data_source.base import WRITE_UPPER_PREFIX
 
         schema = schema or self.to_schema()
         extra_indexes: Dict[str, ExtraIndexInfo] = extra_indexes or {}
         in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
         chunk_size = chunk_size or int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE"))
 
-        all_tables = self.object_engine.get_all_tables(schema)
+        all_tables = self.object_engine.get_all_tables(schema, include_overlay_components=False)
         tables = []
         changed_tables = self.object_engine.get_changed_tables(schema)
         tracked_tables = self.object_engine.get_tracked_tables()
@@ -532,9 +529,7 @@ class Repository:
                     table,
                 )
                 continue
-            elif not table.startswith(WRITE_UPPER_PREFIX) and not table.startswith(
-                WRITE_LOWER_PREFIX
-            ):
+            else:
                 # Tables of BASE TABLE or FOREIGN table type which are not part of an overlay
                 tables.append(table)
 
@@ -600,19 +595,15 @@ class Repository:
         """
         Detects if the repository has any pending changes (schema changes, table additions/deletions, content changes).
         """
-        from splitgraph.hooks.data_source.base import (
-            WRITE_LOWER_PREFIX,
-            WRITE_UPPER_PREFIX,
-        )
-
         head = self.head
         if not head:
             # If the repo isn't checked out, no point checking for changes.
             return False
-        for table in self.object_engine.get_all_tables(self.to_schema()):
-            if table.startswith(WRITE_LOWER_PREFIX) or table.startswith(WRITE_UPPER_PREFIX):
-                continue
-            elif self.is_overlay_view(table):
+
+        for table in self.object_engine.get_all_tables(
+            self.to_schema(), include_overlay_components=False
+        ):
+            if self.is_overlay_view(table):
                 # TODO: fix LQ overlay diff
                 diff = None
             else:

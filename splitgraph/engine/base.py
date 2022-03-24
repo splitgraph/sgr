@@ -214,15 +214,28 @@ class SQLEngine(ABC):
             return_shape=ResultShape.NONE,
         )
 
-    def get_all_tables(self, schema: str) -> List[str]:
-        """Get all tables in a given schema."""
+    def get_all_tables(self, schema: str, include_overlay_components: bool = True) -> List[str]:
+        """
+        Get all tables in a given schema.
+
+        :param schema: Schema to fetch the table from.
+        :param include_overlay_components: Controls whether to return upper and lower tables of on a overlay view.
+        """
+        from splitgraph.hooks.data_source.base import (
+            WRITE_LOWER_PREFIX,
+            WRITE_UPPER_PREFIX,
+        )
+
+        query = SQL("SELECT table_name FROM information_schema.tables WHERE table_schema = %s")
+        args = [schema]
+
+        if not include_overlay_components:
+            query += SQL(" AND table_name NOT LIKE ALL (ARRAY[%s, %s])")
+            args += [WRITE_LOWER_PREFIX + "%", WRITE_UPPER_PREFIX + "%"]
+
         return cast(
             List[str],
-            self.run_sql(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
-                (schema,),
-                return_shape=ResultShape.MANY_ONE,
-            ),
+            self.run_sql(query, args, return_shape=ResultShape.MANY_ONE),
         )
 
     def get_table_type(self, schema: str, table: str) -> Optional[str]:
