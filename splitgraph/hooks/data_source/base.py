@@ -340,7 +340,7 @@ def init_write_overlay(
     pk_cols_s = SQL(",").join(map(Identifier, pk_cols))
     all_cols = SQL(",").join([Identifier(column.name) for column in table_schema])
 
-    # Create a view to see the latest writes on reads to uncommited images
+    # Create a view to see the latest writes on reads to uncommitted images
     object_engine.run_sql(
         SQL(
             """DROP VIEW IF EXISTS {schema}.{table};
