@@ -742,11 +742,11 @@ class FragmentManager(MetadataManager):
                     self._register_object(
                         object_id,
                         namespace=old_table.repository.namespace,
-                        insertion_hash=content_hash,
-                        deletion_hash="0" * 64,
+                        insertion_hash=insertion_hash.hex(),
+                        deletion_hash=deletion_hash.hex(),
                         table_schema=new_schema_spec,
                         rows_inserted=rows_inserted,
-                        rows_deleted=0,
+                        rows_deleted=rows_deleted,
                     )
                 except UniqueViolation:
                     logging.info(

@@ -5,10 +5,14 @@ from splitgraph.hooks.data_source.base import WRITE_LOWER_PREFIX, WRITE_UPPER_PR
 
 def test_basic_writes_no_pks(pg_repo_local):
     table_name = "fruits"
-    pg_repo_local.head.checkout(layered=True)
+    head = pg_repo_local.head
+    head.checkout(layered=True)
 
     # Ensure that the table is now in the overlay/LQ mode
     assert pg_repo_local.is_overlay_view(table_name)
+
+    table = head.get_table(table_name)
+    assert len(table.objects) == 1
 
     #
     # Perform some basic writes and check overlay tables
@@ -66,7 +70,41 @@ def test_basic_writes_no_pks(pg_repo_local):
     # Commit the pending changes to a new image, and assert expected contents in overlay components
     #
 
-    pg_repo_local.commit()
+    new_head = pg_repo_local.commit()
+
+    # Ensure new image is a child of the original head
+    assert new_head.parent_id == head.image_hash
+
+    table = new_head.get_table(table_name)
+
+    # Ensure there is 1 new object
+    assert len(table.objects) == 2
+
+    # Ensure new object meta is expected
+    new_object = pg_repo_local.objects.get_object_meta([table.objects[1]])[table.objects[1]]
+    assert (
+        new_object.deletion_hash
+        == "928965083ebe4d9ec5c09b3686d42a7b96fa034b592ad72b96aa9aa8bf78976c"
+    )
+    assert (
+        new_object.insertion_hash
+        == "e743d2374b12cf458cc86fa0084b2f326dd137091d614092858f8cced5d862ad"
+    )
+    assert new_object.object_id == "od7426e7a54a2906204a6cbdc1050bf6f0e0bda631c07253de01fc280c687e5"
+    assert new_object.rows_deleted == 4
+    assert new_object.rows_inserted == 2
+
+    # Assert the diff contents are compressed
+    assert pg_repo_local.run_sql(
+        SQL("SELECT * FROM splitgraph_meta.{}").format(Identifier(new_object.object_id))
+    ) == [
+        (2, "orange", False),
+        (2, "mango", True),
+        (4, "pear", False),
+        (1, "apple", False),
+        (4, "watermelon", False),
+        (3, "banana", True),
+    ]
 
     # Assert that the lower table now has the new values
     assert pg_repo_local.run_sql(
