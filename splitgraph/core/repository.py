@@ -507,9 +507,9 @@ class Repository:
             # See `init_write_overlay` for more details.
 
             if self.is_overlay_view(table):
-                # Add the overlay view to the list of tables to process
+                # Add the overlay view to the list of tables to process.
                 tables.append(table)
-                # Add the overlay view to the tracked tables list
+                # Add the overlay view to the tracked tables list.
                 tracked_tables.append((schema, table))
 
                 table_not_empty = self.object_engine.run_sql(
@@ -519,7 +519,7 @@ class Repository:
                     return_shape=ResultShape.ONE_ONE,
                 )
                 if table_not_empty:
-                    # There are pending writes
+                    # There are pending writes.
                     changed_tables.append(table)
             elif self.object_engine.get_table_type(schema, table) == "VIEW":
                 logging.warning(
@@ -530,7 +530,7 @@ class Repository:
                 )
                 continue
             else:
-                # Tables of BASE TABLE or FOREIGN table type which are not part of an overlay
+                # Tables of BASE TABLE or FOREIGN table type which are not part of an overlay.
                 tables.append(table)
 
         for table in tables:
@@ -539,10 +539,16 @@ class Repository:
             except TableNotFoundError:
                 table_info = None
 
+            if self.is_overlay_view(table):
+                # Altering the schema is not allowed in the case of overlay views.
+                assert table_info is not None
+                new_schema = table_info.table_schema
+            else:
+                new_schema = self.object_engine.get_full_table_schema(schema, table)
+
             # Store as a full copy if this is a new table, there's been a schema change or we were told to.
             # Also store the full copy if the audit trigger on the table is missing: this indicates
             # that the table was dropped and recreated.
-            new_schema = self.object_engine.get_full_table_schema(schema, table)
             if (
                 not table_info
                 or snap_only
