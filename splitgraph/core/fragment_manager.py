@@ -448,38 +448,17 @@ class FragmentManager(MetadataManager):
 
             object_ids.append(object_id)
 
-            # Wrap this rename in a SAVEPOINT so that if the table already exists,
-            # the error doesn't roll back the whole transaction (us creating and registering all other objects).
-            with self.object_engine.savepoint("object_rename"):
-                source_query = SQL("SELECT * FROM {}.{}").format(
-                    Identifier("pg_temp"), Identifier(tmp_object_id)
-                )
-
-                if in_fragment_order:
-                    source_query += SQL(" ") + self._get_order_by_clause(
-                        in_fragment_order, table.table_schema
-                    )
-
-                try:
-                    self.object_engine.store_object(
-                        object_id=object_id,
-                        source_query=source_query,
-                        schema_spec=add_ud_flag_column(table.table_schema),
-                        overwrite=overwrite,
-                    )
-                except UniqueViolation:
-                    # Someone registered this object (perhaps a concurrent pull) already.
-                    logging.info(
-                        "Object %s for table %s/%s already exists, continuing...",
-                        object_id,
-                        table.repository,
-                        table.table_name,
-                    )
-                self.object_engine.delete_table("pg_temp", tmp_object_id)
-                # There are some cases where an object can already exist in the object engine (in the cache)
-                # but has been deleted from the metadata engine, so when it's recreated, we'll skip
-                # actually registering it. Hence, we still want to proceed trying to register
-                # it no matter what.
+            self._store_object_from_temp_table(
+                object_id,
+                tmp_object_id,
+                table,
+                in_fragment_order=in_fragment_order,
+                overwrite=overwrite,
+            )
+            # There are some cases where an object can already exist in the object engine (in the cache)
+            # but has been deleted from the metadata engine, so when it's recreated, we'll skip
+            # actually registering it. Hence, we still want to proceed trying to register
+            # it no matter what.
 
             # Same here: if we are being called as part of a commit and an object
             # already exists, we'll roll back everything that the caller has done
@@ -521,6 +500,53 @@ class FragmentManager(MetadataManager):
         schema_hash = self._calculate_schema_hash(table.table_schema)
         object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
         return deletion_hash, insertion_hash, object_id, rows_inserted, rows_deleted
+
+    def _store_object_from_temp_table(
+        self,
+        object_id: str,
+        tmp_table_id: str,
+        table: "Table",
+        in_fragment_order: Optional[List[str]] = None,
+        overwrite: bool = False,
+    ):
+        """
+        Persist an object by reading from a temporary source table.
+
+        :param object_id: The id of the object to be stored.
+        :param tmp_table_id: Temporary source table from which to load data.
+        :param table: Table object pointing to the current HEAD table.
+        :param in_fragment_order: Key to sort data inside each chunk by.
+        :param overwrite: Overwrite physical objects that already exist.
+        :return:
+        """
+        # Wrap this rename in a SAVEPOINT so that if the table already exists,
+        # the error doesn't roll back the whole transaction (us creating and registering all other objects).
+        with self.object_engine.savepoint("object_rename"):
+            source_query = SQL("SELECT * FROM {}.{}").format(
+                Identifier("pg_temp"), Identifier(tmp_table_id)
+            )
+
+            if in_fragment_order:
+                source_query += SQL(" ") + self._get_order_by_clause(
+                    in_fragment_order, table.table_schema
+                )
+
+            try:
+                self.object_engine.store_object(
+                    object_id=object_id,
+                    source_query=source_query,
+                    schema_spec=add_ud_flag_column(table.table_schema),
+                    overwrite=overwrite,
+                )
+            except UniqueViolation:
+                # Someone registered this object (perhaps a concurrent pull) already.
+                logging.info(
+                    "Object %s for table %s/%s already exists, continuing...",
+                    object_id,
+                    table.repository,
+                    table.table_name,
+                )
+            self.object_engine.delete_table("pg_temp", tmp_table_id)
 
     def _store_changeset(
         self, sub_changeset: Any, table: str, schema: str, table_schema: TableSchema
@@ -699,7 +725,9 @@ class FragmentManager(MetadataManager):
 
         tmp_table = get_temporary_table_id()
         self.object_engine.run_sql(
-            SQL("CREATE TEMPORARY TABLE {} AS (").format(Identifier(tmp_table))
+            SQL("CREATE TEMPORARY TABLE {}.{} AS (").format(
+                Identifier("pg_temp"), Identifier(tmp_table)
+            )
             + object_select
             + SQL(")")
         )
@@ -725,27 +753,13 @@ class FragmentManager(MetadataManager):
 
             object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
 
-            with self.object_engine.savepoint("object_rename"):
-                source_query = SQL("SELECT * FROM {}").format(Identifier(tmp_table))
-
-                if in_fragment_order:
-                    source_query += SQL(" ") + self._get_order_by_clause(
-                        in_fragment_order, old_table.table_schema
-                    )
-
-                try:
-                    self.object_engine.store_object(
-                        object_id=object_id,
-                        source_query=source_query,
-                        schema_spec=add_ud_flag_column(new_schema_spec),
-                        source_query_args=None,
-                        overwrite=overwrite,
-                    )
-                except UniqueViolation:
-                    logging.info(
-                        "Object %s already exists, continuing...",
-                        object_id,
-                    )
+            self._store_object_from_temp_table(
+                object_id,
+                tmp_table,
+                old_table,
+                in_fragment_order=in_fragment_order,
+                overwrite=overwrite,
+            )
 
             with self.metadata_engine.savepoint("object_register"):
                 try:
@@ -783,7 +797,6 @@ class FragmentManager(MetadataManager):
         self.object_engine.run_sql(
             SQL("TRUNCATE TABLE {}.{}").format(Identifier(schema), Identifier(upper_table))
         )
-        self.object_engine.run_sql(SQL("DROP TABLE {}").format(Identifier(tmp_table)))
 
         # Finally, point the LQ FDW to the latest image to pick up the new changes after truncating the upper table
         self.object_engine.run_sql(
