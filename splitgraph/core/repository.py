@@ -585,6 +585,9 @@ class Repository:
                         schema,
                         image_hash,
                         new_schema_spec=new_schema,
+                        extra_indexes=extra_indexes.get(table),
+                        in_fragment_order=in_fragment_order.get(table),
+                        overwrite=overwrite,
                     )
             # If the table wasn't changed, point the image to the old table
             else:

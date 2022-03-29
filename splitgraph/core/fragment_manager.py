@@ -654,15 +654,21 @@ class FragmentManager(MetadataManager):
         schema: str,
         image_hash: str,
         new_schema_spec: TableSchema = None,
+        extra_indexes: Optional[ExtraIndexInfo] = None,
+        in_fragment_order: Optional[List[str]] = None,
+        overwrite: bool = False,
     ) -> None:
         """
         Flushes the pending changes from the staging (aka upper) table for a given overlay table (i.e. view) and records
         them, registering the new objects.
 
-        :param old_table: Table object pointing to the current HEAD table
+        :param old_table: Table object pointing to the current HEAD table (actually a view)
         :param schema: Schema the table is checked out into.
         :param image_hash: Image hash to store the table under
         :param new_schema_spec: New schema of the table (use the old table's schema by default).
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
+        :param in_fragment_order: Key to sort data inside each chunk by.
+        :param overwrite: Overwrite physical objects that already exist.
         """
         from splitgraph.hooks.data_source.base import SG_ROW_SEQ, WRITE_UPPER_PREFIX
 
@@ -722,12 +728,18 @@ class FragmentManager(MetadataManager):
             with self.object_engine.savepoint("object_rename"):
                 source_query = SQL("SELECT * FROM {}").format(Identifier(tmp_table))
 
+                if in_fragment_order:
+                    source_query += SQL(" ") + self._get_order_by_clause(
+                        in_fragment_order, old_table.table_schema
+                    )
+
                 try:
                     self.object_engine.store_object(
                         object_id=object_id,
                         source_query=source_query,
                         schema_spec=add_ud_flag_column(new_schema_spec),
                         source_query_args=None,
+                        overwrite=overwrite,
                     )
                 except UniqueViolation:
                     logging.info(
@@ -745,6 +757,7 @@ class FragmentManager(MetadataManager):
                         insertion_hash=insertion_hash.hex(),
                         deletion_hash=deletion_hash.hex(),
                         table_schema=new_schema_spec,
+                        extra_indexes=extra_indexes,
                         rows_inserted=rows_inserted,
                         rows_deleted=rows_deleted,
                     )
