@@ -12,7 +12,6 @@ from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.image_mounting import DefaultImageMounter, ImageMounter
 from splitgraph.core.repository import Repository
-from splitgraph.core.table import Table
 from splitgraph.core.types import (
     Credentials,
     IntrospectionResult,
