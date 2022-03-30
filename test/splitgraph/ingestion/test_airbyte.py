@@ -333,8 +333,6 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         expected_tables = [
             "_airbyte_raw_mushrooms",
             "_sg_ingestion_state",
-            "_sgov_lower__airbyte_raw_mushrooms",
-            "_sgov_upper__airbyte_raw_mushrooms",
             "mushrooms",
             # slowly changing dimension, used for incremental replication
             "mushrooms_scd",
@@ -345,8 +343,6 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         expected_tables = [
             "_airbyte_raw_mushrooms",
             "_sg_ingestion_state",
-            "_sgov_lower__airbyte_raw_mushrooms",
-            "_sgov_upper__airbyte_raw_mushrooms",
             "mushrooms",
         ]
 
@@ -370,8 +366,6 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         assert sorted(image.get_tables()) == [
             "_airbyte_raw_mushrooms",
             "_sg_ingestion_state",
-            "_sgov_lower__airbyte_raw_mushrooms",
-            "_sgov_upper__airbyte_raw_mushrooms",
             "mushrooms",
             "mushrooms_scd",
         ]
@@ -383,12 +377,7 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         # Check the table lengths are all the same (including the raw tables, since we used the
         # ingestion state to make sure the source didn't output more raw data)
         for table in image.get_tables():
-            if table == "_sg_ingestion_state":
-                expected_rows = 1
-            elif table == "_sgov_upper__airbyte_raw_mushrooms":
-                expected_rows = 0
-            else:
-                expected_rows = 2
+            expected_rows = 1 if table == "_sg_ingestion_state" else 2
 
             assert (
                 repo.run_sql(
@@ -411,8 +400,6 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         assert sorted(image.get_tables()) == [
             "_airbyte_raw_mushrooms",
             "_sg_ingestion_state",
-            "_sgov_lower__airbyte_raw_mushrooms",
-            "_sgov_upper__airbyte_raw_mushrooms",
             "mushrooms",
         ]
         image.checkout()
@@ -481,8 +468,6 @@ def test_airbyte_mysql_source_custom_normalization(local_engine_empty):
     expected_tables = [
         "_airbyte_raw_mushrooms",
         "_sg_ingestion_state",
-        "_sgov_lower__airbyte_raw_mushrooms",
-        "_sgov_upper__airbyte_raw_mushrooms",
         "dim_mushrooms",
     ]
 
