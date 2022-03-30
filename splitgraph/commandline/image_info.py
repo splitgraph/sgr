@@ -65,9 +65,7 @@ def log_c(image_spec, tree):
 
 def _get_all_tables(repository: "Repository", image_hash: Optional[str]):
     if image_hash is None:
-        return repository.engine.get_all_tables(
-            repository.to_schema(), include_overlay_components=False
-        )
+        return repository.engine.get_all_tables(repository.to_schema())
     return repository.images[image_hash].get_tables()
 
 

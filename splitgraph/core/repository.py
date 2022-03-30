@@ -493,7 +493,7 @@ class Repository:
         in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
         chunk_size = chunk_size or int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE"))
 
-        all_tables = self.object_engine.get_all_tables(schema, include_overlay_components=False)
+        all_tables = self.object_engine.get_all_tables(schema)
         tables = []
         changed_tables = self.object_engine.get_changed_tables(schema)
         tracked_tables = self.object_engine.get_tracked_tables()
@@ -609,9 +609,7 @@ class Repository:
             # If the repo isn't checked out, no point checking for changes.
             return False
 
-        for table in self.object_engine.get_all_tables(
-            self.to_schema(), include_overlay_components=False
-        ):
+        for table in self.object_engine.get_all_tables(self.to_schema()):
             if self.is_overlay_view(table):
                 # TODO: fix LQ overlay diff
                 diff = None

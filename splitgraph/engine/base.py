@@ -214,7 +214,7 @@ class SQLEngine(ABC):
             return_shape=ResultShape.NONE,
         )
 
-    def get_all_tables(self, schema: str, include_overlay_components: bool = True) -> List[str]:
+    def get_all_tables(self, schema: str, include_overlay_components: bool = False) -> List[str]:
         """
         Get all tables in a given schema.
 
