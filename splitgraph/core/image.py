@@ -207,6 +207,7 @@ class Image(NamedTuple):
                 "repository": self.repository.repository,
                 "image_hash": self.image_hash,
             },
+            overwrite=False,
         )
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
@@ -258,6 +259,8 @@ class Image(NamedTuple):
             yield tmp_schema
         finally:
             unmount_schema(self.object_engine, tmp_schema)
+            if commit:
+                self.object_engine.commit()  # Ensure cleanup is done
 
     def tag(self, tag: str) -> None:
         """
