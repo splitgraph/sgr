@@ -69,11 +69,6 @@ class Image(NamedTuple):
             return NotImplemented
         return self.image_hash == other.image_hash and self.repository == other.repository
 
-    def lq_server_name(self, target_schema: Optional[str] = None) -> str:
-        """The name of the foreign server used in the layered querying checkout mode"""
-        target_schema = target_schema or self.repository.to_schema()
-        return f"{target_schema}:{self.image_hash[:8]}_lq_srv"[:63]
-
     def get_parent_children(self) -> Tuple[Optional[str], List[str]]:
         """Gets the parent and a list of children of a given image."""
         parent = self.parent_id
@@ -196,7 +191,7 @@ class Image(NamedTuple):
         from splitgraph.hooks.data_source.fdw import init_fdw
 
         target_schema = target_schema or self.repository.to_schema()
-        server_id = self.lq_server_name()
+        server_id = self.repository.lq_server_name()
         engine = self.repository.engine
         object_engine = self.repository.object_engine
 
@@ -212,6 +207,7 @@ class Image(NamedTuple):
                 "repository": self.repository.repository,
                 "image_hash": self.image_hash,
             },
+            overwrite=False,
         )
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
