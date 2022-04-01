@@ -430,7 +430,7 @@ def _emit_repository_data(repositories, engine):
             if (
                 engine.run_sql(
                     "SELECT 1 FROM pg_foreign_server WHERE srvname = %s",
-                    (repo.lq_server_name()[:63],),
+                    (repo.lq_server_name(),),
                     return_shape=ResultShape.ONE_ONE,
                 )
                 is not None
