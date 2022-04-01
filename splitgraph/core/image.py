@@ -207,7 +207,6 @@ class Image(NamedTuple):
                 "repository": self.repository.repository,
                 "image_hash": self.image_hash,
             },
-            overwrite=False,
         )
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
