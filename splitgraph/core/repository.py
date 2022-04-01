@@ -151,10 +151,6 @@ class Repository:
         """Returns the engine schema that this repository gets checked out into."""
         return self.namespace + "/" + self.repository if self.namespace else self.repository
 
-    def lq_server_name(self) -> str:
-        """The name of the foreign server used in the layered querying checkout mode"""
-        return f"{self.to_schema()}_lq_checkout_server"
-
     def __repr__(self) -> str:
         repr = "Repository %s on %s" % (self.to_schema(), self.engine.name)
         if self.engine != self.object_engine:

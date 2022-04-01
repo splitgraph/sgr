@@ -426,11 +426,12 @@ def _emit_repository_data(repositories, engine):
         metadata_size = pretty_size(repo.get_size())
         actual_size = pretty_size(repo.get_local_size())
         if head:
+            lq_server_name = head.lq_server_name()
             head = head.image_hash[:10]
             if (
                 engine.run_sql(
                     "SELECT 1 FROM pg_foreign_server WHERE srvname = %s",
-                    (repo.lq_server_name()[:63],),
+                    (lq_server_name,),
                     return_shape=ResultShape.ONE_ONE,
                 )
                 is not None

@@ -801,7 +801,7 @@ class FragmentManager(MetadataManager):
         # Finally, point the LQ FDW to the latest image to pick up the new changes after truncating the upper table
         self.object_engine.run_sql(
             SQL("ALTER SERVER {} OPTIONS (SET image_hash %s)").format(
-                Identifier(old_table.repository.lq_server_name()),
+                Identifier(old_table.repository.images.by_hash(image_hash).lq_server_name()),
             ),
             (image_hash,),
         )
