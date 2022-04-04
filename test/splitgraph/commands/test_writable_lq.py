@@ -5,7 +5,7 @@ from test.splitgraph.conftest import prepare_lq_repo
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.hooks.data_source.base import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
+from splitgraph.core.overlay import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
 
 
 def test_basic_writes_no_pks(pg_repo_local):

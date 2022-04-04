@@ -34,6 +34,7 @@ from splitgraph.config.config import get_singleton
 from splitgraph.core.fragment_manager import ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
+from splitgraph.core.overlay import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
 from splitgraph.core.table import Table
 from splitgraph.core.types import TableSchema, parse_repository
 from splitgraph.engine.postgres.engine import PostgresEngine
@@ -486,8 +487,6 @@ class Repository:
                 previous objects belonging to the last revision.
             * Otherwise, the table is stored as a conflated (1 change per PK) patch.
         """
-        from splitgraph.hooks.data_source.base import WRITE_UPPER_PREFIX
-
         schema = schema or self.to_schema()
         extra_indexes: Dict[str, ExtraIndexInfo] = extra_indexes or {}
         in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
@@ -1137,20 +1136,11 @@ class Repository:
         """
         Check whether the provided table is actually the write overlay mechanism, merging lower and upper/staging table.
         """
-        from splitgraph.hooks.data_source.base import (
-            WRITE_LOWER_PREFIX,
-            WRITE_UPPER_PREFIX,
+        return (
+            self.object_engine.get_table_type(self.to_schema(), table_name) == "VIEW"
+            and self.object_engine.table_exists(self.to_schema(), WRITE_LOWER_PREFIX + table_name)
+            and self.object_engine.table_exists(self.to_schema(), WRITE_UPPER_PREFIX + table_name)
         )
-
-        is_view = self.object_engine.get_table_type(self.to_schema(), table_name) == "VIEW"
-        lower_table_exists = self.object_engine.table_exists(
-            self.to_schema(), WRITE_LOWER_PREFIX + table_name
-        )
-        upper_table_exists = self.object_engine.table_exists(
-            self.to_schema(), WRITE_UPPER_PREFIX + table_name
-        )
-
-        return is_view and lower_table_exists and upper_table_exists
 
 
 def import_table_from_remote(

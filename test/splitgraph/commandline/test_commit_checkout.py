@@ -1,8 +1,8 @@
 from click.testing import CliRunner
 
 from splitgraph.commandline import checkout_c, commit_c, sql_c, tag_c
+from splitgraph.core.overlay import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
 from splitgraph.engine.config import get_engine
-from splitgraph.hooks.data_source.base import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
 
 
 def test_commandline_commit_chunk(pg_repo_local):

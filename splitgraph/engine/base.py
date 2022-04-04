@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union, 
 
 from psycopg2.sql import SQL, Composed, Identifier
 
+from splitgraph.core.overlay import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape
 
@@ -221,11 +222,6 @@ class SQLEngine(ABC):
         :param schema: Schema to fetch the table from.
         :param include_overlay_components: Controls whether to return upper and lower tables of on a overlay view.
         """
-        from splitgraph.hooks.data_source.base import (
-            WRITE_LOWER_PREFIX,
-            WRITE_UPPER_PREFIX,
-        )
-
         query = SQL("SELECT table_name FROM information_schema.tables WHERE table_schema = %s")
         args = [schema]
 

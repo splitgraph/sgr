@@ -29,6 +29,7 @@ from splitgraph.config import (
 from splitgraph.core.indexing.bloom import filter_bloom_index, generate_bloom_index
 from splitgraph.core.indexing.range import filter_range_index, generate_range_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
+from splitgraph.core.overlay import SG_ROW_SEQ, WRITE_UPPER_PREFIX
 from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import (
@@ -508,7 +509,7 @@ class FragmentManager(MetadataManager):
         table: "Table",
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
-    ):
+    ) -> None:
         """
         Persist an object by reading from a temporary source table.
 
@@ -696,8 +697,6 @@ class FragmentManager(MetadataManager):
         :param in_fragment_order: Key to sort data inside each chunk by.
         :param overwrite: Overwrite physical objects that already exist.
         """
-        from splitgraph.hooks.data_source.base import SG_ROW_SEQ, WRITE_UPPER_PREFIX
-
         upper_table = WRITE_UPPER_PREFIX + old_table.table_name
         new_schema_spec = new_schema_spec or old_table.table_schema
 

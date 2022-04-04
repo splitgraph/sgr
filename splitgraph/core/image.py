@@ -25,6 +25,7 @@ from splitgraph.config import (
     SPLITGRAPH_META_SCHEMA,
 )
 from splitgraph.config.config import get_singleton
+from splitgraph.core.overlay import WRITE_LOWER_PREFIX, init_write_overlay
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 
@@ -183,11 +184,6 @@ class Image(NamedTuple):
         # Use a per-schema "foreign server" for layered queries for now
 
         # Circular import
-        from splitgraph.hooks.data_source.base import (
-            WRITE_LOWER_PREFIX,
-            WRITE_UPPER_PREFIX,
-            init_write_overlay,
-        )
         from splitgraph.hooks.data_source.fdw import init_fdw
 
         target_schema = target_schema or self.repository.to_schema()
@@ -211,12 +207,7 @@ class Image(NamedTuple):
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():
-            if (
-                only_tables
-                and table_name not in only_tables
-                or table_name.startswith(WRITE_UPPER_PREFIX)
-                or table_name.startswith(WRITE_LOWER_PREFIX)
-            ):
+            if only_tables and table_name not in only_tables:
                 continue
 
             logging.debug(
