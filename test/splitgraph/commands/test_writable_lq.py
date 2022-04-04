@@ -224,17 +224,17 @@ def test_basic_writes_with_pks(pg_repo_local):
     assert len(table.objects) == 3
 
     # Ensure new object meta is expected
-    new_object = pg_repo_local.objects.get_object_meta([table.objects[1]])[table.objects[1]]
+    new_object = pg_repo_local.objects.get_object_meta([table.objects[2]])[table.objects[2]]
     assert (
         new_object.deletion_hash
-        == "6cff103efa7f4ca3a30d90879c52206a5768ea905434bef8fe8b5329cce10e32"
+        == "11f17be49aa6c3f1e0d2baf392f479bb2e2e07367813e029ec630365ea3ecb44"
     )
     assert (
         new_object.insertion_hash
-        == "9816bc7a903f80be292381953494ca489065405f4473a516c34e173fc22187e7"
+        == "f2ec1445b0d83097e7ce53ef97ad7e3fb514c0f9468ea05bfd9cef18aa51c150"
     )
-    assert new_object.object_id == "o91ac712e4f3b96d7ef00a803ad428c4b17b509877ff076e5247c518a0ae926"
-    assert new_object.rows_deleted == 2
+    assert new_object.object_id == "of42086b04801158510d67a7feafda0900dfe895dcce135c7f2c8add42082ab"
+    assert new_object.rows_deleted == 3
     assert new_object.rows_inserted == 2
 
     # Assert the diff contents are compressed
@@ -243,9 +243,11 @@ def test_basic_writes_with_pks(pg_repo_local):
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier(new_object.object_id)
         )
     ) == [
-        (3, "mayonnaise", Decimal("1"), datetime.datetime(2019, 1, 1, 12, 0), True),
-        (2, "guitar", Decimal("1"), datetime.datetime(2019, 1, 1, 12, 0), True),
-        (1, None, None, None, False),  # TODO: what's this?
+        (3, "banana", Decimal("1"), datetime.datetime(2022, 1, 1, 12, 0), True),
+        (4, "pear", Decimal("2"), datetime.datetime(2022, 1, 1, 12, 0), False),
+        (5, "pear", Decimal("100"), datetime.datetime(2022, 1, 1, 12, 0), True),
+        (2, "mango", Decimal("1"), datetime.datetime(2019, 1, 1, 12, 0), False),
+        (6, "watermelon", Decimal("4"), datetime.datetime(2022, 1, 1, 12, 0), False),
     ]
 
     # Assert that the lower table now has the new values
