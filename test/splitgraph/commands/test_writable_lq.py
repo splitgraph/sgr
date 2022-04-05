@@ -135,6 +135,40 @@ def test_basic_writes_no_pks(pg_repo_local):
         (3, "banana"),
     ]
 
+    #
+    # Lastly, ensure that the vegetables table/object has not been changed in any way
+    #
+
+    assert pg_repo_local.run_sql("SELECT * FROM vegetables") == [
+        (1, "potato"),
+        (2, "carrot"),
+    ]
+
+    table = new_head.get_table("vegetables")
+    assert len(table.objects) == 1
+
+    latest_object = pg_repo_local.objects.get_object_meta([table.objects[-1]])[table.objects[-1]]
+    assert (
+        latest_object.deletion_hash
+        == "0000000000000000000000000000000000000000000000000000000000000000"
+    )
+    assert (
+        latest_object.insertion_hash
+        == "a276ab48c95f161ea7b3a05fba7c2eda03c533a1bb5453e6de1ac66576e6fb8c"
+    )
+    assert (
+        latest_object.object_id == "ob474d04a80c611fc043e8303517ac168444dc7518af60e4ccc56b3b0986470"
+    )
+    assert latest_object.rows_deleted == 0
+    assert latest_object.rows_inserted == 2
+
+    # Assert the diff contents are compressed
+    assert pg_repo_local.run_sql(
+        SQL("SELECT * FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(latest_object.object_id)
+        )
+    ) == [(1, "potato", True), (2, "carrot", True)]
+
 
 def test_basic_writes_with_pks(pg_repo_local):
     table_name = "fruits"
@@ -271,3 +305,37 @@ def test_basic_writes_with_pks(pg_repo_local):
         (3, "banana", Decimal("1"), datetime.datetime(2022, 1, 1, 12, 0)),
         (5, "pear", Decimal("100"), datetime.datetime(2022, 1, 1, 12, 0)),
     ]
+
+    #
+    # Lastly, ensure that the vegetables table/object has not been changed in any way
+    #
+
+    assert pg_repo_local.run_sql("SELECT * FROM vegetables") == [
+        (2, "carrot"),
+        (3, "celery"),
+    ]
+
+    table = new_head.get_table("vegetables")
+    assert len(table.objects) == 2
+
+    latest_object = pg_repo_local.objects.get_object_meta([table.objects[-1]])[table.objects[-1]]
+    assert (
+        latest_object.deletion_hash
+        == "3610f29d91ac88766ecec7faeb389832e0228f2bc5f37d1bfcf5cce3fd4b6e29"
+    )
+    assert (
+        latest_object.insertion_hash
+        == "f674879fae139c98bdbb9b8457f3a84bb7362bee9f655012d9bcc57757a5d765"
+    )
+    assert (
+        latest_object.object_id == "of42d8f0637c9a9dfeda7e67a7775f1e99e94de09b9ddc17f1be622591ed196"
+    )
+    assert latest_object.rows_deleted == 1
+    assert latest_object.rows_inserted == 1
+
+    # Assert the diff contents are compressed
+    assert pg_repo_local.run_sql(
+        SQL("SELECT * FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(latest_object.object_id)
+        )
+    ) == [(3, "celery", True), (1, None, False)]
