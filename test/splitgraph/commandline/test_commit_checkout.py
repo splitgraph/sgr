@@ -1,6 +1,7 @@
 from click.testing import CliRunner
 
 from splitgraph.commandline import checkout_c, commit_c, sql_c, tag_c
+from splitgraph.core.overlay import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
 from splitgraph.engine.config import get_engine
 
 
@@ -180,4 +181,12 @@ def test_commandline_lq_checkout(pg_repo_local):
     assert result.exit_code == 0
     assert pg_repo_local.head is not None
     assert get_engine().schema_exists(str(pg_repo_local))
-    assert get_engine().get_table_type(str(pg_repo_local), "fruits") in ("FOREIGN TABLE", "FOREIGN")
+    assert get_engine().get_table_type(str(pg_repo_local), "fruits") == "VIEW"
+    assert get_engine().get_table_type(str(pg_repo_local), WRITE_LOWER_PREFIX + "fruits") in (
+        "FOREIGN TABLE",
+        "FOREIGN",
+    )
+    assert (
+        get_engine().get_table_type(str(pg_repo_local), WRITE_UPPER_PREFIX + "fruits")
+        == "BASE TABLE"
+    )

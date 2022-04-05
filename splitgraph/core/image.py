@@ -25,6 +25,7 @@ from splitgraph.config import (
     SPLITGRAPH_META_SCHEMA,
 )
 from splitgraph.config.config import get_singleton
+from splitgraph.core.overlay import WRITE_LOWER_PREFIX, init_write_overlay
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 
@@ -186,7 +187,7 @@ class Image(NamedTuple):
         from splitgraph.hooks.data_source.fdw import init_fdw
 
         target_schema = target_schema or self.repository.to_schema()
-        server_id = "%s_lq_checkout_server" % target_schema
+        server_id = self.repository.lq_server_name(target_schema)
         engine = self.repository.engine
         object_engine = self.repository.object_engine
 
@@ -216,7 +217,13 @@ class Image(NamedTuple):
                 table_name,
                 target_schema,
             )
-            self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
+            table = self.get_table(table_name)
+            table.materialize(WRITE_LOWER_PREFIX + table_name, target_schema, lq_server=server_id)
+
+            # Add overlay for writing
+            init_write_overlay(object_engine, target_schema, table_name, table.table_schema)
+
+        object_engine.commit()
 
     @contextmanager
     def query_schema(
@@ -242,6 +249,8 @@ class Image(NamedTuple):
             yield tmp_schema
         finally:
             unmount_schema(self.object_engine, tmp_schema)
+            if commit:
+                self.object_engine.commit()  # Ensure cleanup is done
 
     def tag(self, tag: str) -> None:
         """

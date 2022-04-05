@@ -88,6 +88,7 @@ def manage_audit_triggers(
         for r, head in get_current_repositories(engine)
         if head is not None
         for t in set(object_engine.get_all_tables(r.to_schema())) & set(head.get_tables())
+        if not r.is_overlay_view(t)
     ]
     tracked_tables = object_engine.get_tracked_tables()
 

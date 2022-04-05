@@ -378,6 +378,7 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
         # ingestion state to make sure the source didn't output more raw data)
         for table in image.get_tables():
             expected_rows = 1 if table == "_sg_ingestion_state" else 2
+
             assert (
                 repo.run_sql(
                     SQL("SELECT COUNT(1) FROM {}").format(Identifier(table)),

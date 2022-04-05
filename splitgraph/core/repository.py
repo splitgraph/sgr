@@ -34,6 +34,7 @@ from splitgraph.config.config import get_singleton
 from splitgraph.core.fragment_manager import ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
+from splitgraph.core.overlay import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
 from splitgraph.core.table import Table
 from splitgraph.core.types import TableSchema, parse_repository
 from splitgraph.engine.postgres.engine import PostgresEngine
@@ -150,6 +151,10 @@ class Repository:
     def to_schema(self) -> str:
         """Returns the engine schema that this repository gets checked out into."""
         return self.namespace + "/" + self.repository if self.namespace else self.repository
+
+    def lq_server_name(self, target_schema: Optional[str] = None) -> str:
+        """The name of the foreign server used in the layered querying checkout mode"""
+        return f"{target_schema or self.to_schema()}_lq_checkout_server"[:63]
 
     def __repr__(self) -> str:
         repr = "Repository %s on %s" % (self.to_schema(), self.engine.name)
@@ -487,11 +492,35 @@ class Repository:
         in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
         chunk_size = chunk_size or int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE"))
 
+        all_tables = self.object_engine.get_all_tables(schema)
+        tables = []
         changed_tables = self.object_engine.get_changed_tables(schema)
         tracked_tables = self.object_engine.get_tracked_tables()
 
-        for table in self.object_engine.get_all_tables(schema):
-            if self.object_engine.get_table_type(schema, table) == "VIEW":
+        # Filter eligible tables for persisting
+        for table in all_tables:
+            # In the case of LQ checkout, we do not keep track of the changes via the audit triggers
+            # but instead use the upper/lower table mechanism with a view on top to merge the latest writes.
+            # Consequently, we cannot include internal overlay tables in the list of all tables, and must populate
+            # changed and tracked tables in a proper manner.
+            # See `init_write_overlay` for more details.
+
+            if self.is_overlay_view(table):
+                # Add the overlay view to the list of tables to process.
+                tables.append(table)
+                # Add the overlay view to the tracked tables list.
+                tracked_tables.append((schema, table))
+
+                table_not_empty = self.object_engine.run_sql(
+                    SQL("SELECT EXISTS(SELECT 1 FROM {}.{})").format(
+                        Identifier(schema), Identifier(WRITE_UPPER_PREFIX + table)
+                    ),
+                    return_shape=ResultShape.ONE_ONE,
+                )
+                if table_not_empty:
+                    # There are pending writes.
+                    changed_tables.append(table)
+            elif self.object_engine.get_table_type(schema, table) == "VIEW":
                 logging.warning(
                     "Table %s.%s is a view. Splitgraph currently doesn't "
                     "support views and this table will not be in the image.",
@@ -499,16 +528,26 @@ class Repository:
                     table,
                 )
                 continue
+            else:
+                # Tables of BASE TABLE or FOREIGN table type which are not part of an overlay.
+                tables.append(table)
 
+        for table in tables:
             try:
                 table_info: Optional[Table] = head.get_table(table) if head else None
             except TableNotFoundError:
                 table_info = None
 
+            if self.is_overlay_view(table):
+                # Altering the schema is not allowed in the case of overlay views.
+                assert table_info is not None
+                new_schema = table_info.table_schema
+            else:
+                new_schema = self.object_engine.get_full_table_schema(schema, table)
+
             # Store as a full copy if this is a new table, there's been a schema change or we were told to.
             # Also store the full copy if the audit trigger on the table is missing: this indicates
             # that the table was dropped and recreated.
-            new_schema = self.object_engine.get_full_table_schema(schema, table)
             if (
                 not table_info
                 or snap_only
@@ -525,26 +564,35 @@ class Repository:
                     in_fragment_order=in_fragment_order.get(table),
                     overwrite=overwrite,
                 )
-                continue
-
-            # If the table has changed, look at the audit log and store it as a delta.
-            if table in changed_tables:
-                self.objects.record_table_as_patch(
-                    table_info,
-                    schema,
-                    image_hash,
-                    new_schema_spec=new_schema,
-                    split_changeset=split_changeset,
-                    extra_indexes=extra_indexes.get(table),
-                    in_fragment_order=in_fragment_order.get(table),
-                    overwrite=overwrite,
-                )
-                continue
-
+            elif table in changed_tables:
+                # Else, if the table has changed, look at the audit log/upper overlay table and store it as a delta.
+                if not self.is_overlay_view(table):
+                    self.objects.record_table_as_patch(
+                        table_info,
+                        schema,
+                        image_hash,
+                        new_schema_spec=new_schema,
+                        split_changeset=split_changeset,
+                        extra_indexes=extra_indexes.get(table),
+                        in_fragment_order=in_fragment_order.get(table),
+                        overwrite=overwrite,
+                    )
+                # In case of overlay tables we store the changes in the upper table and need to use a separate mechanism
+                else:
+                    self.objects.record_overlay_table_as_patch(
+                        table_info,
+                        schema,
+                        image_hash,
+                        new_schema_spec=new_schema,
+                        extra_indexes=extra_indexes.get(table),
+                        in_fragment_order=in_fragment_order.get(table),
+                        overwrite=overwrite,
+                    )
             # If the table wasn't changed, point the image to the old table
-            self.objects.register_tables(
-                self, [(image_hash, table, new_schema, table_info.objects)]
-            )
+            else:
+                self.objects.register_tables(
+                    self, [(image_hash, table, new_schema, table_info.objects)]
+                )
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
@@ -559,8 +607,14 @@ class Repository:
         if not head:
             # If the repo isn't checked out, no point checking for changes.
             return False
+
         for table in self.object_engine.get_all_tables(self.to_schema()):
-            diff = self.diff(table, head.image_hash, None, aggregate=True)
+            if self.is_overlay_view(table):
+                # TODO: fix LQ overlay diff
+                diff = None
+            else:
+                diff = self.diff(table, head.image_hash, None, aggregate=True)
+
             if diff != (0, 0, 0) and diff is not None:
                 return True
         return False
@@ -1077,6 +1131,16 @@ class Repository:
         # Materialize both tables and compare them side-by-side.
         # TODO we can aggregate chunks in a similar way that LQ does it.
         return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
+
+    def is_overlay_view(self, table_name: str) -> bool:
+        """
+        Check whether the provided table is actually the write overlay mechanism, merging lower and upper/staging table.
+        """
+        return (
+            self.object_engine.get_table_type(self.to_schema(), table_name) == "VIEW"
+            and self.object_engine.table_exists(self.to_schema(), WRITE_LOWER_PREFIX + table_name)
+            and self.object_engine.table_exists(self.to_schema(), WRITE_UPPER_PREFIX + table_name)
+        )
 
 
 def import_table_from_remote(

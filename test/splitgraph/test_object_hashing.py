@@ -82,7 +82,10 @@ def test_base_fragment_hashing(pg_repo_local):
 
     # Check the actual content hash of the final table -- in this case, since it only consists of one
     # object that doesn't replace anything, it should be equal to the insertion hash of that object.
-    assert om.calculate_content_hash(pg_repo_local.to_schema(), "fruits") == (insertion_hash, 2)
+    assert om.calculate_content_hash(pg_repo_local.to_schema(), "fruits") == (
+        insertion_hash_digest,
+        2,
+    )
 
 
 def test_base_fragment_reused(pg_repo_local):
@@ -196,7 +199,7 @@ def test_diff_fragment_hashing(pg_repo_local):
     # Check the actual content hash of the final table. Since the whole of the old fragment got replaced,
     # the hash should be old_insertion_hash - deletion_hash + new_insertion_hash == new_insertion_hash
     assert om.calculate_content_hash(pg_repo_local.to_schema(), "fruits") == (
-        insertion_hash.hex(),
+        insertion_hash,
         1,
     )
 
@@ -319,7 +322,7 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
         - del_hash_v1
         - del_hash_v2
         - del_hash_v3
-    ).hex() == final_hash
+    ).hex() == final_hash.hex()
 
 
 def test_diff_fragment_hashing_reused(pg_repo_local):

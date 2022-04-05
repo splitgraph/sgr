@@ -369,7 +369,7 @@ def test_commit_diff_splitting(local_engine_empty):
     )
     assert (
         hash_sum.hex()
-        == table_hash
+        == table_hash.hex()
         == "08598e27c62b61d308ed073c46b4473878aeae00d043a849365fbfe7cbc5a579"
     )
 
