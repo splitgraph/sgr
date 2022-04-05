@@ -203,7 +203,7 @@ class SQLEngine(ABC):
             )
         else:
             self.run_sql(
-                SQL("DROP FOREIGN TABLE IF EXISTS {}.{} CASCADE").format(
+                SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
                     Identifier(schema), Identifier(table)
                 )
             )

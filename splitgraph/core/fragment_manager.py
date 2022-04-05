@@ -435,7 +435,7 @@ class FragmentManager(MetadataManager):
             # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
             # Optimisation: in the future, we can hash the upserted rows that we need preemptively and possibly
             # avoid storing the object altogether if it's a duplicate.
-            tmp_object_id = self._store_changeset(
+            tmp_table_id = self._store_changeset(
                 sub_changeset, table_name, schema, table.table_schema
             )
 
@@ -445,17 +445,18 @@ class FragmentManager(MetadataManager):
                 object_id,
                 rows_inserted,
                 rows_deleted,
-            ) = self._get_patch_fragment_hashes_stats(sub_changeset, table, tmp_object_id)
+            ) = self._get_patch_fragment_hashes_stats(sub_changeset, table, tmp_table_id)
 
             object_ids.append(object_id)
 
             self._store_object_from_temp_table(
                 object_id,
-                tmp_object_id,
+                tmp_table_id,
                 table,
                 in_fragment_order=in_fragment_order,
                 overwrite=overwrite,
             )
+            self.object_engine.delete_table("pg_temp", tmp_table_id)
             # There are some cases where an object can already exist in the object engine (in the cache)
             # but has been deleted from the metadata engine, so when it's recreated, we'll skip
             # actually registering it. Hence, we still want to proceed trying to register
@@ -547,7 +548,6 @@ class FragmentManager(MetadataManager):
                     table.repository,
                     table.table_name,
                 )
-            self.object_engine.delete_table("pg_temp", tmp_table_id)
 
     def _store_changeset(
         self, sub_changeset: Any, table: str, schema: str, table_schema: TableSchema
@@ -713,7 +713,7 @@ class FragmentManager(MetadataManager):
             + SQL(" ORDER BY {0} DESC) AS _sg_row_order FROM {1}.{2}) SELECT ").format(
                 Identifier(SG_ROW_SEQ), Identifier(schema), Identifier(upper_table)
             )
-            # Stage 3: select the latest versions of every PK.
+            # Select the latest versions of every PK.
             + all_cols
             + SQL(", ")
             + Identifier(SG_UD_FLAG)
@@ -722,27 +722,31 @@ class FragmentManager(MetadataManager):
             )
         )
 
-        tmp_table = get_temporary_table_id()
-        self.object_engine.run_sql(
-            SQL("CREATE TEMPORARY TABLE {}.{} AS (").format(
-                Identifier("pg_temp"), Identifier(tmp_table)
+        if in_fragment_order:
+            object_select += SQL(" ") + self._get_order_by_clause(
+                in_fragment_order, new_schema_spec
             )
-            + object_select
-            + SQL(")")
+
+        tmp_object_id = get_temporary_table_id()
+        self.object_engine.store_object(
+            object_id=tmp_object_id,
+            source_query=object_select,
+            schema_spec=add_ud_flag_column(new_schema_spec),
+            overwrite=overwrite,
         )
 
         # Calculate the object ID, continue if there are deleted or inserted rows
         schema_hash = self._calculate_schema_hash(new_schema_spec)
 
         deletion_hash, rows_deleted = self.calculate_content_hash(
-            "pg_temp",
-            tmp_table,
+            SPLITGRAPH_META_SCHEMA,
+            tmp_object_id,
             new_schema_spec,
             chunk_condition_sql=SQL("WHERE {} IS FALSE").format(Identifier(SG_UD_FLAG)),
         )
         insertion_hash, rows_inserted = self.calculate_content_hash(
-            "pg_temp",
-            tmp_table,
+            SPLITGRAPH_META_SCHEMA,
+            tmp_object_id,
             new_schema_spec,
             chunk_condition_sql=SQL("WHERE {} IS TRUE").format(Identifier(SG_UD_FLAG)),
         )
@@ -752,13 +756,14 @@ class FragmentManager(MetadataManager):
 
             object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
 
-            self._store_object_from_temp_table(
-                object_id,
-                tmp_table,
-                old_table,
-                in_fragment_order=in_fragment_order,
-                overwrite=overwrite,
-            )
+            # Rename the object to its actual ID
+            try:
+                self.object_engine.rename_object(
+                    old_object_id=tmp_object_id,
+                    new_object_id=object_id,
+                )
+            finally:
+                self.object_engine.delete_objects([tmp_object_id])
 
             with self.metadata_engine.savepoint("object_register"):
                 try:
