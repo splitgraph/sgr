@@ -38,15 +38,8 @@ def checkout_c(image_spec, force, uncheckout, layered):
     This downloads the required physical objects and materializes all tables, unless ``-l`` or ``--layered`` is passed.
 
     In the layered querying mode we construct an overlay table structure inspired by OverlayFS to facilitate both reads
-    and writes (INSERT/UPDATE/DELETE). Since the tables aren't materialized, layered querying is faster to set up, but
-    since each query now results in a subquery to each object comprising the table, actual query execution is slower
-    than to materialized Postgres tables.
-
-    The overlay structure is composed of a unifying view, with which the user interacts, and two auxiliary tables to
-    which reads and writes are deferred (aka upper and lower tables). The objects are downloaded and a foreign data
-    wrapper is set up on the engine to satisfy queries by combining results from all fragments through the lower table,
-    with any pending changes that are stored in the upper table on writes. After committing, the upper table is
-    truncated, and the lower table bumped to point to new head image.
+    and writes (INSERT/UPDATE/DELETE). Since the tables aren't materialized, layered querying is faster to set up and,
+    depending on the kind of the query being run, can sometimes be faster than querying materialized PostgreSQL tables.
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. Note that currently, the schema that the
     image is checked out into has to have the same name as the repository. If no image hash or tag is passed,
