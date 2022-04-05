@@ -227,13 +227,13 @@ def test_basic_writes_with_pks(pg_repo_local):
     new_object = pg_repo_local.objects.get_object_meta([table.objects[2]])[table.objects[2]]
     assert (
         new_object.deletion_hash
-        == "11f17be49aa6c3f1e0d2baf392f479bb2e2e07367813e029ec630365ea3ecb44"
+        == "5c1c76c1732ba2d10a1aa8d02cbb0421a2bc3ddbc48d19a56f07752d86c74088"
     )
     assert (
         new_object.insertion_hash
         == "f2ec1445b0d83097e7ce53ef97ad7e3fb514c0f9468ea05bfd9cef18aa51c150"
     )
-    assert new_object.object_id == "of42086b04801158510d67a7feafda0900dfe895dcce135c7f2c8add42082ab"
+    assert new_object.object_id == "oa4f27a15ee296359b2b7f7a15200be712daedca74a513b44073b8f5bde4096"
     assert new_object.rows_deleted == 3
     assert new_object.rows_inserted == 2
 
@@ -244,10 +244,10 @@ def test_basic_writes_with_pks(pg_repo_local):
         )
     ) == [
         (3, "banana", Decimal("1"), datetime.datetime(2022, 1, 1, 12, 0), True),
-        (4, "pear", Decimal("2"), datetime.datetime(2022, 1, 1, 12, 0), False),
+        (4, None, None, None, False),
         (5, "pear", Decimal("100"), datetime.datetime(2022, 1, 1, 12, 0), True),
-        (2, "mango", Decimal("1"), datetime.datetime(2019, 1, 1, 12, 0), False),
-        (6, "watermelon", Decimal("4"), datetime.datetime(2022, 1, 1, 12, 0), False),
+        (2, None, None, None, False),
+        (6, None, None, None, False),
     ]
 
     # Assert that the lower table now has the new values

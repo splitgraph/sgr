@@ -702,7 +702,23 @@ class FragmentManager(MetadataManager):
 
         pk_cols, non_pk_cols = self.object_engine.schema_spec_to_cols(new_schema_spec)
         pk_cols_s = SQL(",").join(map(Identifier, pk_cols))
-        all_cols = SQL(",").join(Identifier(c.name) for c in new_schema_spec)
+
+        if len(non_pk_cols) > 0:
+            # If there are PKs defined on the table we want to obfuscate the non-PK fields of deleted records by setting
+            # them to NULLs.
+            target_cols = []
+            for c in new_schema_spec:
+                if c.is_pk:
+                    target_cols.append(Identifier(c.name))
+                else:
+                    target_cols.append(
+                        SQL("CASE WHEN {0} IS TRUE THEN {1} ELSE NULL END").format(
+                            Identifier(SG_UD_FLAG), Identifier(c.name)
+                        )
+                    )
+            target_cols = SQL(",").join(target_cols)
+        else:
+            target_cols = SQL(",").join(Identifier(c.name) for c in new_schema_spec)
 
         # Remove redundant rows in the object
         object_select = (
@@ -714,7 +730,7 @@ class FragmentManager(MetadataManager):
                 Identifier(SG_ROW_SEQ), Identifier(schema), Identifier(upper_table)
             )
             # Select the latest versions of every PK.
-            + all_cols
+            + target_cols
             + SQL(", ")
             + Identifier(SG_UD_FLAG)
             + SQL("FROM _sg_flattened WHERE _sg_row_order = 1 ORDER BY {0} ASC").format(
