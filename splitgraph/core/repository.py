@@ -34,7 +34,11 @@ from splitgraph.config.config import get_singleton
 from splitgraph.core.fragment_manager import ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
-from splitgraph.core.overlay import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
+from splitgraph.core.overlay import (
+    WRITE_LOWER_PREFIX,
+    WRITE_MERGED_PREFIX,
+    WRITE_UPPER_PREFIX,
+)
 from splitgraph.core.table import Table
 from splitgraph.core.types import TableSchema, parse_repository
 from splitgraph.engine.postgres.engine import PostgresEngine
@@ -105,7 +109,7 @@ class Repository:
         # PostgreSQL connection or even a different database engine altogether).
         self.object_engine = object_engine or self.engine
         self.images = ImageManager(self)
-        """A :class:`splitgraph.core.image.ImageManager` instance that performs operations 
+        """A :class:`splitgraph.core.image.ImageManager` instance that performs operations
         (checkout, delete etc) on this repository's images.
         """
 
@@ -1134,12 +1138,20 @@ class Repository:
 
     def is_overlay_view(self, table_name: str) -> bool:
         """
-        Check whether the provided table is actually the write overlay mechanism, merging lower and upper/staging table.
+        Check whether the provided table is actually realized through the write
+        overlay mechanism.
         """
         return (
+            # CLI LQ checkout overlay components
             self.object_engine.get_table_type(self.to_schema(), table_name) == "VIEW"
             and self.object_engine.table_exists(self.to_schema(), WRITE_LOWER_PREFIX + table_name)
             and self.object_engine.table_exists(self.to_schema(), WRITE_UPPER_PREFIX + table_name)
+        ) or (
+            # DDN LQ checkout overlay components
+            self.object_engine.get_table_type(self.to_schema(), table_name)
+            in ("FOREIGN TABLE", "FOREIGN")
+            and self.object_engine.table_exists(self.to_schema(), WRITE_UPPER_PREFIX + table_name)
+            and self.object_engine.table_exists(self.to_schema(), WRITE_MERGED_PREFIX + table_name)
         )
 
 
