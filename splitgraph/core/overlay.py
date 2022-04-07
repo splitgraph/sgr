@@ -18,7 +18,7 @@ def init_write_overlay(
     schema: str,
     table: str,
     table_schema: TableSchema,
-    ddn_layout=False,
+    ddn_layout: bool = False,
 ) -> None:
     from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
