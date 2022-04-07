@@ -230,7 +230,7 @@ class SQLEngine(ABC):
         args = [schema]
 
         if not include_overlay_components:
-            query += SQL(" AND table_name NOT LIKE ALL (ARRAY[%s, %s])")
+            query += SQL(" AND table_name NOT LIKE ALL (ARRAY[%s, %s, %s])")
             args += [
                 WRITE_LOWER_PREFIX + "%",
                 WRITE_UPPER_PREFIX + "%",
