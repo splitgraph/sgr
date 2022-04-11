@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 SG_ROW_SEQ = "_sg_row_seq"
 WRITE_LOWER_PREFIX = "_sgov_lower_"
 WRITE_UPPER_PREFIX = "_sgov_upper_"
-WRITE_MERGED_PREFIX = "_sgov_merged"
+WRITE_MERGED_PREFIX = "_sgov_merged_"
 
 
 def init_write_overlay(
