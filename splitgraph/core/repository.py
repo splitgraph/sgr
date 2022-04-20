@@ -509,7 +509,7 @@ class Repository:
             # changed and tracked tables in a proper manner.
             # See `init_write_overlay` for more details.
 
-            if self.is_overlay_view(table):
+            if self.is_overlay_view(table, schema=schema):
                 # Add the overlay view to the list of tables to process.
                 tables.append(table)
                 # Add the overlay view to the tracked tables list.
@@ -524,6 +524,10 @@ class Repository:
                 if table_not_empty:
                     # There are pending writes.
                     changed_tables.append(table)
+                logging.debug(
+                    f"Found overlay table %s with{'' if table_not_empty else 'out'} pending changes.",
+                    table,
+                )
             elif self.object_engine.get_table_type(schema, table) == "VIEW":
                 logging.warning(
                     "Table %s.%s is a view. Splitgraph currently doesn't "
@@ -542,7 +546,7 @@ class Repository:
             except TableNotFoundError:
                 table_info = None
 
-            if self.is_overlay_view(table):
+            if self.is_overlay_view(table, schema=schema):
                 # Altering the schema is not allowed in the case of overlay views.
                 assert table_info is not None
                 new_schema = table_info.table_schema
@@ -570,7 +574,7 @@ class Repository:
                 )
             elif table in changed_tables:
                 # Else, if the table has changed, look at the audit log/upper overlay table and store it as a delta.
-                if not self.is_overlay_view(table):
+                if not self.is_overlay_view(table, schema=schema):
                     self.objects.record_table_as_patch(
                         table_info,
                         schema,
@@ -1136,22 +1140,23 @@ class Repository:
         # TODO we can aggregate chunks in a similar way that LQ does it.
         return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
 
-    def is_overlay_view(self, table_name: str) -> bool:
+    def is_overlay_view(self, table_name: str, schema: Optional[str] = None) -> bool:
         """
         Check whether the provided table is actually realized through the write
         overlay mechanism.
         """
+        schema = schema or self.to_schema()
+
         return (
             # CLI LQ checkout overlay components
-            self.object_engine.get_table_type(self.to_schema(), table_name) == "VIEW"
-            and self.object_engine.table_exists(self.to_schema(), WRITE_LOWER_PREFIX + table_name)
-            and self.object_engine.table_exists(self.to_schema(), WRITE_UPPER_PREFIX + table_name)
+            self.object_engine.get_table_type(schema, table_name) == "VIEW"
+            and self.object_engine.table_exists(schema, WRITE_LOWER_PREFIX + table_name)
+            and self.object_engine.table_exists(schema, WRITE_UPPER_PREFIX + table_name)
         ) or (
             # DDN LQ checkout overlay components
-            self.object_engine.get_table_type(self.to_schema(), table_name)
-            in ("FOREIGN TABLE", "FOREIGN")
-            and self.object_engine.table_exists(self.to_schema(), WRITE_UPPER_PREFIX + table_name)
-            and self.object_engine.table_exists(self.to_schema(), WRITE_MERGED_PREFIX + table_name)
+            self.object_engine.get_table_type(schema, table_name) in ("FOREIGN TABLE", "FOREIGN")
+            and self.object_engine.table_exists(schema, WRITE_UPPER_PREFIX + table_name)
+            and self.object_engine.table_exists(schema, WRITE_MERGED_PREFIX + table_name)
         )
 
 
