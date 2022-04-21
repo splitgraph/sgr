@@ -365,7 +365,7 @@ def _get_ddn_conn_params(remote: str) -> Dict[str, Optional[str]]:
         engine = get_engine(remote)
     except KeyError as e:
         raise click.UsageError(
-            "Remote %s or API key/secret not found in the config. "
+            f"Remote {remote} or API key/secret not found in the config. "
             "Try registering with sgr cloud register or logging in "
             "with sgr cloud login / sgr cloud login-api."
         ) from e
