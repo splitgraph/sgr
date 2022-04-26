@@ -10,15 +10,25 @@ if TYPE_CHECKING:
 SG_ROW_SEQ = "_sg_row_seq"
 WRITE_LOWER_PREFIX = "_sgov_lower_"
 WRITE_UPPER_PREFIX = "_sgov_upper_"
+WRITE_MERGED_PREFIX = "_sgov_merged_"
 
 
 def init_write_overlay(
-    object_engine: "PostgresEngine", schema: str, table: str, table_schema: TableSchema
+    object_engine: "PostgresEngine",
+    schema: str,
+    table: str,
+    table_schema: TableSchema,
+    ddn_layout: bool = False,
 ) -> None:
     from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
     upper_table = WRITE_UPPER_PREFIX + table
-    lower_table = WRITE_LOWER_PREFIX + table
+    # LQ checkout with sgr vs DDN differ in that in the former case the user
+    # interacts with the overlay view directly, and can thus see the all pending
+    # changes at any time. In the latter case, the user interacts only with the
+    # foreign table backed by LQFDW, and the writes are not visible until flushed.
+    lower_table = table if ddn_layout else WRITE_LOWER_PREFIX + table
+    overlay_view = WRITE_MERGED_PREFIX + table if ddn_layout else table
 
     # Create the "upper" table that actual writes will be recorded in (staging area for
     # new objects)
@@ -67,7 +77,7 @@ def init_write_overlay(
         """
         ).format(
             schema=Identifier(schema),
-            table=Identifier(table),
+            table=Identifier(overlay_view),
             pks=pk_cols_s,
             all_cols=all_cols,
             lower=Identifier(lower_table),
@@ -77,17 +87,18 @@ def init_write_overlay(
         )
     )
 
-    # Transfer comment from original table to the view
-    query = SQL("")
-    args = []
-    for col in table_schema:
-        if col.comment:
-            query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
-                Identifier(schema), Identifier(table), Identifier(col.name)
-            )
-            args.append(col.comment)
-    if len(args) > 0:
-        object_engine.run_sql(query, args)
+    if not ddn_layout:
+        # Transfer comment from original table to the view
+        query = SQL("")
+        args = []
+        for col in table_schema:
+            if col.comment:
+                query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
+                    Identifier(schema), Identifier(overlay_view), Identifier(col.name)
+                )
+                args.append(col.comment)
+        if len(args) > 0:
+            object_engine.run_sql(query, args)
 
     # Create a trigger
     object_engine.run_sql(
@@ -117,7 +128,7 @@ CREATE TRIGGER {1} INSTEAD OF INSERT OR UPDATE OR DELETE ON {0}.{1}
 """
         ).format(
             Identifier(schema),
-            Identifier(table),
+            Identifier(overlay_view),
             Identifier(upper_table),
         )
     )

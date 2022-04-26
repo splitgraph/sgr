@@ -174,6 +174,7 @@ class Image(NamedTuple):
         target_schema: Optional[str] = None,
         wrapper: Optional[str] = FDW_CLASS,
         only_tables: Optional[List[str]] = None,
+        ddn_layout: bool = False,
     ) -> None:
         """
         Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
@@ -218,10 +219,13 @@ class Image(NamedTuple):
                 target_schema,
             )
             table = self.get_table(table_name)
-            table.materialize(WRITE_LOWER_PREFIX + table_name, target_schema, lq_server=server_id)
+            foreign_table_name = table_name if ddn_layout else WRITE_LOWER_PREFIX + table_name
+            table.materialize(foreign_table_name, target_schema, lq_server=server_id)
 
             # Add overlay for writing
-            init_write_overlay(object_engine, target_schema, table_name, table.table_schema)
+            init_write_overlay(
+                object_engine, target_schema, table_name, table.table_schema, ddn_layout=ddn_layout
+            )
 
         object_engine.commit()
 

@@ -768,6 +768,14 @@ class FragmentManager(MetadataManager):
         )
 
         if rows_inserted != 0 or rows_deleted != 0:
+            logging.debug(
+                "Persisting %s/%s inserted/deleted rows with hash %s/%s for overlay table %s.",
+                rows_inserted,
+                rows_deleted,
+                insertion_hash.hex(),
+                deletion_hash.hex(),
+                old_table.table_name,
+            )
             content_hash = (insertion_hash - deletion_hash).hex()
 
             object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
