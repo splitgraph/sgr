@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.9 (2022-04-26)
+
+Add support for writes when using layered querying (`sgr checkout --layered`) (https://github.com/splitgraph/splitgraph/pull/662). Note
+schema changes when an image is checked out in layered querying mode are currently unsupported.
+
+Also add support for using writeable layered querying when using Splitfiles (https://github.com/splitgraph/splitgraph/pull/668).
+
 ## v0.3.8 (2022-03-18)
 
   * Fix slow startup of `sgr` binary on Mac OS / Darwin (https://github.com/splitgraph/splitgraph/pull/656)
