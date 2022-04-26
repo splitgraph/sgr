@@ -2,6 +2,7 @@ from test.splitgraph.conftest import OUTPUT, RESOURCES
 from unittest import mock
 from unittest.mock import call
 
+import pytest
 from click.testing import CliRunner
 
 from splitgraph.commandline import build_c, dependents_c, provenance_c, rebuild_c
@@ -17,11 +18,17 @@ def test_splitfile_default():
             [RESOURCES + "import_remote_multiple.splitfile", "-a", "TAG", "latest"],
         )
     assert ec.mock_calls == [
-        call(mock.ANY, {"TAG": "latest"}, output=Repository("", "import_remote_multiple"))
+        call(
+            mock.ANY,
+            {"TAG": "latest"},
+            output=Repository("", "import_remote_multiple"),
+            use_writeable_lq=False,
+        )
     ]
 
 
-def test_splitfile(local_engine_empty, pg_repo_remote):
+@pytest.mark.parametrize("use_writeable_lq", [True, False])
+def test_splitfile(local_engine_empty, pg_repo_remote, use_writeable_lq):
     runner = CliRunner()
 
     result = runner.invoke(
@@ -33,7 +40,8 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
             "latest",
             "-o",
             "output",
-        ],
+        ]
+        + (["-l"] if use_writeable_lq else []),
     )
     assert result.exit_code == 0
     assert OUTPUT.run_sql("SELECT id, fruit, vegetable FROM join_table") == [
@@ -78,17 +86,22 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
     assert "%s:%s" % (OUTPUT, OUTPUT.head.image_hash) in result.output
 
 
-def test_splitfile_rebuild_update(local_engine_empty, pg_repo_remote_multitag):
+@pytest.mark.parametrize("use_writeable_lq", [True, False])
+def test_splitfile_rebuild_update(local_engine_empty, pg_repo_remote_multitag, use_writeable_lq):
     runner = CliRunner()
 
     result = runner.invoke(
         build_c,
-        [RESOURCES + "import_remote_multiple.splitfile", "-a", "TAG", "v1", "-o", "output"],
+        [RESOURCES + "import_remote_multiple.splitfile", "-a", "TAG", "v1", "-o", "output"]
+        + (["-l"] if use_writeable_lq else []),
     )
     assert result.exit_code == 0
 
     # Rerun the output:latest against v2 of the test/pg_mount
-    result = runner.invoke(rebuild_c, ["output:latest", "--against", "test/pg_mount:v2"])
+    result = runner.invoke(
+        rebuild_c,
+        ["output:latest", "--against", "test/pg_mount:v2"] + (["-l"] if use_writeable_lq else []),
+    )
     output_v2 = OUTPUT.head
     assert result.exit_code == 0
     v2 = pg_repo_remote_multitag.images["v2"]
@@ -98,7 +111,10 @@ def test_splitfile_rebuild_update(local_engine_empty, pg_repo_remote_multitag):
     # In this case, this should all resolve to the same version of test/pg_mount (v2) and not produce
     # any extra commits.
     curr_commits = OUTPUT.images()
-    result = runner.invoke(rebuild_c, ["output:latest", "-u"])
+    result = runner.invoke(
+        rebuild_c,
+        ["output:latest", "-u"] + (["-l"] if use_writeable_lq else []),
+    )
     assert result.exit_code == 0
     assert output_v2 == OUTPUT.head
     assert OUTPUT.images() == curr_commits

@@ -3,5 +3,5 @@ Uploading the files...
  (SUCCESS) Waiting for task ID ingest_task
 
 
-Success. See the repository at http://www.example.com/someuser/somerepo_1/-/tables or query it with:
+Success. See the repository at http://www.example.com/someuser/somerepo_1/latest/-/tables or query it with:
     sgr cloud sql 'SELECT * FROM "someuser/somerepo_1"."base_df"'

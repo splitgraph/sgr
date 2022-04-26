@@ -38,13 +38,15 @@ def _combine_hashes(hashes: List[str]) -> str:
     return sha256("".join(hashes).encode("ascii")).hexdigest()
 
 
-def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func: Callable) -> None:
+def _checkout_or_calculate_layer(
+    output: Repository, image_hash: str, calc_func: Callable, use_writeable_lq: bool = False
+) -> None:
     # Future optimization here: don't actually check the layer out if it exists -- only do it at Splitfile execution
     # end or when a command needs it.
 
     # Have we already calculated this hash?
     try:
-        output.images.by_hash(image_hash).checkout()
+        output.images.by_hash(image_hash).checkout(layered=use_writeable_lq)
         logging.info(" ---> Using cache")
     except ImageNotFoundError:
         try:
@@ -64,6 +66,7 @@ def execute_commands(
     params: Optional[Dict[str, str]] = None,
     output: Optional[Repository] = None,
     output_base: str = "0" * 32,
+    use_writeable_lq: bool = False,
 ) -> None:
     """
     Executes a series of Splitfile commands.
@@ -74,6 +77,7 @@ def execute_commands(
     :param output: Output repository to execute the Splitfile against.
     :param output_base: If not None, a revision that gets checked out for all Splitfile actions to be committed
         on top of it.
+    :param use_writeable_lq: Use writeable LQ to execute commands
     """
     if params is None:
         params = {}
@@ -152,16 +156,18 @@ def execute_commands(
         raise
 
 
-def checkout_if_changed(repository: Repository, image_hash: str) -> None:
+def checkout_if_changed(
+    repository: Repository, image_hash: str, use_writeable_lq: bool = False
+) -> None:
     if (
         repository.head is None
         or (repository.head.image_hash != image_hash)
         or repository.has_pending_changes()
     ):
-        repository.images.by_hash(image_hash).checkout()
+        repository.images.by_hash(image_hash).checkout(layered=use_writeable_lq)
     else:
         logging.info(
-            "Skipping checkout of %s as %s has it checked out " "and there have been no changes",
+            "Skipping checkout of %s as %s has it checked out and there have been no changes",
             image_hash,
             repository,
         )
@@ -379,7 +385,9 @@ def _execute_repo_import(
             source_mountpoint.delete()
 
 
-def _execute_custom(node: Node, output: Repository) -> ProvenanceLine:
+def _execute_custom(
+    node: Node, output: Repository, use_writeable_lq: bool = False
+) -> ProvenanceLine:
     assert output.head is not None
     command, args = parse_custom_command(node)
 
@@ -410,7 +418,7 @@ def _execute_custom(node: Node, output: Repository) -> ProvenanceLine:
     if command_hash is not None:
         image_hash = _combine_hashes([output_head, command_hash])
         try:
-            output.images.by_hash(image_hash).checkout()
+            output.images.by_hash(image_hash).checkout(layered=use_writeable_lq)
             logging.info(" ---> Using cache")
             return {"type": "CUSTOM"}
         except ImageNotFoundError:
@@ -425,14 +433,16 @@ def _execute_custom(node: Node, output: Repository) -> ProvenanceLine:
 
     # Check just in case if the new hash produced by the command already exists.
     try:
-        output.images.by_hash(image_hash).checkout()
+        output.images.by_hash(image_hash).checkout(layered=use_writeable_lq)
     except ImageNotFoundError:
         # Full command as a commit comment
         output.commit(image_hash, comment=node.text)
     return {"type": "CUSTOM"}
 
 
-def rebuild_image(image: Image, source_replacement: Dict[Repository, str]) -> None:
+def rebuild_image(
+    image: Image, source_replacement: Dict[Repository, str], use_writeable_lq: bool = False
+) -> None:
     """
     Recreates the Splitfile used to create a given image and reruns it, replacing its dependencies with a different
     set of versions.
@@ -444,4 +454,6 @@ def rebuild_image(image: Image, source_replacement: Dict[Repository, str]) -> No
         ignore_irreproducible=False, source_replacement=source_replacement
     )
     # Params are supposed to be stored in the commands already (baked in) -- what if there's sensitive data there?
-    execute_commands("\n".join(splitfile_commands), output=image.repository)
+    execute_commands(
+        "\n".join(splitfile_commands), output=image.repository, use_writeable_lq=use_writeable_lq
+    )
