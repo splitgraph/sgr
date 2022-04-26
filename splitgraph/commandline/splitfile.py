@@ -21,7 +21,13 @@ from .common import ImageType, RepositoryType
 @click.option(
     "-o", "--output-repository", help="Repository to store the result in.", type=RepositoryType()
 )
-def build_c(splitfile, args, output_repository):
+@click.option(
+    "-l",
+    "--layered-querying",
+    help="Use writeable layered querying when checking images out. Experimental.",
+    is_flag=True,
+)
+def build_c(splitfile, args, output_repository, layered_querying):
     """
     Build Splitgraph images.
 
@@ -54,7 +60,9 @@ def build_c(splitfile, args, output_repository):
         file_name = os.path.splitext(os.path.basename(splitfile.name))[0]
         output_repository = Repository.from_schema(file_name)
 
-    execute_commands(splitfile.read(), args, output=output_repository)
+    execute_commands(
+        splitfile.read(), args, output=output_repository, use_writeable_lq=layered_querying
+    )
 
 
 @click.command(name="provenance")
@@ -205,7 +213,13 @@ def dependents_c(image_spec, source_on, dependents_on):
     help="Images to substitute into the reconstructed Splitfile, of the form"
     " [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. Default tag is 'latest'.",
 )
-def rebuild_c(image_spec, update, against):
+@click.option(
+    "-l",
+    "--layered-querying",
+    help="Use writeable layered querying when checking images out. Experimental.",
+    is_flag=True,
+)
+def rebuild_c(image_spec, update, against, layered_querying):
     """
     Rebuild images against different dependencies.
 
@@ -244,4 +258,4 @@ def rebuild_c(image_spec, update, against):
 
     from splitgraph.splitfile.execution import rebuild_image
 
-    rebuild_image(image, new_images)
+    rebuild_image(image, new_images, use_writeable_lq=layered_querying)

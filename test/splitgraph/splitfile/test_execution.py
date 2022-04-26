@@ -109,8 +109,13 @@ def test_local_import_splitfile(pg_repo_local):
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), "fruits")
 
 
-def test_advanced_splitfile(pg_repo_local):
-    execute_commands(load_splitfile("import_local_multiple_with_queries.splitfile"), output=OUTPUT)
+@pytest.mark.parametrize("use_writeable_lq", [True, False])
+def test_advanced_splitfile(pg_repo_local, use_writeable_lq):
+    execute_commands(
+        load_splitfile("import_local_multiple_with_queries.splitfile"),
+        output=OUTPUT,
+        use_writeable_lq=use_writeable_lq,
+    )
 
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), "my_fruits")
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), "vegetables")
@@ -128,13 +133,22 @@ def test_advanced_splitfile(pg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(2, "orange")]
 
 
-def test_splitfile_cached(pg_repo_local):
+@pytest.mark.parametrize("use_writeable_lq", [True, False])
+def test_splitfile_cached(pg_repo_local, use_writeable_lq):
     # Check that no new commits/snaps are created if we rerun the same splitfile
-    execute_commands(load_splitfile("import_local_multiple_with_queries.splitfile"), output=OUTPUT)
+    execute_commands(
+        load_splitfile("import_local_multiple_with_queries.splitfile"),
+        output=OUTPUT,
+        use_writeable_lq=use_writeable_lq,
+    )
     images = OUTPUT.images()
     assert len(images) == 4
 
-    execute_commands(load_splitfile("import_local_multiple_with_queries.splitfile"), output=OUTPUT)
+    execute_commands(
+        load_splitfile("import_local_multiple_with_queries.splitfile"),
+        output=OUTPUT,
+        use_writeable_lq=use_writeable_lq,
+    )
     new_images = OUTPUT.images()
     assert new_images == images
 
@@ -205,8 +219,14 @@ def test_import_updating_splitfile_with_uploading(
 
 
 @pytest.mark.mounting
+@pytest.mark.parametrize("use_writeable_lq", [True, False])
 def test_splitfile_end_to_end_with_uploading(
-    local_engine_empty, remote_engine, pg_repo_remote_multitag, mg_repo_remote, clean_minio
+    local_engine_empty,
+    remote_engine,
+    pg_repo_remote_multitag,
+    mg_repo_remote,
+    clean_minio,
+    use_writeable_lq,
 ):
     # An end-to-end test:
     #   * Create a derived dataset from some tables imported from the remote engine
@@ -217,7 +237,10 @@ def test_splitfile_end_to_end_with_uploading(
 
     # Do the same setting up first and run the splitfile against the remote data.
     execute_commands(
-        load_splitfile("import_remote_multiple.splitfile"), params={"TAG": "v1"}, output=OUTPUT
+        load_splitfile("import_remote_multiple.splitfile"),
+        params={"TAG": "v1"},
+        output=OUTPUT,
+        use_writeable_lq=use_writeable_lq,
     )
 
     remote_output = Repository(OUTPUT.namespace, OUTPUT.repository, remote_engine)
@@ -230,7 +253,11 @@ def test_splitfile_end_to_end_with_uploading(
     OUTPUT.objects.cleanup()
 
     stage_2 = R("output_stage_2")
-    execute_commands(load_splitfile("import_from_preuploaded_remote.splitfile"), output=stage_2)
+    execute_commands(
+        load_splitfile("import_from_preuploaded_remote.splitfile"),
+        output=stage_2,
+        use_writeable_lq=use_writeable_lq,
+    )
 
     assert stage_2.run_sql("SELECT id, name, fruit, vegetable FROM diet") == [
         (2, "James", "orange", "carrot")
@@ -238,14 +265,19 @@ def test_splitfile_end_to_end_with_uploading(
 
 
 @pytest.mark.mounting
-def test_splitfile_schema_changes(pg_repo_local, mg_repo_local):
-    execute_commands(load_splitfile("schema_changes.splitfile"), output=OUTPUT)
+@pytest.mark.parametrize("use_writeable_lq", [True, False])
+def test_splitfile_schema_changes(pg_repo_local, mg_repo_local, use_writeable_lq):
+    execute_commands(
+        load_splitfile("schema_changes.splitfile"), output=OUTPUT, use_writeable_lq=use_writeable_lq
+    )
     old_output_head = OUTPUT.head
 
     # Then, alter the dataset and rerun the splitfile.
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (12, 'mayonnaise')")
     pg_repo_local.commit()
-    execute_commands(load_splitfile("schema_changes.splitfile"), output=OUTPUT)
+    execute_commands(
+        load_splitfile("schema_changes.splitfile"), output=OUTPUT, use_writeable_lq=use_writeable_lq
+    )
     new_output_head = OUTPUT.head
 
     old_output_head.checkout()
@@ -438,7 +470,8 @@ def test_splitfile_with_external_sql(readonly_pg_repo):
 
 
 @pytest.mark.registry
-def test_splitfile_inline_sql(readonly_pg_repo, pg_repo_local):
+@pytest.mark.parametrize("use_writeable_lq", [True, False])
+def test_splitfile_inline_sql(readonly_pg_repo, pg_repo_local, use_writeable_lq):
     # Test SQL commands accessing repos directly -- join a remote repo with
     # some local data.
 
@@ -446,8 +479,7 @@ def test_splitfile_inline_sql(readonly_pg_repo, pg_repo_local):
     pg_repo_local.head.tag("v2")
 
     execute_commands(
-        load_splitfile("inline_sql.splitfile"),
-        output=OUTPUT,
+        load_splitfile("inline_sql.splitfile"), output=OUTPUT, use_writeable_lq=use_writeable_lq
     )
 
     new_head = OUTPUT.head
