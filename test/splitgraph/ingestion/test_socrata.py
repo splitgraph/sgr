@@ -47,6 +47,36 @@ _long_name_col = "name_long_column_to_test_that_we_map_to_socrata_column_names_c
 _long_name_col_sg = "name_long_column_to_test_that_we_map_to_socrata_column_names_co"
 _col_map = {_long_name_col_sg: _long_name_col}
 
+_EXPECTED_SCHEMA = [
+    TableColumn(ordinal=1, name=":id", pg_type="text", is_pk=False, comment="Socrata column ID"),
+    TableColumn(
+        ordinal=2,
+        name="full_or_part_time",
+        pg_type="text",
+        is_pk=False,
+        comment="Whether the employee was employed full- (F) or part-time (P).",
+    ),
+    TableColumn(ordinal=3, name="hourly_rate", pg_type="numeric", is_pk=False, comment=mock.ANY),
+    TableColumn(ordinal=4, name="salary_or_hourly", pg_type="text", is_pk=False, comment=mock.ANY),
+    TableColumn(
+        ordinal=5,
+        name="job_titles",
+        pg_type="text",
+        is_pk=False,
+        comment="Title of employee at the time when the data was updated.",
+    ),
+    TableColumn(ordinal=6, name="typical_hours", pg_type="numeric", is_pk=False, comment=mock.ANY),
+    TableColumn(ordinal=7, name="annual_salary", pg_type="numeric", is_pk=False, comment=mock.ANY),
+    TableColumn(ordinal=8, name=_long_name_col_sg, pg_type="text", is_pk=False, comment=mock.ANY),
+    TableColumn(
+        ordinal=9,
+        name="department",
+        pg_type="text",
+        is_pk=False,
+        comment="Department where employee worked.",
+    ),
+]
+
 
 @pytest.mark.parametrize(
     ("quals", "expected"),
@@ -129,47 +159,9 @@ def test_socrata_mounting(local_engine_empty):
             },
         )
 
-    assert local_engine_empty.get_full_table_schema("test/pg_mount", "some_table") == [
-        TableColumn(
-            ordinal=1, name=":id", pg_type="text", is_pk=False, comment="Socrata column ID"
-        ),
-        TableColumn(
-            ordinal=2,
-            name="full_or_part_time",
-            pg_type="text",
-            is_pk=False,
-            comment="Whether the employee was employed full- (F) or part-time (P).",
-        ),
-        TableColumn(
-            ordinal=3, name="hourly_rate", pg_type="numeric", is_pk=False, comment=mock.ANY
-        ),
-        TableColumn(
-            ordinal=4, name="salary_or_hourly", pg_type="text", is_pk=False, comment=mock.ANY
-        ),
-        TableColumn(
-            ordinal=5,
-            name="job_titles",
-            pg_type="text",
-            is_pk=False,
-            comment="Title of employee at the time when the data was updated.",
-        ),
-        TableColumn(
-            ordinal=6, name="typical_hours", pg_type="numeric", is_pk=False, comment=mock.ANY
-        ),
-        TableColumn(
-            ordinal=7, name="annual_salary", pg_type="numeric", is_pk=False, comment=mock.ANY
-        ),
-        TableColumn(
-            ordinal=8, name=_long_name_col_sg, pg_type="text", is_pk=False, comment=mock.ANY
-        ),
-        TableColumn(
-            ordinal=9,
-            name="department",
-            pg_type="text",
-            is_pk=False,
-            comment="Department where employee worked.",
-        ),
-    ]
+    assert (
+        local_engine_empty.get_full_table_schema("test/pg_mount", "some_table") == _EXPECTED_SCHEMA
+    )
 
     assert local_engine_empty.run_sql(
         "SELECT option_value FROM information_schema.foreign_table_options "
@@ -354,29 +346,6 @@ def test_socrata_column_deduplication():
     ]
 
 
-@pytest.mark.parametrize(
-    ("domain", "dataset_id"),
-    [
-        ("data.cityofchicago.org", "x2n5-8w5q"),
-        # Popular for hire vehicles dataset
-        ("data.cityofnewyork.us", "8wbx-tsch"),
-    ],
-)
-def test_socrata_smoke(domain, dataset_id, local_engine_empty):
-    # This relies on the Socrata API being available, but good to smoke test some popular datasets
-    # to make sure the mounting works end-to-end.
-    try:
-        mount(
-            "socrata_mount",
-            "socrata",
-            {"domain": domain, "tables": {"data": dataset_id}},
-        )
-        result = local_engine_empty.run_sql("SELECT * FROM socrata_mount.data LIMIT 10")
-        assert len(result) == 10
-    finally:
-        local_engine_empty.delete_schema("socrata_mount")
-
-
 def test_socrata_data_source_raw_url():
     engine = Mock()
     data_source = SocrataDataSource(
@@ -394,3 +363,63 @@ def test_socrata_data_source_raw_url():
             )
         ]
     }
+
+
+def test_socrata_data_source_introspection_full_domain(local_engine_empty):
+    with open(os.path.join(INGESTION_RESOURCES, "socrata/find_datasets.json"), "r") as f:
+        socrata_meta = json.load(f)
+
+    socrata = MagicMock(spec=Socrata)
+    socrata.datasets.return_value = socrata_meta
+
+    data_source = SocrataDataSource(
+        engine=local_engine_empty,
+        params={"domain": "data.cityofchicago.org"},
+        tables={},
+        credentials={},
+    )
+
+    with mock.patch("sodapy.Socrata", return_value=socrata):
+        result = data_source.introspect()
+    assert len(result) == 1
+    assert "current_employee_names_salaries_and_position_xzkq_xp2w" in result
+    schema, params = result["current_employee_names_salaries_and_position_xzkq_xp2w"]
+    assert schema == _EXPECTED_SCHEMA
+    assert params == {"socrata_id": "xzkq-xp2w"}
+
+
+# These smoke tests rely on the Socrata API being available / datasets not going away, but good to
+# test some popular datasets to make sure the mounting works end-to-end.
+@pytest.mark.parametrize(
+    ("domain", "dataset_id"),
+    [
+        ("data.cityofchicago.org", "x2n5-8w5q"),
+        # Popular for hire vehicles dataset
+        ("data.cityofnewyork.us", "8wbx-tsch"),
+    ],
+)
+def test_socrata_smoke(domain, dataset_id, local_engine_empty):
+    try:
+        mount(
+            "socrata_mount",
+            "socrata",
+            {"domain": domain, "tables": {"data": dataset_id}},
+        )
+        result = local_engine_empty.run_sql("SELECT * FROM socrata_mount.data LIMIT 10")
+        assert len(result) == 10
+    finally:
+        local_engine_empty.delete_schema("socrata_mount")
+
+
+def test_socrata_data_source_introspection_smoke(local_engine_empty):
+    data_source = SocrataDataSource(
+        engine=local_engine_empty,
+        params={"domain": "data.cityofnewyork.us"},
+        tables={"some_table": ([], {"socrata_id": "8wbx-tsch"})},
+        credentials={},
+    )
+
+    result = data_source.introspect()
+    schema, params = result["some_table"]
+    assert len(schema) > 1
+    assert params == {"socrata_id": "8wbx-tsch"}

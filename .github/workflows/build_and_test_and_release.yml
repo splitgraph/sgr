@@ -148,7 +148,7 @@ jobs:
         shell: bash
         run: |
           pip install dist/splitgraph-*-py3-none-any.whl
-          pip install pyinstaller
+          pip install pyinstaller==4.10
           pyinstaller -F splitgraph.spec
           dist/sgr.exe --version
       - name: Upload binary as artifact
@@ -175,7 +175,7 @@ jobs:
       - name: Build the binary
         run: |
           pip install dist/splitgraph-*-py3-none-any.whl
-          pip install pyinstaller
+          pip install pyinstaller==4.10
           pyinstaller -F splitgraph.spec
           dist/sgr --version
       - name: Smoke test the binary
@@ -213,7 +213,7 @@ jobs:
       - name: Build the single-file binary
         run: |
           pip install dist/splitgraph-*-py3-none-any.whl
-          pip install pyinstaller
+          pip install pyinstaller==4.10
           pyinstaller -F splitgraph.spec
           dist/sgr --version
       - name: Upload single-file binary as artifact
