@@ -2,7 +2,7 @@
 import json
 import logging
 from copy import deepcopy
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from psycopg2.sql import SQL, Identifier
 
@@ -128,6 +128,14 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
 
         self.engine.run_sql(SQL(";").join(mount_statements), mount_args)
         return []
+
+    def _get_foreign_table_options(self, schema: str) -> List[Tuple[str, Dict[str, Any]]]:
+        # We rename the "socrata_id" param into "table" when mounting, so rename it back
+        # here
+
+        options = super()._get_foreign_table_options(schema)
+
+        return [(t, {"socrata_id": d["table"]}) for t, d in options]
 
     def get_raw_url(
         self, tables: Optional[TableInfo] = None, expiry: int = 3600
