@@ -235,9 +235,10 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
         result_json = cast(
             List[Dict[str, Any]],
             self.engine.run_sql(
-                SQL("SELECT row_to_json(t.*) FROM {}.{} t LIMIT %s").format(
-                    Identifier(schema), Identifier(table)
-                ),
+                SQL(
+                    "WITH p AS MATERIALIZED(SELECT * FROM {}.{} LIMIT %s) "
+                    "SELECT row_to_json(p.*) FROM p"
+                ).format(Identifier(schema), Identifier(table)),
                 (limit,),
                 return_shape=ResultShape.MANY_ONE,
             ),
