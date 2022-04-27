@@ -423,3 +423,7 @@ def test_socrata_data_source_introspection_smoke(local_engine_empty):
     schema, params = result["some_table"]
     assert len(schema) > 1
     assert params == {"socrata_id": "8wbx-tsch"}
+
+    preview_result = data_source.preview(tables=result)
+    assert len(preview_result["some_table"]) == 10
+    assert preview_result["some_table"][0][":id"] is not None
