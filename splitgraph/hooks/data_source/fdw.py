@@ -676,9 +676,33 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
                 "description": "Schema name to import data from",
                 "default": "public",
             },
+            "use_remote_estimate": {
+                "type": "boolean",
+                "default": False,
+                "title": "Use remote EXPLAIN",
+                "description": "Issue remote EXPLAIN commands to obtain cost estimates",
+            },
+            "fetch_size": {
+                "type": "integer",
+                "title": "Fetch size",
+                "description": "Number of rows from the remote server to get in each fetch operation",
+                "default": 10000,
+            },
         },
         "required": ["host", "port", "dbname", "remote_schema"],
     }
+
+    table_params_schema = merge_jsonschema(
+        ForeignDataWrapperDataSource.table_params_schema,
+        {
+            "type": "object",
+            "properties": {
+                "table_name": {"type": "string", "title": "Table name"},
+                "schema_name": {"type": "string", "title": "Schema name"},
+            },
+            "required": [],
+        },
+    )
 
     commandline_help: str = """Mount a Postgres database.
 
@@ -700,6 +724,8 @@ If a dictionary, must have the format
             "host": self.params["host"],
             "port": str(self.params["port"]),
             "dbname": self.params["dbname"],
+            "use_remote_estimate": "true" if self.params.get("use_remote_estimate") else "false",
+            "fetch_size": int(self.params.get("fetch_size", 10000)),
             **self.params.get("extra_server_args", {}),
         }
 
@@ -708,7 +734,7 @@ If a dictionary, must have the format
 
     def get_table_options(self, table_name: str, tables: Optional[TableInfo] = None):
         options = super().get_table_options(table_name, tables)
-        options["schema_name"] = self.params["remote_schema"]
+        options["schema_name"] = options.get("schema_name", self.params["remote_schema"])
         return options
 
     def get_fdw_name(self):
