@@ -70,7 +70,7 @@ class Image(NamedTuple):
             return NotImplemented
         return self.image_hash == other.image_hash and self.repository == other.repository
 
-    def to_schema(self):
+    def to_schema(self) -> str:
         """Schema reference for the given image."""
         return self.repository.to_schema() + ":" + self.image_hash
 
