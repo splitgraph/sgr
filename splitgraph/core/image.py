@@ -70,6 +70,10 @@ class Image(NamedTuple):
             return NotImplemented
         return self.image_hash == other.image_hash and self.repository == other.repository
 
+    def to_schema(self):
+        """Schema reference for the given image."""
+        return self.repository.to_schema() + ":" + self.image_hash
+
     def get_parent_children(self) -> Tuple[Optional[str], List[str]]:
         """Gets the parent and a list of children of a given image."""
         parent = self.parent_id
@@ -117,8 +121,7 @@ class Image(NamedTuple):
         )
         if not result:
             raise TableNotFoundError(
-                "Image %s:%s does not have a table %s!"
-                % (self.repository, self.image_hash, table_name)
+                "Image %s does not have a table %s!" % (self.to_schema(), table_name)
             )
         table_schema, objects = result
         return Table(
@@ -212,9 +215,8 @@ class Image(NamedTuple):
                 continue
 
             logging.debug(
-                "Mounting %s:%s/%s into %s",
-                self.repository.to_schema(),
-                self.image_hash,
+                "Mounting %s/%s into %s",
+                self.to_schema(),
                 table_name,
                 target_schema,
             )
