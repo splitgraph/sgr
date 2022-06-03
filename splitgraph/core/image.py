@@ -129,7 +129,9 @@ class Image(NamedTuple):
         )
 
     @manage_audit
-    def checkout(self, force: bool = False, layered: bool = False, ddn_layout: bool = True) -> None:
+    def checkout(
+        self, force: bool = False, layered: bool = False, ddn_layout: bool = False
+    ) -> None:
         """
         Checks the image out, changing the current HEAD pointer. Raises an error
         if there are pending changes to its checkout.
