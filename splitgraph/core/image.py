@@ -129,7 +129,7 @@ class Image(NamedTuple):
         )
 
     @manage_audit
-    def checkout(self, force: bool = False, layered: bool = False) -> None:
+    def checkout(self, force: bool = False, layered: bool = False, ddn_layout: bool = True) -> None:
         """
         Checks the image out, changing the current HEAD pointer. Raises an error
         if there are pending changes to its checkout.
@@ -137,6 +137,7 @@ class Image(NamedTuple):
         :param force: Discards all pending changes to the schema.
         :param layered: If True, uses layered querying to check out the image (doesn't materialize tables
             inside of it).
+        :param ddn_layout: Determines whether to rotate the name prefix of lower and overlay table/view
         """
         target_schema = self.repository.to_schema()
         if len(target_schema) > POSTGRES_MAX_IDENTIFIER:
@@ -166,7 +167,7 @@ class Image(NamedTuple):
             self.object_engine.delete_table(target_schema, table)
 
         if layered:
-            self.lq_checkout()
+            self.lq_checkout(ddn_layout=ddn_layout)
         else:
             for table in self.get_tables():
                 self.get_table(table).materialize(table)

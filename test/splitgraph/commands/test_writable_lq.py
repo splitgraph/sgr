@@ -2,16 +2,73 @@ import datetime
 from decimal import Decimal
 from test.splitgraph.conftest import prepare_lq_repo
 
+import pytest
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.overlay import WRITE_LOWER_PREFIX, WRITE_UPPER_PREFIX
+from splitgraph.core.overlay import (
+    WRITE_LOWER_PREFIX,
+    WRITE_MERGED_PREFIX,
+    WRITE_UPPER_PREFIX,
+)
 
 
-def test_basic_writes_no_pks(pg_repo_local):
+@pytest.mark.parametrize("ddn_layout", [False, True])
+def test_surrogate_pks_proper_ordering(pg_repo_local, ddn_layout):
     table_name = "fruits"
     head = pg_repo_local.head
-    head.checkout(layered=True)
+    head.checkout(layered=True, ddn_layout=ddn_layout)
+
+    lower_table = table_name if ddn_layout else WRITE_LOWER_PREFIX + table_name
+    overlay_table = WRITE_MERGED_PREFIX + table_name if ddn_layout else table_name
+
+    original_fruits = [
+        (1, "apple"),
+        (2, "orange"),
+    ]
+
+    # Add rows such that actual min and max of the surrogate PKs are reversed compared to the non-surrogate PKs.
+    # In other words, while the proper tuple ordering is (5, 'kiwi') < (10, 'mango'), when surrogate PKs are cast
+    # as strings the proper ordering is reversed to '(10, mango)' <= '(5, kiwi)'.
+    pg_repo_local.run_sql(
+        SQL("INSERT INTO {} VALUES (5, 'kiwi'), (10, 'mango')").format(Identifier(overlay_table))
+    )
+    pg_repo_local.commit()
+
+    new_fruits = [
+        (5, "kiwi"),
+        (10, "mango"),
+    ]
+
+    assert (
+        pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(lower_table)))
+        == original_fruits + new_fruits
+    )
+
+    pg_repo_local.run_sql(
+        SQL("DELETE FROM {} WHERE name = 'kiwi' OR name = 'mango'").format(
+            Identifier(overlay_table)
+        )
+    )
+    pg_repo_local.commit()
+
+    # Assert that surrogate PKs were properly ordered such that the insertion and deletion object got bundled into
+    # non-singleton groups and canceled each other out.
+    assert (
+        pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(lower_table)))
+        == original_fruits
+    )
+
+
+@pytest.mark.parametrize("ddn_layout", [False, True])
+def test_basic_writes_no_pks(pg_repo_local, ddn_layout):
+    table_name = "fruits"
+    head = pg_repo_local.head
+    head.checkout(layered=True, ddn_layout=ddn_layout)
+
+    lower_table = table_name if ddn_layout else WRITE_LOWER_PREFIX + table_name
+    upper_table = WRITE_UPPER_PREFIX + table_name
+    overlay_table = WRITE_MERGED_PREFIX + table_name if ddn_layout else table_name
 
     # Ensure that the table is now in the overlay/LQ mode
     assert pg_repo_local.is_overlay_view(table_name)
@@ -24,36 +81,52 @@ def test_basic_writes_no_pks(pg_repo_local):
     #
 
     # Insert a couple of new rows
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'banana')")
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'pear')")
+    pg_repo_local.run_sql(
+        SQL("INSERT INTO {} VALUES (3, 'banana')").format(Identifier(overlay_table))
+    )
+    pg_repo_local.run_sql(
+        SQL("INSERT INTO {} VALUES (4, 'pear')").format(Identifier(overlay_table))
+    )
 
     # Update a row existing in the lower table, and one existing only in the upper table (due to insert above)
-    pg_repo_local.run_sql("UPDATE fruits SET name = 'mango' WHERE name = 'orange'")
-    pg_repo_local.run_sql("UPDATE fruits SET name = 'watermelon' WHERE name = 'pear'")
+    pg_repo_local.run_sql(
+        SQL("UPDATE {} SET name = 'mango' WHERE name = 'orange'").format(Identifier(overlay_table))
+    )
+    pg_repo_local.run_sql(
+        SQL("UPDATE {} SET name = 'watermelon' WHERE name = 'pear'").format(
+            Identifier(overlay_table)
+        )
+    )
 
     # Delete a row existing in the lower table, and one existing only in the upper (due to insert/update above)
-    pg_repo_local.run_sql("DELETE FROM fruits WHERE fruit_id = 1")
-    pg_repo_local.run_sql("DELETE FROM fruits WHERE name = 'watermelon'")
+    pg_repo_local.run_sql(
+        SQL("DELETE FROM {} WHERE fruit_id = 1").format(Identifier(overlay_table))
+    )
+    pg_repo_local.run_sql(
+        SQL("DELETE FROM {} WHERE name = 'watermelon'").format(Identifier(overlay_table))
+    )
 
     # Won't affect the output of the view due to no PKs on the table
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'banana')")
+    pg_repo_local.run_sql(
+        SQL("INSERT INTO {} VALUES (3, 'banana')").format(Identifier(overlay_table))
+    )
 
     # No-OPs: update/delete rows that are neither in upper, nor in lower table
-    pg_repo_local.run_sql("UPDATE fruits SET name = 'kumquat' WHERE fruit_id = 10")
-    pg_repo_local.run_sql("DELETE FROM fruits WHERE fruit_id = 11")
+    pg_repo_local.run_sql(
+        SQL("UPDATE {} SET name = 'kumquat' WHERE fruit_id = 10").format(Identifier(overlay_table))
+    )
+    pg_repo_local.run_sql(
+        SQL("DELETE FROM {} WHERE fruit_id = 11").format(Identifier(overlay_table))
+    )
 
     # Assert that the lower table has the old values intact
-    assert pg_repo_local.run_sql(
-        SQL("SELECT * FROM {}").format(Identifier(WRITE_LOWER_PREFIX + table_name))
-    ) == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(lower_table))) == [
         (1, "apple"),
         (2, "orange"),
     ]
 
     # Assert the upper table stores the pending writes as expected
-    assert pg_repo_local.run_sql(
-        SQL("SELECT * FROM {}").format(Identifier(WRITE_UPPER_PREFIX + table_name))
-    ) == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(upper_table))) == [
         (3, "banana", True, 1),
         (4, "pear", True, 2),
         (2, "orange", False, 3),
@@ -66,7 +139,7 @@ def test_basic_writes_no_pks(pg_repo_local):
     ]
 
     # Assert the correct result from the overlay view
-    assert pg_repo_local.run_sql("SELECT * FROM fruits") == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(overlay_table))) == [
         (2, "mango"),
         (3, "banana"),
     ]
@@ -114,23 +187,16 @@ def test_basic_writes_no_pks(pg_repo_local):
     ]
 
     # Assert that the lower table now has the new values
-    assert pg_repo_local.run_sql(
-        SQL("SELECT * FROM {}").format(Identifier(WRITE_LOWER_PREFIX + table_name))
-    ) == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(lower_table))) == [
         (2, "mango"),
         (3, "banana"),
     ]
 
     # Assert the upper table is now empty, since we have just committed all pending changes
-    assert (
-        pg_repo_local.run_sql(
-            SQL("SELECT * FROM {}").format(Identifier(WRITE_UPPER_PREFIX + table_name))
-        )
-        == []
-    )
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(upper_table))) == []
 
     # Assert the overlay view also shows the latest data
-    assert pg_repo_local.run_sql("SELECT * FROM fruits") == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(overlay_table))) == [
         (2, "mango"),
         (3, "banana"),
     ]
@@ -170,11 +236,16 @@ def test_basic_writes_no_pks(pg_repo_local):
     ) == [(1, "potato", True), (2, "carrot", True)]
 
 
-def test_basic_writes_with_pks(pg_repo_local):
+@pytest.mark.parametrize("ddn_layout", [False, True])
+def test_basic_writes_with_pks(pg_repo_local, ddn_layout):
     table_name = "fruits"
     prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
     head = pg_repo_local.head
-    head.checkout(layered=True)
+    head.checkout(layered=True, ddn_layout=ddn_layout)
+
+    lower_table = table_name if ddn_layout else WRITE_LOWER_PREFIX + table_name
+    upper_table = WRITE_UPPER_PREFIX + table_name
+    overlay_table = WRITE_MERGED_PREFIX + table_name if ddn_layout else table_name
 
     # Ensure that the table is now in the overlay/LQ mode
     assert pg_repo_local.is_overlay_view(table_name)
@@ -192,37 +263,69 @@ def test_basic_writes_with_pks(pg_repo_local):
     #
     # Also, note that one has a PK conflict, but due to the overlay mechanism
     # it will simply result in an update without throwing an error.
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'banana', 1, '2022-01-01T12:00:00')")
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'pear', 2, '2022-01-01T12:00:00')")
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (5, 'orange', 3, '2022-01-01T12:00:00')")
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (6, 'kiwi', 4, '2022-01-01T12:00:00')")
+    pg_repo_local.run_sql(
+        SQL("INSERT INTO {} VALUES (3, 'banana', 1, '2022-01-01T12:00:00')").format(
+            Identifier(overlay_table)
+        )
+    )
+    pg_repo_local.run_sql(
+        SQL("INSERT INTO {} VALUES (4, 'pear', 2, '2022-01-01T12:00:00')").format(
+            Identifier(overlay_table)
+        )
+    )
+    pg_repo_local.run_sql(
+        SQL("INSERT INTO {} VALUES (5, 'orange', 3, '2022-01-01T12:00:00')").format(
+            Identifier(overlay_table)
+        )
+    )
+    pg_repo_local.run_sql(
+        SQL("INSERT INTO {} VALUES (6, 'kiwi', 4, '2022-01-01T12:00:00')").format(
+            Identifier(overlay_table)
+        )
+    )
 
     # Update a row existing in the lower table, and one existing only in the upper table (due to insert above)
-    pg_repo_local.run_sql("UPDATE fruits SET name = 'mango' WHERE name = 'guitar'")
-    pg_repo_local.run_sql("UPDATE fruits SET name = 'watermelon' WHERE name = 'kiwi'")
+    pg_repo_local.run_sql(
+        SQL("UPDATE {} SET name = 'mango' WHERE name = 'guitar'").format(Identifier(overlay_table))
+    )
+    pg_repo_local.run_sql(
+        SQL("UPDATE {} SET name = 'watermelon' WHERE name = 'kiwi'").format(
+            Identifier(overlay_table)
+        )
+    )
     # Updating a PK will result in overwriting of the previous row with that PK, instead of an error
-    pg_repo_local.run_sql("UPDATE fruits SET fruit_id = 5, number = 100 WHERE fruit_id = 4")
+    pg_repo_local.run_sql(
+        SQL("UPDATE {} SET fruit_id = 5, number = 100 WHERE fruit_id = 4").format(
+            Identifier(overlay_table)
+        )
+    )
 
     # Delete a row existing in the lower table, and one existing only in the upper (due to insert/update above)
-    pg_repo_local.run_sql("DELETE FROM fruits WHERE fruit_id = 2")
-    pg_repo_local.run_sql("DELETE FROM fruits WHERE name = 'watermelon'")
+    pg_repo_local.run_sql(
+        SQL("DELETE FROM {} WHERE fruit_id = 2").format(Identifier(overlay_table))
+    )
+    pg_repo_local.run_sql(
+        SQL("DELETE FROM {} WHERE name = 'watermelon'").format(Identifier(overlay_table))
+    )
 
     # No-OPs: update/delete rows that are neither in upper, nor in lower table
-    pg_repo_local.run_sql("UPDATE fruits SET name = 'kumquat' WHERE fruit_id = 10")
-    pg_repo_local.run_sql("DELETE FROM fruits WHERE fruit_id = 11")
+    pg_repo_local.run_sql(
+        SQL("UPDATE {} SET name = 'kumquat' WHERE fruit_id = 10").format(Identifier(overlay_table))
+    )
+    pg_repo_local.run_sql(
+        SQL("DELETE FROM {} WHERE fruit_id = 11").format(Identifier(overlay_table))
+    )
 
     # Assert that the lower table has the old values intact
     assert pg_repo_local.run_sql(
-        SQL("SELECT fruit_id, name FROM {}").format(Identifier(WRITE_LOWER_PREFIX + table_name))
+        SQL("SELECT fruit_id, name FROM {}").format(Identifier(lower_table))
     ) == [
         (3, "mayonnaise"),
         (2, "guitar"),
     ]
 
     # Assert the upper table stores the pending writes as expected
-    assert pg_repo_local.run_sql(
-        SQL("SELECT * FROM {}").format(Identifier(WRITE_UPPER_PREFIX + table_name))
-    ) == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(upper_table))) == [
         (3, "banana", Decimal("1"), datetime.datetime(2022, 1, 1, 12, 0), True, 1),
         (4, "pear", Decimal("2"), datetime.datetime(2022, 1, 1, 12, 0), True, 2),
         (5, "orange", Decimal("3"), datetime.datetime(2022, 1, 1, 12, 0), True, 3),
@@ -238,7 +341,7 @@ def test_basic_writes_with_pks(pg_repo_local):
     ]
 
     # Assert the correct result from the overlay view
-    assert pg_repo_local.run_sql("SELECT * FROM fruits") == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(overlay_table))) == [
         (3, "banana", Decimal("1"), datetime.datetime(2022, 1, 1, 12, 0)),
         (5, "pear", Decimal("100"), datetime.datetime(2022, 1, 1, 12, 0)),
     ]
@@ -285,23 +388,16 @@ def test_basic_writes_with_pks(pg_repo_local):
     ]
 
     # Assert that the lower table now has the new values
-    assert pg_repo_local.run_sql(
-        SQL("SELECT * FROM {}").format(Identifier(WRITE_LOWER_PREFIX + table_name))
-    ) == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(lower_table))) == [
         (3, "banana", Decimal("1"), datetime.datetime(2022, 1, 1, 12, 0)),
         (5, "pear", Decimal("100"), datetime.datetime(2022, 1, 1, 12, 0)),
     ]
 
     # Assert the upper table is now empty, since we have just committed all pending changes
-    assert (
-        pg_repo_local.run_sql(
-            SQL("SELECT * FROM {}").format(Identifier(WRITE_UPPER_PREFIX + table_name))
-        )
-        == []
-    )
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(upper_table))) == []
 
     # Assert the overlay view also shows the latest data
-    assert pg_repo_local.run_sql("SELECT * FROM fruits") == [
+    assert pg_repo_local.run_sql(SQL("SELECT * FROM {}").format(Identifier(overlay_table))) == [
         (3, "banana", Decimal("1"), datetime.datetime(2022, 1, 1, 12, 0)),
         (5, "pear", Decimal("100"), datetime.datetime(2022, 1, 1, 12, 0)),
     ]
