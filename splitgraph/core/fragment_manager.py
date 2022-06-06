@@ -1367,8 +1367,8 @@ class FragmentManager(MetadataManager):
                     return_shape=ResultShape.MANY_ONE,
                 )
             )
-        object_pks = list(zip(result[::2], result[1::2]))
-        return object_pks
+        object_pks = [tuple(sorted(t)) for t in zip(result[::2], result[1::2])]
+        return cast(List[Tuple[Any, Any]], object_pks)
 
     def _add_overlapping_objects(
         self, table: "Table", all_objects: List[str], filtered_objects: List[str]
