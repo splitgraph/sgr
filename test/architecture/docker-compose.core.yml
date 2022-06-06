@@ -49,13 +49,12 @@ services:
       - 5431
   # Name without an underscore because Minio client really wants to be compliant with the RFC
   objectstorage:
-    image: minio/minio
+    image: minio/minio:RELEASE.2022-05-19T18-20-59Z.fips
     ports:
       - '0.0.0.0:9000:9000'
     environment:
       MINIO_ROOT_USER: minioclient
       MINIO_ROOT_PASSWORD: supersecure
-      MINIO_CI_CD: 'true'
     volumes:
       # Mount a "bucket" with some CSV files into our object storage
       # https://github.com/minio/minio/issues/8949
