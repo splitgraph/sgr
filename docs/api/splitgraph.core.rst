@@ -101,6 +101,14 @@ splitgraph.core.output module
    :undoc-members:
    :show-inheritance:
 
+splitgraph.core.overlay module
+------------------------------
+
+.. automodule:: splitgraph.core.overlay
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 splitgraph.core.registry module
 -------------------------------
 

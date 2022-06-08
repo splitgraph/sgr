@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.10 (2022-06-08)
+
+  * Fix surrogate PK object ordering edge case, impacting some LQ mounts (https://github.com/splitgraph/splitgraph/pull/681).
+  * Add new `postgres_fdw` params: `use_remote_estimate` and `fetch_size` (https://github.com/splitgraph/splitgraph/pull/678)
+  * Add support for writable LQ to Splitfiles (https://github.com/splitgraph/splitgraph/pull/668)
+
 ## v0.3.9 (2022-04-26)
 
 Add support for writes when using layered querying (`sgr checkout --layered`) (https://github.com/splitgraph/splitgraph/pull/662). Note
