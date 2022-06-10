@@ -32,7 +32,7 @@ performs a few additional tasks necessary for running `sgr` and
     [matthewfranglen/postgres-elasticsearch-fdw](https://github.com/matthewfranglen/postgres-elasticsearch-fdw)
     to mount Elasticsearch indexes
 - Installs the
-  [`sgr` command line client and library](https://github.com/splitgraph/splitgraph.git)
+  [`sgr` command line client and library](https://github.com/splitgraph/sgr.git)
   that is required for layered querying.
 - Optionally installs the [PostGIS](https://postgis.net/) extension to handle
   geospatial data: to build the engine with PostGIS, add `with_postgis=1` to
@@ -98,7 +98,7 @@ wrapper. More information
 [in the documentation](https://www.splitgraph.com/docs/sgr-advanced/configuration/introduction#in-engine-configuration).
 
 **Important**: Make sure that your
-[`sgr`` client](https://www.github.com/splitgraph/splitgraph) is configured to
+[`sgr`` client](https://www.github.com/splitgraph/sgr) is configured to
 connect to the engine using the credentials and port supplied when running it.
 
 ### Environment variables

@@ -5,7 +5,7 @@
 #
 # Works on Linux/OSX:
 #
-# bash -c "$(curl -sL https://github.com/splitgraph/splitgraph/releases/latest/download/install.sh)"
+# bash -c "$(curl -sL https://github.com/splitgraph/sgr/releases/latest/download/install.sh)"
 #
 # For other installation methods, including Windows/pip/docker-compose, see
 # https://www.splitgraph.com/docs/installation/.
@@ -84,7 +84,7 @@ _install_binary () {
 
   _check_sgr_exists
 
-  URL="https://github.com/splitgraph/splitgraph/releases/download/v${SGR_VERSION}"/$BINARY
+  URL="https://github.com/splitgraph/sgr/releases/download/v${SGR_VERSION}"/$BINARY
   # on OS X, splitgraph.spec is called with --onedir to output .tgz of exe and shlibs
   if [ "$BINARY" == "sgr-osx-x86_64.tgz" ] ; then
     echo "Installing the compressed sgr binary and deps from $URL into $INSTALL_DIR"
@@ -179,7 +179,7 @@ _welcome() {
   echo "Next steps: "
   echo
   echo "  Check out the example projects"
-  echo "    ${bblue}https://github.com/splitgraph/splitgraph/tree/v$SGR_VERSION/examples${end}"
+  echo "    ${bblue}https://github.com/splitgraph/sgr/tree/v$SGR_VERSION/examples${end}"
   echo
   echo "  Try out the quickstart guide"
   echo "    ${bblue}https://www.splitgraph.com/docs/getting-started/five_minute_demo${end}"
@@ -194,7 +194,7 @@ _welcome() {
   echo "    ${bblue}curl -sSL https://raw.githubusercontent.com/splitgraph/splitgraph/v$SGR_VERSION/examples/us-election/qoz_vote_fraction.splitfile \\"
   echo "     | sgr build - -o qoz_vote_fraction${end}"
   echo
-  echo "Feedback is always welcome via GitHub issues (${bblue}https://github.com/splitgraph/splitgraph/issues${end})"
+  echo "Feedback is always welcome via GitHub issues (${bblue}https://github.com/splitgraph/sgr/issues${end})"
   echo "or email (${bblue}support@splitgraph.com${end})!"
 }
 
