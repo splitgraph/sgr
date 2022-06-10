@@ -124,7 +124,7 @@ def test_singer_ingestion_initial(local_engine_empty):
 
     assert image.get_table("releases").table_schema == _RELEASES_SCHEMA
     assert image.get_table("releases").objects == [
-        "o160e0b0db4ad7e7eb7c4db26bf8183461f65968be64b8594c7cc71fbf5ff2a"
+        "oae029fe8e58f00dd4c7513dc8b85985fb8384b15d11fc348e90896ea9cdd20"
     ]
 
     assert image.get_table("stargazers").table_schema == _STARGAZERS_SCHEMA
@@ -182,8 +182,8 @@ def test_singer_ingestion_update(local_engine_empty):
 
     assert image.get_table("releases").table_schema == _RELEASES_SCHEMA
     assert image.get_table("releases").objects == [
-        "o160e0b0db4ad7e7eb7c4db26bf8183461f65968be64b8594c7cc71fbf5ff2a",
-        "ocf91fc59f89f9db3db9aea28c4719f8bd009b13990f3f12f93f282618d81a8",
+        "oae029fe8e58f00dd4c7513dc8b85985fb8384b15d11fc348e90896ea9cdd20",
+        "od5d0eea0e4348657b9899e7813da20258d74862a671c5644820205f051568f",
     ]
 
     assert image.get_table("stargazers").table_schema == _STARGAZERS_SCHEMA
@@ -267,7 +267,7 @@ def test_singer_ingestion_schema_change(local_engine_empty):
     # Releases unchanged -- same table
     assert image.get_table("releases").table_schema == _RELEASES_SCHEMA
     assert image.get_table("releases").objects == [
-        "o160e0b0db4ad7e7eb7c4db26bf8183461f65968be64b8594c7cc71fbf5ff2a"
+        "oae029fe8e58f00dd4c7513dc8b85985fb8384b15d11fc348e90896ea9cdd20"
     ]
 
     assert image.get_table("stargazers").table_schema == [
