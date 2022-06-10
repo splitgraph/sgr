@@ -1,6 +1,6 @@
 # `sgr`
 
-![Build status](https://github.com/splitgraph/splitgraph/workflows/build_all/badge.svg)
+![Build status](https://github.com/splitgraph/sgr/workflows/build_all/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/splitgraph/splitgraph/badge.svg?branch=master)](https://coveralls.io/github/splitgraph/splitgraph?branch=master)
 [![PyPI version](https://badge.fury.io/py/splitgraph.svg)](https://badge.fury.io/py/splitgraph)
 [![Discord chat room](https://img.shields.io/discord/718534846472912936.svg)](https://discord.gg/4Qe2fYA)
@@ -94,7 +94,7 @@ Pre-requisites:
   or have access to a remote Docker socket.
 
 You can get the `sgr` single binary from
-[the releases page](https://github.com/splitgraph/splitgraph/releases).
+[the releases page](https://github.com/splitgraph/sgr/releases).
 Optionally, you can run
 [`sgr engine add`](https://www.splitgraph.com/docs/sgr/engine-management/engine-add)
 to create an engine.
@@ -102,7 +102,7 @@ to create an engine.
 For Linux and OSX, once Docker is running, install `sgr` with a single script:
 
 ```bash
-$ bash -c "$(curl -sL https://github.com/splitgraph/splitgraph/releases/latest/download/install.sh)"
+$ bash -c "$(curl -sL https://github.com/splitgraph/sgr/releases/latest/download/install.sh)"
 ```
 
 This will download the `sgr` binary and set up the `sgr` Engine Docker
@@ -136,7 +136,7 @@ or join our [Discord channel](https://discord.gg/4Qe2fYA)!
   to manage dependencies
 - Install pre-commit hooks (we use [Black](https://github.com/psf/black) to
   format code)
-- `git clone --recurse-submodules https://github.com/splitgraph/splitgraph.git`
+- `git clone --recurse-submodules https://github.com/splitgraph/sgr.git`
 - `poetry install`
 - To build the
   [engine](https://www.splitgraph.com/docs/architecture/splitgraph-engine)
@@ -169,7 +169,7 @@ poetry run pytest -m mounting
 ```
 
 Finally, to test the
-[example projects](https://github.com/splitgraph/splitgraph/tree/master/examples),
+[example projects](https://github.com/splitgraph/sgr/tree/master/examples),
 do
 
 ```
@@ -179,4 +179,4 @@ poetry run pytest -m example
 ```
 
 All of these tests run in
-[CI](https://github.com/splitgraph/splitgraph/actions).
+[CI](https://github.com/splitgraph/sgr/actions).
