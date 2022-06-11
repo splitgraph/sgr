@@ -307,7 +307,6 @@ def clean_out_engine(engine):
 
 with open(
     os.path.join(os.path.dirname(__file__), "../architecture/data/pgorigin/setup.sql"),
-    "r",
 ) as f:
     PG_DATA = f.read()
 
@@ -533,7 +532,7 @@ def unprivileged_remote_engine(remote_engine_registry):
 
 
 def load_splitfile(name):
-    with open(RESOURCES + name, "r") as f:
+    with open(RESOURCES + name) as f:
         return f.read()
 
 
@@ -557,7 +556,7 @@ def clean_minio():
 
 
 def load_csv(fname):
-    with open(os.path.join(INGESTION_RESOURCES_CSV, fname), "r") as f:
+    with open(os.path.join(INGESTION_RESOURCES_CSV, fname)) as f:
         return f.read()
 
 
