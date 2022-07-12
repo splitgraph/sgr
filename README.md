@@ -64,7 +64,7 @@ The code in this repository contains:
   `sgr` is the main command line tool used to work with Splitgraph "images"
   (data snapshots). Use it to ingest data, work with Splitfiles, and push data
   to Splitgraph.
-- **[`sgr` Engine](engine/README.md)**: a
+- **[`sgr` Engine](https://github.com/splitgraph/sgr/blob/master/engine/README.md)**: a
   [Docker image](https://hub.docker.com/r/splitgraph/engine) of the latest
   Postgres with `sgr` and other required extensions pre-installed.
 - **[Splitgraph Python library](https://www.splitgraph.com/docs/python-api/splitgraph.core)**:
@@ -119,7 +119,7 @@ You can follow the
 that will guide you through the basics of using `sgr` with Splitgraph or
 standalone.
 
-Alternatively, `sgr` comes with plenty of [examples](examples) to get you
+Alternatively, `sgr` comes with plenty of [examples](https://github.com/splitgraph/sgr/tree/master/examples) to get you
 started.
 
 If you're stuck or have any questions, check out the
