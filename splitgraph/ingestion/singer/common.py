@@ -1,8 +1,7 @@
 import logging
 import traceback
-from collections import Callable
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from psycopg2.sql import SQL, Identifier
 
