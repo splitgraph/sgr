@@ -202,7 +202,9 @@ def _update_bar(
     "--cap-add", help="Add kernel capabilities to the engine container", multiple=True, default=[]
 )
 @click.argument("name", default=DEFAULT_ENGINE)
-@click.password_option()
+@click.password_option(
+    prompt="Enter a password to protect your local engine. \nWill be saved to .sgconfig (usually ~/.splitgraph/.sgconfig)\nPassword"
+)
 def add_engine_c(
     image,
     port,
