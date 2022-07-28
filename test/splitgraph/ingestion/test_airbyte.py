@@ -88,7 +88,7 @@ _EXPECTED_AIRBYTE_CATALOG = AirbyteCatalog(
                     "friendly": {"type": "boolean"},
                     "binary_data": {"type": "string", "contentEncoding": "base64"},
                     "name": {"type": "string"},
-                    "mushroom_id": {"type": "number"},
+                    "mushroom_id": {"type": "number", "airbyte_type": "integer"},
                     "varbinary_data": {"type": "string", "contentEncoding": "base64"},
                 },
             },
