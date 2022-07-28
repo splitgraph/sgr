@@ -125,11 +125,11 @@ RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
 ENV PATH "${PATH}:/splitgraph/bin"
 ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
 
-# https://github.com/postgis/docker-postgis/blob/master/12-3.0/Dockerfile
+# https://github.com/postgis/docker-postgis/blob/master/12-3.2/Dockerfile
 ARG with_postgis
 RUN test -z "${with_postgis}" || (\
     export POSTGIS_MAJOR=3 && \
-    export POSTGIS_VERSION=3.1.4+dfsg-3.pgdg100+1 && \
+    export POSTGIS_VERSION=3.2.2+dfsg-1.pgdg110+1 && \
     apt-get update \
       && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
       && apt-get install -y --no-install-recommends \
