@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.11 (2022-07-28)
+
+  * Fix bug for Python 3.10 compatibility (https://github.com/splitgraph/sgr/pull/704)
+  * `sgr engine add` password prompt clarification (https://github.com/splitgraph/sgr/pull/709)
+
 ## v0.3.10 (2022-06-08)
 
   * Fix surrogate PK object ordering edge case, impacting some LQ mounts (https://github.com/splitgraph/sgr/pull/681).
