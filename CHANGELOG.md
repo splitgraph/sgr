@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.3.12 (2022-07-28)
+  * Bump PostGIS deps in Engine
+
 ## v0.3.11 (2022-07-28)
 
   * Fix bug for Python 3.10 compatibility (https://github.com/splitgraph/sgr/pull/704)
