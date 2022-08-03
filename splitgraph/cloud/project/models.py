@@ -35,6 +35,7 @@ class External(BaseModel):
     tables: Dict[str, Table]
     is_live: bool = True
     schedule: Optional[IngestionSchedule]
+    tunnel: bool = False
 
 
 class Source(BaseModel):

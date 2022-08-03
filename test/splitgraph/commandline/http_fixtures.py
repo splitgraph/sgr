@@ -423,6 +423,7 @@ def add_external_repo(initial_private=False, error=False):
                 },
                 "schedule": None,
                 "initial_private": initial_private,
+                "tunnel": False,
             },
             {
                 "namespace": "someuser",
@@ -434,6 +435,7 @@ def add_external_repo(initial_private=False, error=False):
                 "credential_id": "123e4567-e89b-12d3-a456-426655440000",
                 "schedule": None,
                 "initial_private": initial_private,
+                "tunnel": False,
             },
             {
                 "namespace": "someuser",
@@ -445,6 +447,7 @@ def add_external_repo(initial_private=False, error=False):
                 "credential_id": "00000000-0000-0000-0000-000000000000",
                 "schedule": None,
                 "initial_private": initial_private,
+                "tunnel": False,
             },
         ]
 

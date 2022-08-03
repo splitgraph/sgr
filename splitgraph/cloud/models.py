@@ -259,7 +259,7 @@ class AddExternalRepositoryRequest(BaseModel):
     credential_data: Optional[Dict[str, Any]]
     schedule: Optional[IngestionSchedule]
     initial_private: bool = False
-    tunnel: Optional[bool] = False
+    tunnel: bool = False
 
     @classmethod
     def from_external(

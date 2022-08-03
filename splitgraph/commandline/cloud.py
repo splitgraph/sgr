@@ -683,6 +683,7 @@ def load_c(
                     repository.external,
                     credential_map=credential_map,
                     initial_private=initial_private,
+                    tunnel=repository.external.tunnel,
                 )
                 external_repositories.append(external_repository)
         rest_client.bulk_upsert_external(
