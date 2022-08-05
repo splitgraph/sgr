@@ -1213,6 +1213,45 @@ def seed_c(remote, seed, github_repository, directory):
     click.echo(f"Splitgraph project generated in {os.path.abspath(directory)}.")
 
 
+@click.command("tunnel")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option(
+    "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
+)
+@click.argument("repository", type=str)
+def tunnel_c(remote, repositories_file, repository):
+    """
+    Start the tunnel client to make it available
+
+    This will load a splitgraph.yml file and tunnel the host:port address of the
+    external repository specified in the argument.
+    """
+    from splitgraph.cloud import GQLAPIClient, RESTAPIClient
+    from splitgraph.cloud.project.utils import load_project
+
+    repo_yaml = load_project(repositories_file)
+    tunneled_repo = None
+    for r in repo_yaml.repositories:
+        if f"{r.namespace}/{r.repository}" == repository:
+            tunneled_repo = r
+
+    if tunneled_repo is None:
+        raise click.UsageError(
+            "Repository %s not found in %s" % (repository, ", ".join(repositories_file))
+        )
+
+    # verify repository is external
+    # TODO: unit test
+    if not tunneled_repo.external or not tunneled_repo.external.tunnel:
+        raise click.UsageError("Repository %s not a tunneled external repository" % (repository))
+
+    # TODO: Get rathole client for architecture (manually downloading rathole for now)
+    #
+
+    # gql_client = GQLAPIClient(remote)
+    print("next step: start client!")
+
+
 @click.group("cloud")
 def cloud_c():
     """Run actions on Splitgraph Cloud."""
@@ -1240,3 +1279,4 @@ cloud_c.add_command(plugins_c)
 cloud_c.add_command(stub_c)
 cloud_c.add_command(validate_c)
 cloud_c.add_command(seed_c)
+cloud_c.add_command(tunnel_c)
