@@ -58,6 +58,7 @@ from splitgraph.cloud.queries import (
     GET_PLUGINS,
     GET_REPO_METADATA,
     GET_REPO_SOURCE,
+    GET_TUNNEL_PROVISIONING_TOKEN,
     INGESTION_JOB_STATUS,
     JOB_LOGS,
     PROFILE_UPSERT,
@@ -1104,3 +1105,15 @@ class GQLAPIClient:
             parsed_external = ExternalResponse.from_response(external_r.json())
 
         return make_repositories(parsed_metadata, parsed_external)
+
+    def get_tunnel_provisioning_token(self, namespace: str, repository: str) -> str:
+        response = self._gql(
+            {
+                "query": GET_TUNNEL_PROVISIONING_TOKEN,
+                "operationName": "GetTunnelProvisioningToken",
+                "variables": {"namespace": namespace, "repository": repository},
+            },
+            handle_errors=True,
+            anonymous_ok=False,
+        )
+        return str(response.json()["data"]["getTunnelProvisioningToken"])

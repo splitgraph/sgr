@@ -17,6 +17,10 @@ from click import wrap_text
 
 from splitgraph.cloud.models import AddExternalRepositoryRequest, IntrospectionMode
 from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
+from splitgraph.cloud.tunnel_client import (
+    launch_rathole_client,
+    write_rathole_client_config,
+)
 from splitgraph.commandline.common import (
     ImageType,
     RepositoryType,
@@ -26,7 +30,8 @@ from splitgraph.commandline.common import (
     wait_for_job,
 )
 from splitgraph.commandline.engine import inject_config_into_engines
-from splitgraph.config.config import get_from_subsection
+from splitgraph.config import CONFIG
+from splitgraph.config.config import get_from_subsection, get_singleton
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.core.output import Color, pluralise
 
@@ -1221,12 +1226,12 @@ def seed_c(remote, seed, github_repository, directory):
 @click.argument("repository", type=str)
 def tunnel_c(remote, repositories_file, repository):
     """
-    Start the tunnel client to make it available
+    Start the tunnel client to make tunneled external repo available.
 
     This will load a splitgraph.yml file and tunnel the host:port address of the
     external repository specified in the argument.
     """
-    from splitgraph.cloud import GQLAPIClient, RESTAPIClient
+
     from splitgraph.cloud.project.utils import load_project
 
     repo_yaml = load_project(repositories_file)
@@ -1240,16 +1245,21 @@ def tunnel_c(remote, repositories_file, repository):
             "Repository %s not found in %s" % (repository, ", ".join(repositories_file))
         )
 
-    # verify repository is external
-    # TODO: unit test
-    if not tunneled_repo.external or not tunneled_repo.external.tunnel:
-        raise click.UsageError("Repository %s not a tunneled external repository" % (repository))
+    config_dir = os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
+    # TODO: Get current version of rathole client for architecture.
+    # user must manually download rathole for now
+    rathole_client_binary_path = os.path.join(config_dir, "rathole")
 
-    # TODO: Get rathole client for architecture (manually downloading rathole for now)
-    #
+    from splitgraph.cloud import GQLAPIClient
 
-    # gql_client = GQLAPIClient(remote)
-    print("next step: start client!")
+    client = GQLAPIClient(remote)
+    provisioning_token = client.get_tunnel_provisioning_token(
+        tunneled_repo.namespace, tunneled_repo.repository
+    )
+    rathole_client_config_path = write_rathole_client_config(
+        provisioning_token, tunneled_repo, config_dir
+    )
+    launch_rathole_client(rathole_client_binary_path, rathole_client_config_path)
 
 
 @click.group("cloud")
