@@ -1223,8 +1223,8 @@ def seed_c(remote, seed, github_repository, directory):
 @click.option(
     "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
 )
-@click.argument("repository", type=str)
-def tunnel_c(remote, repositories_file, repository):
+@click.argument("repository", type=RepositoryType(exists=False))
+def tunnel_c(remote: str, repositories_file: List[Path], repository: "CoreRepository"):
     """
     Start the tunnel client to make tunneled external repo available.
 
@@ -1232,32 +1232,35 @@ def tunnel_c(remote, repositories_file, repository):
     external repository specified in the argument.
     """
 
-    from splitgraph.cloud.project.utils import load_project
+    external = _get_external_from_yaml(repositories_file, repository)[0]
 
-    repo_yaml = load_project(repositories_file)
-    tunneled_repo = None
-    for r in repo_yaml.repositories:
-        if f"{r.namespace}/{r.repository}" == repository:
-            tunneled_repo = r
-
-    if tunneled_repo is None:
+    if not external.tunnel:
         raise click.UsageError(
-            "Repository %s not found in %s" % (repository, ", ".join(repositories_file))
+            f"Repository {repository.namespace}/{repository.repository} is not tunneled"
         )
 
     config_dir = os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
     # TODO: Get current version of rathole client for architecture.
-    # user must manually download rathole for now
+    # user must manually download rathole for nowx
     rathole_client_binary_path = os.path.join(config_dir, "rathole")
 
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
     provisioning_token = client.get_tunnel_provisioning_token(
-        tunneled_repo.namespace, tunneled_repo.repository
+        repository.namespace, repository.repository
     )
+    tunnel_server_management_host, tunnel_server_management_port, tls_hostname = GQLAPIClient(
+        remote, access_token=provisioning_token
+    ).provision_tunnel()
     rathole_client_config_path = write_rathole_client_config(
-        provisioning_token, tunneled_repo, config_dir
+        provisioning_token,
+        tunnel_server_management_host,
+        tunnel_server_management_port,
+        tls_hostname,
+        repository,
+        external.params,
+        config_dir,
     )
     launch_rathole_client(rathole_client_binary_path, rathole_client_config_path)
 

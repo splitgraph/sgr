@@ -2,22 +2,22 @@ import os
 import subprocess
 import sys
 from os import path
-from typing import IO, Optional, cast
+from typing import IO, Any, Dict, Optional, cast
 
-from splitgraph.cloud.project.models import Repository
+from splitgraph.core.repository import Repository
 
-RATHOLE_CLIENT_FILENAME = "rathole-client.toml"
+RATHOLE_CLIENT_CONFIG_FILENAME = "rathole-client.toml"
 
-RATHOLE_CLIENT_TEMPLATE = """
+RATHOLE_CLIENT_CONFIG_TEMPLATE = """
 [client]
-remote_addr = "{rathole_server_management_address}"
+remote_addr = "{tunnel_server_management_address}"
 
 [client.transport]
 type = "tls"
 
 [client.transport.tls]
 {trusted_root_line}
-hostname = "{hostname}"
+hostname = "{tls_hostname}"
 
 [client.services."{namespace}/{repository}"]
 local_addr = "{local_address}"
@@ -28,8 +28,8 @@ token = "{provisioning_token}"
 
 
 def get_rathole_client_config(
-    rathole_server_management_address: str,
-    hostname: str,
+    tunnel_server_management_address: str,
+    tls_hostname: str,
     local_address: str,
     provisioning_token: str,
     namespace: str,
@@ -37,9 +37,9 @@ def get_rathole_client_config(
     trusted_root: Optional[str],
 ) -> str:
     trusted_root_line = f'trusted_root = "{trusted_root}"' if trusted_root else ""
-    return RATHOLE_CLIENT_TEMPLATE.format(
-        rathole_server_management_address=rathole_server_management_address,
-        hostname=hostname,
+    return RATHOLE_CLIENT_CONFIG_TEMPLATE.format(
+        tunnel_server_management_address=tunnel_server_management_address,
+        tls_hostname=tls_hostname,
         local_address=local_address,
         provisioning_token=provisioning_token,
         namespace=namespace,
@@ -49,34 +49,37 @@ def get_rathole_client_config(
 
 
 def write_rathole_client_config(
-    provisioning_token: str, repository: Repository, config_dir: str
+    provisioning_token: str,
+    tunnel_server_management_host: str,
+    tunnel_server_management_port: int,
+    tls_hostname: Optional[str],
+    repository: Repository,
+    params: Dict[str, Any],
+    config_dir: str,
 ) -> str:
-    # verify repository is external
-    if not repository.external or not repository.external.tunnel:
-        raise Exception("Repository %s not a tunneled external repository" % (repository))
     # TODO: instead of printing token, make gql call to provision tunnel
     print("Got provisioning token %s" % provisioning_token)
     # in production, this will be None, but for dev instances, we need to
     # specify rootCA.pem
-    trusted_root = os.environ["REQUESTS_CA_BUNDLE"] or os.environ["SSL_CERT_FILE"]
+    trusted_root = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
     rathole_client_config = get_rathole_client_config(
         # TODO: replace these stub values with response of provisioning call
-        rathole_server_management_address="34.70.46.40:2333",
-        hostname="www.splitgraph.test",
-        local_address=f"{repository.external.params['host']}:{repository.external.params['port']}",
+        tunnel_server_management_address=f"{tunnel_server_management_host}:{tunnel_server_management_port}",
+        tls_hostname=tls_hostname or tunnel_server_management_host,
+        local_address=f"{params['host']}:{params['port']}",
         provisioning_token=provisioning_token,
         namespace=repository.namespace,
         repository=repository.repository,
         trusted_root=trusted_root,
     )
-    config_filename = path.join(config_dir, RATHOLE_CLIENT_FILENAME)
+    config_filename = path.join(config_dir, RATHOLE_CLIENT_CONFIG_FILENAME)
     with open(config_filename, "w") as f:
         f.write(rathole_client_config)
     return config_filename
 
 
 # inspired by https://stackoverflow.com/questions/18421757/live-output-from-subprocess-command
-def launch_rathole_client(rathole_client_binary_path, rathole_client_config_path):
+def launch_rathole_client(rathole_client_binary_path: str, rathole_client_config_path: str) -> None:
     process = subprocess.Popen(
         [rathole_client_binary_path, "--client", rathole_client_config_path],
         stdout=subprocess.PIPE,

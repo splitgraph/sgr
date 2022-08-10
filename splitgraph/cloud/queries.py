@@ -285,6 +285,15 @@ GET_TUNNEL_PROVISIONING_TOKEN = """mutation GetTunnelProvisioningToken($namespac
 }
 """
 
+PROVISION_TUNNEL = """mutation ProvisionTunnel {
+  provisionTunnel {
+    tlsHostname,
+    tunnelServerManagementHost,
+    tunnelServerManagementPort
+  }
+}
+"""
+
 EXPORT_JOB_STATUS = """query ExportJobStatus($taskId: UUID!) {
   exportJobStatus(taskId: $taskId) {
     taskId

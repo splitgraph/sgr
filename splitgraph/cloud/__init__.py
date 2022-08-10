@@ -62,6 +62,7 @@ from splitgraph.cloud.queries import (
     INGESTION_JOB_STATUS,
     JOB_LOGS,
     PROFILE_UPSERT,
+    PROVISION_TUNNEL,
     REPO_CONDITIONS,
     REPO_PARAMS,
     START_EXPORT,
@@ -1117,3 +1118,20 @@ class GQLAPIClient:
             anonymous_ok=False,
         )
         return str(response.json()["data"]["getTunnelProvisioningToken"])
+
+    def provision_tunnel(self) -> Tuple[str, int, Optional[str]]:
+        response = self._gql(
+            {
+                "query": PROVISION_TUNNEL,
+                "operationName": "ProvisionTunnel",
+                "variables": {},
+            },
+            handle_errors=True,
+            anonymous_ok=False,
+        )
+        response_json = response.json()
+        return (
+            response_json["data"]["provisionTunnel"]["tunnelServerManagementHost"],
+            response_json["data"]["provisionTunnel"]["tunnelServerManagementPort"],
+            response_json["data"]["provisionTunnel"]["tlsHostname"],
+        )
