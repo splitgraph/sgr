@@ -271,7 +271,7 @@ def upload_file(file: IO, upload_url: str) -> None:
     with tqdm(total=size, unit="B", unit_scale=True, unit_divisor=1024) as t:
         wrapped_file = CallbackIOWrapper(t.update, file, "read")
         t.set_description(os.path.basename(file.name))
-        requests.put(upload_url, data=wrapped_file)
+        requests.put(upload_url, data=wrapped_file, verify=os.environ.get("SSL_CERT_FILE", True))
 
 
 def download_file(url: str, filename: Optional[str]) -> None:
