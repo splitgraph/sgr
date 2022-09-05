@@ -1260,8 +1260,8 @@ def tunnel_c(remote: str, repositories_file: List[Path], repository: "CoreReposi
         external.params,
         config_dir,
     )
-    print(rathole_client_config_path)
-    # launch_rathole_client(rathole_client_binary_path, rathole_client_config_path)
+    print("launching rathole client")
+    launch_rathole_client(rathole_client_binary_path, rathole_client_config_path)
 
 
 @click.group("cloud")
