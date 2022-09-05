@@ -1241,28 +1241,27 @@ def tunnel_c(remote: str, repositories_file: List[Path], repository: "CoreReposi
 
     config_dir = os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
     # TODO: Get current version of rathole client for architecture.
-    # user must manually download rathole for nowx
+    # user must manually download rathole for now
     rathole_client_binary_path = os.path.join(config_dir, "rathole")
 
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
-    provisioning_token = client.get_tunnel_provisioning_token(
+    (secretToken, tunnelConnectHost, tunnelConnectPort) = client.provision_tunnel(
         repository.namespace, repository.repository
     )
-    tunnel_server_management_host, tunnel_server_management_port, tls_hostname = GQLAPIClient(
-        remote, access_token=provisioning_token
-    ).provision_tunnel()
+
     rathole_client_config_path = write_rathole_client_config(
-        provisioning_token,
-        tunnel_server_management_host,
-        tunnel_server_management_port,
-        tls_hostname,
+        secretToken,
+        tunnelConnectHost,
+        tunnelConnectPort,
+        tunnelConnectHost,
         repository,
         external.params,
         config_dir,
     )
-    launch_rathole_client(rathole_client_binary_path, rathole_client_config_path)
+    print(rathole_client_config_path)
+    # launch_rathole_client(rathole_client_binary_path, rathole_client_config_path)
 
 
 @click.group("cloud")

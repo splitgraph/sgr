@@ -280,16 +280,11 @@ START_EXPORT = """mutation StartExport($query: String!) {
 }
 """
 
-GET_TUNNEL_PROVISIONING_TOKEN = """mutation GetTunnelProvisioningToken($namespace: String!, $repository: String!) {
-  getTunnelProvisioningToken(namespace:$namespace, repository:$repository)
-}
-"""
-
-PROVISION_TUNNEL = """mutation ProvisionTunnel {
-  provisionTunnel {
-    tlsHostname,
-    tunnelServerManagementHost,
-    tunnelServerManagementPort
+PROVISION_TUNNEL = """mutation ProvisionTunnel($namespace: String!, $repository: String!) {
+  provisionTunnel(namespace:$namespace, repository:$repository) {
+    secretToken,
+    tunnelConnectHost,
+    tunnelConnectPort
   }
 }
 """

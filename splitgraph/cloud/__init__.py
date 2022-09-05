@@ -58,7 +58,6 @@ from splitgraph.cloud.queries import (
     GET_PLUGINS,
     GET_REPO_METADATA,
     GET_REPO_SOURCE,
-    GET_TUNNEL_PROVISIONING_TOKEN,
     INGESTION_JOB_STATUS,
     JOB_LOGS,
     PROFILE_UPSERT,
@@ -1107,31 +1106,18 @@ class GQLAPIClient:
 
         return make_repositories(parsed_metadata, parsed_external)
 
-    def get_tunnel_provisioning_token(self, namespace: str, repository: str) -> str:
+    def provision_tunnel(self, namespace: str, repository: str) -> Tuple[str, str, int]:
         response = self._gql(
             {
-                "query": GET_TUNNEL_PROVISIONING_TOKEN,
-                "operationName": "GetTunnelProvisioningToken",
+                "query": PROVISION_TUNNEL,
+                "operationName": "ProvisionTunnel",
                 "variables": {"namespace": namespace, "repository": repository},
             },
             handle_errors=True,
             anonymous_ok=False,
         )
-        return str(response.json()["data"]["getTunnelProvisioningToken"])
-
-    def provision_tunnel(self) -> Tuple[str, int, Optional[str]]:
-        response = self._gql(
-            {
-                "query": PROVISION_TUNNEL,
-                "operationName": "ProvisionTunnel",
-                "variables": {},
-            },
-            handle_errors=True,
-            anonymous_ok=False,
-        )
-        response_json = response.json()
         return (
-            response_json["data"]["provisionTunnel"]["tunnelServerManagementHost"],
-            response_json["data"]["provisionTunnel"]["tunnelServerManagementPort"],
-            response_json["data"]["provisionTunnel"]["tlsHostname"],
+            response.json()["data"]["provisionTunnel"]["secretToken"],
+            response.json()["data"]["provisionTunnel"]["tunnelConnectHost"],
+            response.json()["data"]["provisionTunnel"]["tunnelConnectPort"],
         )
