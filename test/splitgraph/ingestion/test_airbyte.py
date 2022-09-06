@@ -24,7 +24,7 @@ from splitgraph.ingestion.airbyte.utils import select_streams
 
 
 class MySQLAirbyteDataSource(AirbyteDataSource):
-    docker_image = "airbyte/source-mysql:latest"
+    docker_image = "airbyte/source-mysql:0.6.8"
     airbyte_name = "airbyte-mysql"
 
     credentials_schema = merge_jsonschema(
@@ -84,7 +84,11 @@ _EXPECTED_AIRBYTE_CATALOG = AirbyteCatalog(
             json_schema={
                 "type": "object",
                 "properties": {
-                    "discovery": {"type": "string"},
+                    "discovery": {
+                        "type": "string",
+                        "format": "date-time",
+                        "airbyte_type": "timestamp_without_timezone",
+                    },
                     "friendly": {"type": "boolean"},
                     "binary_data": {"type": "string", "contentEncoding": "base64"},
                     "name": {"type": "string"},
@@ -183,7 +187,7 @@ def test_airbyte_mysql_source_introspection_end_to_end(local_engine_empty):
                 TableColumn(
                     ordinal=0,
                     name="discovery",
-                    pg_type="character varying",
+                    pg_type="timestamp without time zone",
                     is_pk=False,
                     comment=None,
                 ),
@@ -512,13 +516,13 @@ def _assert_scd_data(repo):
             "_airbyte_active_row": 1,
             "_airbyte_emitted_at": mock.ANY,
             "_airbyte_end_at": None,
-            "_airbyte_mushrooms_hashid": "882da3c55d7481c75a8f8919fc8441e1",
+            "_airbyte_mushrooms_hashid": "876c0065527b987205cf16cf7eb2f3fc",
             "_airbyte_normalized_at": mock.ANY,
             "_airbyte_start_at": 1,
             "_airbyte_unique_key": "c4ca4238a0b923820dcc509a6f75849b",
             "_airbyte_unique_key_scd": mock.ANY,
             "binary_data": "YmludHN0AA==",
-            "discovery": "2012-11-11T08:06:26.000000Z",
+            "discovery": "2012-11-11T08:06:26+00:00",
             "friendly": True,
             "mushroom_id": 1,
             "name": "portobello",
@@ -529,13 +533,13 @@ def _assert_scd_data(repo):
             "_airbyte_active_row": 1,
             "_airbyte_emitted_at": mock.ANY,
             "_airbyte_end_at": None,
-            "_airbyte_mushrooms_hashid": "7c835aeba7c53e3a13acb6f953820bb6",
+            "_airbyte_mushrooms_hashid": "084b6a38ffaece6b803256a6c56b1c68",
             "_airbyte_normalized_at": mock.ANY,
             "_airbyte_start_at": 2,
             "_airbyte_unique_key": "c81e728d9d4c2f636f067f89cc14862c",
             "_airbyte_unique_key_scd": mock.ANY,
             "binary_data": "AAAxMjMAAA==",
-            "discovery": "2018-03-17T08:06:26.000000Z",
+            "discovery": "2018-03-17T08:06:26+00:00",
             "friendly": False,
             "mushroom_id": 2,
             "name": "deathcap",
@@ -547,7 +551,7 @@ def _assert_scd_data(repo):
 def _assert_normalized_data(repo, unique_key=False):
     expected = [
         {
-            "discovery": "2012-11-11T08:06:26.000000Z",
+            "discovery": "2012-11-11T08:06:26+00:00",
             "friendly": True,
             "binary_data": "YmludHN0AA==",
             "name": "portobello",
@@ -556,10 +560,10 @@ def _assert_normalized_data(repo, unique_key=False):
             "_airbyte_ab_id": mock.ANY,
             "_airbyte_emitted_at": mock.ANY,
             "_airbyte_normalized_at": mock.ANY,
-            "_airbyte_mushrooms_hashid": "882da3c55d7481c75a8f8919fc8441e1",
+            "_airbyte_mushrooms_hashid": "876c0065527b987205cf16cf7eb2f3fc",
         },
         {
-            "discovery": "2018-03-17T08:06:26.000000Z",
+            "discovery": "2018-03-17T08:06:26+00:00",
             "friendly": False,
             "binary_data": "AAAxMjMAAA==",
             "name": "deathcap",
@@ -568,7 +572,7 @@ def _assert_normalized_data(repo, unique_key=False):
             "_airbyte_ab_id": mock.ANY,
             "_airbyte_emitted_at": mock.ANY,
             "_airbyte_normalized_at": mock.ANY,
-            "_airbyte_mushrooms_hashid": "7c835aeba7c53e3a13acb6f953820bb6",
+            "_airbyte_mushrooms_hashid": "084b6a38ffaece6b803256a6c56b1c68",
         },
     ]
 
@@ -577,7 +581,7 @@ def _assert_normalized_data(repo, unique_key=False):
         TableColumn(
             ordinal=1,
             name="discovery",
-            pg_type="character varying",
+            pg_type="timestamp with time zone",
             is_pk=False,
             comment=None,
         ),
@@ -671,7 +675,7 @@ def _assert_raw_data(repo):
             "_airbyte_data": {
                 "name": "portobello",
                 "friendly": True,
-                "discovery": "2012-11-11T08:06:26.000000Z",
+                "discovery": "2012-11-11T08:06:26.000000",
                 "binary_data": "YmludHN0AA==",
                 "mushroom_id": 1,
                 "varbinary_data": "fwAAAQ==",
@@ -683,7 +687,7 @@ def _assert_raw_data(repo):
             "_airbyte_data": {
                 "name": "deathcap",
                 "friendly": False,
-                "discovery": "2018-03-17T08:06:26.000000Z",
+                "discovery": "2018-03-17T08:06:26.000000",
                 "binary_data": "AAAxMjMAAA==",
                 "mushroom_id": 2,
                 "varbinary_data": "fwAAAQ==",
