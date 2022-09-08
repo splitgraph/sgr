@@ -57,8 +57,6 @@ def write_rathole_client_config(
     params: Dict[str, Any],
     config_dir: str,
 ) -> str:
-    # TODO: instead of printing token, make gql call to provision tunnel
-    print("Got provisioning token %s" % provisioning_token)
     # in production, this will be None, but for dev instances, we need to
     # specify rootCA.pem
     trusted_root = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")

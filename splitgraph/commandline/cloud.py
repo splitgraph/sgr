@@ -1247,7 +1247,7 @@ def tunnel_c(remote: str, repositories_file: List[Path], repository: "CoreReposi
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
-    (secretToken, tunnelConnectHost, tunnelConnectPort) = client.provision_tunnel(
+    (secretToken, tunnelConnectHost, tunnelConnectPort) = client.provision_repository_tunnel(
         repository.namespace, repository.repository
     )
 
