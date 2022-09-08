@@ -289,6 +289,17 @@ PROVISION_REPOSITORY_TUNNEL = """mutation ProvisionRepositoryTunnel($namespace: 
 }
 """
 
+PROVISION_EPHEMERAL_TUNNEL = """mutation ProvisionEphemeralTunnel {
+  provisionEphemeralTunnel {
+    secretToken,
+    tunnelConnectHost,
+    tunnelConnectPort,
+    privateAddressHost,
+    privateAddressPort
+  }
+}
+"""
+
 EXPORT_JOB_STATUS = """query ExportJobStatus($taskId: UUID!) {
   exportJobStatus(taskId: $taskId) {
     taskId

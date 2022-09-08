@@ -4,13 +4,15 @@ import sys
 from os import path
 from typing import IO, Any, Dict, Optional, cast
 
+from splitgraph.config import CONFIG
+from splitgraph.config.config import get_singleton
 from splitgraph.core.repository import Repository
 
 RATHOLE_CLIENT_CONFIG_FILENAME = "rathole-client.toml"
 
 RATHOLE_CLIENT_CONFIG_TEMPLATE = """
 [client]
-remote_addr = "{tunnel_server_management_address}"
+remote_addr = "{tunnel_connect_address}"
 
 [client.transport]
 type = "tls"
@@ -19,55 +21,56 @@ type = "tls"
 {trusted_root_line}
 hostname = "{tls_hostname}"
 
-[client.services."{namespace}/{repository}"]
+[client.services."{section_id}"]
 local_addr = "{local_address}"
-# token is provisioner JWT token
-token = "{provisioning_token}"
+token = "{secret_token}"
 
 """
 
 
 def get_rathole_client_config(
-    tunnel_server_management_address: str,
+    tunnel_connect_address: str,
     tls_hostname: str,
     local_address: str,
-    provisioning_token: str,
-    namespace: str,
-    repository: str,
+    secret_token: str,
+    section_id: str,
     trusted_root: Optional[str],
 ) -> str:
     trusted_root_line = f'trusted_root = "{trusted_root}"' if trusted_root else ""
     return RATHOLE_CLIENT_CONFIG_TEMPLATE.format(
-        tunnel_server_management_address=tunnel_server_management_address,
+        tunnel_connect_address=tunnel_connect_address,
         tls_hostname=tls_hostname,
         local_address=local_address,
-        provisioning_token=provisioning_token,
-        namespace=namespace,
-        repository=repository,
+        secret_token=secret_token,
+        section_id=section_id,
         trusted_root_line=trusted_root_line,
     )
 
 
+def get_rathole_client_binary_path():
+    config_dir = os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
+    return os.path.join(config_dir, "rathole")
+
+
 def write_rathole_client_config(
-    provisioning_token: str,
-    tunnel_server_management_host: str,
-    tunnel_server_management_port: int,
+    section_id: str,
+    secret_token: str,
+    tunnel_connect_host: str,
+    tunnel_connect_port: int,
+    local_address: str,
     tls_hostname: Optional[str],
-    repository: Repository,
-    params: Dict[str, Any],
-    config_dir: str,
 ) -> str:
     # in production, this will be None, but for dev instances, we need to
     # specify rootCA.pem
+    config_dir = os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
     trusted_root = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
     rathole_client_config = get_rathole_client_config(
         # TODO: replace these stub values with response of provisioning call
-        tunnel_server_management_address=f"{tunnel_server_management_host}:{tunnel_server_management_port}",
-        tls_hostname=tls_hostname or tunnel_server_management_host,
-        local_address=f"{params['host']}:{params['port']}",
-        provisioning_token=provisioning_token,
-        namespace=repository.namespace,
-        repository=repository.repository,
+        tunnel_connect_address=f"{tunnel_connect_host}:{tunnel_connect_port}",
+        tls_hostname=tls_hostname or tunnel_connect_host,
+        local_address=local_address,
+        secret_token=secret_token,
+        section_id=section_id,
         trusted_root=trusted_root,
     )
     config_filename = path.join(config_dir, RATHOLE_CLIENT_CONFIG_FILENAME)

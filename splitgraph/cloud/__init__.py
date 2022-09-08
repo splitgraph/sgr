@@ -61,6 +61,7 @@ from splitgraph.cloud.queries import (
     INGESTION_JOB_STATUS,
     JOB_LOGS,
     PROFILE_UPSERT,
+    PROVISION_EPHEMERAL_TUNNEL,
     PROVISION_REPOSITORY_TUNNEL,
     REPO_CONDITIONS,
     REPO_PARAMS,
@@ -1120,4 +1121,22 @@ class GQLAPIClient:
             response.json()["data"]["provisionRepositoryTunnel"]["secretToken"],
             response.json()["data"]["provisionRepositoryTunnel"]["tunnelConnectHost"],
             response.json()["data"]["provisionRepositoryTunnel"]["tunnelConnectPort"],
+        )
+
+    def provision_ephemeral_tunnel(self) -> Tuple[str, str, int, str, int]:
+        response = self._gql(
+            {
+                "query": PROVISION_EPHEMERAL_TUNNEL,
+                "operationName": "ProvisionEphemeralTunnel",
+                "variables": {},
+            },
+            handle_errors=True,
+            anonymous_ok=False,
+        )
+        return (
+            response.json()["data"]["provisionEphemeralTunnel"]["secretToken"],
+            response.json()["data"]["provisionEphemeralTunnel"]["tunnelConnectHost"],
+            response.json()["data"]["provisionEphemeralTunnel"]["tunnelConnectPort"],
+            response.json()["data"]["provisionEphemeralTunnel"]["privateAddressHost"],
+            response.json()["data"]["provisionEphemeralTunnel"]["privateAddressPort"],
         )

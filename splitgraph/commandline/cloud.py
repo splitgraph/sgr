@@ -9,7 +9,7 @@ import sys
 from copy import copy
 from glob import glob
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, OrderedDict, Tuple, cast
 from urllib.parse import quote, urlparse
 
 import click
@@ -18,6 +18,7 @@ from click import wrap_text
 from splitgraph.cloud.models import AddExternalRepositoryRequest, IntrospectionMode
 from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
 from splitgraph.cloud.tunnel_client import (
+    get_rathole_client_binary_path,
     launch_rathole_client,
     write_rathole_client_config,
 )
@@ -1239,29 +1240,65 @@ def tunnel_c(remote: str, repositories_file: List[Path], repository: "CoreReposi
             f"Repository {repository.namespace}/{repository.repository} is not tunneled"
         )
 
-    config_dir = os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
     # TODO: Get current version of rathole client for architecture.
     # user must manually download rathole for now
-    rathole_client_binary_path = os.path.join(config_dir, "rathole")
 
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
-    (secretToken, tunnelConnectHost, tunnelConnectPort) = client.provision_repository_tunnel(
+    (secret_token, tunnel_connect_host, tunnel_connect_port) = client.provision_repository_tunnel(
         repository.namespace, repository.repository
     )
 
+    section_id = f"{repository.namespace}/{repository.repository}"
+    local_address = f"{external.params['host']}:{external.params['port']}"
+
     rathole_client_config_path = write_rathole_client_config(
-        secretToken,
-        tunnelConnectHost,
-        tunnelConnectPort,
-        tunnelConnectHost,
-        repository,
-        external.params,
-        config_dir,
+        section_id,
+        secret_token,
+        tunnel_connect_host,
+        tunnel_connect_port,
+        local_address,
+        tunnel_connect_host,
+    )
+
+    print("launching rathole client")
+    launch_rathole_client(get_rathole_client_binary_path(), rathole_client_config_path)
+
+
+@click.command("ephemeral-tunnel")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("host", type=str)
+@click.argument("port", type=int)
+def ephemeral_tunnel_c(remote: str, host: str, port: int):
+    """
+    Start ephemeral tunnel.
+    """
+
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+    (
+        secret_token,
+        tunnel_connect_host,
+        tunnel_connect_port,
+        private_address_host,
+        private_address_port,
+    ) = client.provision_ephemeral_tunnel()
+
+    rathole_client_config_path = write_rathole_client_config(
+        private_address_host,
+        secret_token,
+        tunnel_connect_host,
+        tunnel_connect_port,
+        f"{host}:{port}",
+        tunnel_connect_host,
+    )
+    print(
+        f"To connect to {host}:{port} from Splitgraph, use the following connection parameters:\nHost: {private_address_host}\nPort: {private_address_port}"
     )
     print("launching rathole client")
-    launch_rathole_client(rathole_client_binary_path, rathole_client_config_path)
+    launch_rathole_client(get_rathole_client_binary_path(), rathole_client_config_path)
 
 
 @click.group("cloud")
@@ -1292,3 +1329,4 @@ cloud_c.add_command(stub_c)
 cloud_c.add_command(validate_c)
 cloud_c.add_command(seed_c)
 cloud_c.add_command(tunnel_c)
+cloud_c.add_command(ephemeral_tunnel_c)
