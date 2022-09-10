@@ -9,7 +9,7 @@ import sys
 from copy import copy
 from glob import glob
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, OrderedDict, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote, urlparse
 
 import click
@@ -31,8 +31,7 @@ from splitgraph.commandline.common import (
     wait_for_job,
 )
 from splitgraph.commandline.engine import inject_config_into_engines
-from splitgraph.config import CONFIG
-from splitgraph.config.config import get_from_subsection, get_singleton
+from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.core.output import Color, pluralise
 
@@ -1219,22 +1218,9 @@ def seed_c(remote, seed, github_repository, directory):
     click.echo(f"Splitgraph project generated in {os.path.abspath(directory)}.")
 
 
-@click.command("tunnel")
-@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.option(
-    "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
-)
-@click.argument("repository", type=RepositoryType(exists=False))
-def tunnel_c(remote: str, repositories_file: List[Path], repository: "CoreRepository"):
-    """
-    Start the tunnel client to make tunneled external repo available.
-
-    This will load a splitgraph.yml file and tunnel the host:port address of the
-    external repository specified in the argument.
-    """
-
-    external = _get_external_from_yaml(repositories_file, repository)[0]
-
+def start_repository_tunnel(
+    remote: str, repository: "CoreRepository", external: "External"
+) -> None:
     if not external.tunnel:
         raise click.UsageError(
             f"Repository {repository.namespace}/{repository.repository} is not tunneled"
@@ -1266,15 +1252,7 @@ def tunnel_c(remote: str, repositories_file: List[Path], repository: "CoreReposi
     launch_rathole_client(get_rathole_client_binary_path(), rathole_client_config_path)
 
 
-@click.command("ephemeral-tunnel")
-@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.argument("host", type=str)
-@click.argument("port", type=int)
-def ephemeral_tunnel_c(remote: str, host: str, port: int):
-    """
-    Start ephemeral tunnel.
-    """
-
+def start_ephemeral_tunnel(remote: str, local_address: str) -> None:
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
@@ -1291,14 +1269,41 @@ def ephemeral_tunnel_c(remote: str, host: str, port: int):
         secret_token,
         tunnel_connect_host,
         tunnel_connect_port,
-        f"{host}:{port}",
+        local_address,
         tunnel_connect_host,
     )
     print(
-        f"To connect to {host}:{port} from Splitgraph, use the following connection parameters:\nHost: {private_address_host}\nPort: {private_address_port}"
+        f"To connect to {local_address} from Splitgraph, use the following connection parameters:\nHost: {private_address_host}\nPort: {private_address_port}"
     )
     print("launching rathole client")
     launch_rathole_client(get_rathole_client_binary_path(), rathole_client_config_path)
+
+
+@click.command("tunnel")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option(
+    "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
+)
+@click.argument("repository_or_local_address", type=str)
+def tunnel_c(remote: str, repositories_file: List[Path], repository_or_local_address: str):
+    """
+    Start the tunnel client to make tunneled external repo available.
+
+    This will load a splitgraph.yml file and tunnel the host:port address of the
+    external repository specified in the argument.
+    """
+
+    if repository_or_local_address.find("/") > -1:
+        repository: "CoreRepository" = RepositoryType(exists=False).convert(
+            repository_or_local_address, None, None
+        )
+        external = _get_external_from_yaml(repositories_file, repository)[0]
+        start_repository_tunnel(remote, repository, external)
+
+    elif repository_or_local_address.find(":") > -1:
+        start_ephemeral_tunnel(remote, repository_or_local_address)
+    else:
+        raise click.UsageError("argument should be of the form namespace/repository or host:port")
 
 
 @click.group("cloud")
@@ -1329,4 +1334,3 @@ cloud_c.add_command(stub_c)
 cloud_c.add_command(validate_c)
 cloud_c.add_command(seed_c)
 cloud_c.add_command(tunnel_c)
-cloud_c.add_command(ephemeral_tunnel_c)

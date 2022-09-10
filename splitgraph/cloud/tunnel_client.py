@@ -2,11 +2,7 @@ import os
 import subprocess
 import sys
 from os import path
-from typing import IO, Any, Dict, Optional, cast
-
-from splitgraph.config import CONFIG
-from splitgraph.config.config import get_singleton
-from splitgraph.core.repository import Repository
+from typing import IO, Optional, cast
 
 RATHOLE_CLIENT_CONFIG_FILENAME = "rathole-client.toml"
 
@@ -47,9 +43,15 @@ def get_rathole_client_config(
     )
 
 
+def get_config_dir():
+    from splitgraph.config import CONFIG
+    from splitgraph.config.config import get_singleton
+
+    return os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
+
+
 def get_rathole_client_binary_path():
-    config_dir = os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
-    return os.path.join(config_dir, "rathole")
+    return os.path.join(get_config_dir(), "rathole")
 
 
 def write_rathole_client_config(
@@ -62,10 +64,8 @@ def write_rathole_client_config(
 ) -> str:
     # in production, this will be None, but for dev instances, we need to
     # specify rootCA.pem
-    config_dir = os.path.dirname(get_singleton(CONFIG, "SG_CONFIG_FILE"))
     trusted_root = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
     rathole_client_config = get_rathole_client_config(
-        # TODO: replace these stub values with response of provisioning call
         tunnel_connect_address=f"{tunnel_connect_host}:{tunnel_connect_port}",
         tls_hostname=tls_hostname or tunnel_connect_host,
         local_address=local_address,
@@ -73,7 +73,7 @@ def write_rathole_client_config(
         section_id=section_id,
         trusted_root=trusted_root,
     )
-    config_filename = path.join(config_dir, RATHOLE_CLIENT_CONFIG_FILENAME)
+    config_filename = path.join(get_config_dir(), RATHOLE_CLIENT_CONFIG_FILENAME)
     with open(config_filename, "w") as f:
         f.write(rathole_client_config)
     return config_filename
