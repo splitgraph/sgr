@@ -1,8 +1,9 @@
 import os
 import subprocess
-import sys
 from os import path
-from typing import IO, Optional, cast
+from typing import Optional
+
+from click import echo
 
 RATHOLE_CLIENT_CONFIG_FILENAME = "rathole-client.toml"
 
@@ -62,8 +63,8 @@ def write_rathole_client_config(
     local_address: str,
     tls_hostname: Optional[str],
 ) -> str:
-    # in production, this will be None, but for dev instances, we need to
-    # specify rootCA.pem
+    # If a specific root CA file is used (eg: for self-signed hosts), reference
+    # it in the rathole client config.
     trusted_root = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
     rathole_client_config = get_rathole_client_config(
         tunnel_connect_address=f"{tunnel_connect_host}:{tunnel_connect_port}",
@@ -79,13 +80,7 @@ def write_rathole_client_config(
     return config_filename
 
 
-# inspired by https://stackoverflow.com/questions/18421757/live-output-from-subprocess-command
-def launch_rathole_client(rathole_client_binary_path: str, rathole_client_config_path: str) -> None:
-    process = subprocess.Popen(
-        [rathole_client_binary_path, "--client", rathole_client_config_path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    # pipe rathole process output to stdout
-    for c in iter(lambda: cast(IO[bytes], process.stdout).read(1), b""):  # nomypy
-        sys.stdout.buffer.write(c)
+def launch_rathole_client(rathole_client_config_path: str) -> None:
+    echo("launching rathole client")
+    command = [get_rathole_client_binary_path(), "--client", rathole_client_config_path]
+    subprocess.check_call(command)

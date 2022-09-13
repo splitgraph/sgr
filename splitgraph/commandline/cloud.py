@@ -18,7 +18,6 @@ from click import wrap_text
 from splitgraph.cloud.models import AddExternalRepositoryRequest, IntrospectionMode
 from splitgraph.cloud.project.models import Metadata, SplitgraphYAML
 from splitgraph.cloud.tunnel_client import (
-    get_rathole_client_binary_path,
     launch_rathole_client,
     write_rathole_client_config,
 )
@@ -1248,8 +1247,7 @@ def start_repository_tunnel(
         tunnel_connect_host,
     )
 
-    print("launching rathole client")
-    launch_rathole_client(get_rathole_client_binary_path(), rathole_client_config_path)
+    launch_rathole_client(rathole_client_config_path)
 
 
 def start_ephemeral_tunnel(remote: str, local_address: str) -> None:
@@ -1272,11 +1270,10 @@ def start_ephemeral_tunnel(remote: str, local_address: str) -> None:
         local_address,
         tunnel_connect_host,
     )
-    print(
+    click.echo(
         f"To connect to {local_address} from Splitgraph, use the following connection parameters:\nHost: {private_address_host}\nPort: {private_address_port}"
     )
-    print("launching rathole client")
-    launch_rathole_client(get_rathole_client_binary_path(), rathole_client_config_path)
+    launch_rathole_client(rathole_client_config_path)
 
 
 @click.command("tunnel")
@@ -1293,17 +1290,17 @@ def tunnel_c(remote: str, repositories_file: List[Path], repository_or_local_add
     external repository specified in the argument.
     """
 
-    if repository_or_local_address.find("/") > -1:
+    if "/" in repository_or_local_address:
         repository: "CoreRepository" = RepositoryType(exists=False).convert(
             repository_or_local_address, None, None
         )
         external = _get_external_from_yaml(repositories_file, repository)[0]
         start_repository_tunnel(remote, repository, external)
 
-    elif repository_or_local_address.find(":") > -1:
+    elif ":" in repository_or_local_address:
         start_ephemeral_tunnel(remote, repository_or_local_address)
     else:
-        raise click.UsageError("argument should be of the form namespace/repository or host:port")
+        raise click.UsageError("Argument should be of the form namespace/repository or host:port")
 
 
 @click.group("cloud")
