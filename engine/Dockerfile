@@ -206,12 +206,11 @@ ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
 ARG with_postgis
 RUN test -z "${with_postgis}" || (\
     export POSTGIS_MAJOR=3 && \
-    export POSTGIS_VERSION=3.2.3+dfsg-1.pgdg100+1 && \
     apt-get update \
       && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
       && apt-get install -y --no-install-recommends \
-           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR=$POSTGIS_VERSION \
-           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts=$POSTGIS_VERSION \
+           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
+           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts \
       && rm -rf /var/lib/apt/lists/* && \
     echo "CREATE EXTENSION postgis;" >> /docker-entrypoint-initdb.d/000_create_extensions.sql)
 
