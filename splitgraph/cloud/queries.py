@@ -280,6 +280,26 @@ START_EXPORT = """mutation StartExport($query: String!) {
 }
 """
 
+PROVISION_REPOSITORY_TUNNEL = """mutation ProvisionRepositoryTunnel($namespace: String!, $repository: String!) {
+  provisionRepositoryTunnel(namespace:$namespace, repository:$repository) {
+    secretToken,
+    tunnelConnectHost,
+    tunnelConnectPort
+  }
+}
+"""
+
+PROVISION_EPHEMERAL_TUNNEL = """mutation ProvisionEphemeralTunnel {
+  provisionEphemeralTunnel {
+    secretToken,
+    tunnelConnectHost,
+    tunnelConnectPort,
+    privateAddressHost,
+    privateAddressPort
+  }
+}
+"""
+
 EXPORT_JOB_STATUS = """query ExportJobStatus($taskId: UUID!) {
   exportJobStatus(taskId: $taskId) {
     taskId
