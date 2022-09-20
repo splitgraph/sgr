@@ -27,6 +27,8 @@ from click.testing import CliRunner
 from httpretty.core import HTTPrettyRequest
 
 from splitgraph.__version__ import __version__
+from splitgraph.cloud.project.models import External
+from splitgraph.cloud.tunnel_client import get_config_filename
 from splitgraph.commandline import cli
 from splitgraph.commandline.cloud import (
     add_c,
@@ -37,6 +39,7 @@ from splitgraph.commandline.cloud import (
     register_c,
     sql_c,
     stub_c,
+    tunnel_c,
 )
 from splitgraph.config import create_config_dict
 from splitgraph.config.config import patch_config
@@ -624,3 +627,45 @@ def test_commandline_stub(snapshot):
         assert result.exit_code == 0
 
         snapshot.assert_match(result.stdout, "sgr_cloud_stub.yml")
+
+
+def test_rathole_client_config():
+    runner = CliRunner(mix_stderr=False)
+    external = External(
+        tunnel=True, plugin="asdf", params={"host": "127.0.0.1", "port": 5432}, tables={}
+    )
+
+    def mock_provision_tunnel(a, b):
+        print("asdf", a, b)
+        return ("foo", "bar", 1)
+
+    with patch(
+        "splitgraph.commandline.cloud._get_external_from_yaml", return_value=(external,)
+    ), patch(
+        "splitgraph.cloud.GQLAPIClient.provision_repository_tunnel",
+        new_callable=PropertyMock,
+        return_value=mock_provision_tunnel,
+    ), patch(
+        "splitgraph.commandline.cloud.launch_rathole_client", return_value=None
+    ):
+        result = runner.invoke(
+            tunnel_c,
+            [
+                "test/repo",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        with open(get_config_filename(), "r") as f:
+            non_empty_lines = [line.strip() for line in f if line.strip() != ""]
+            assert non_empty_lines == [
+                "[client]",
+                'remote_addr = "bar:1"',
+                "[client.transport]",
+                'type = "tls"',
+                "[client.transport.tls]",
+                'hostname = "bar"',
+                '[client.services."test/repo"]',
+                'local_addr = "127.0.0.1:5432"',
+                'token = "foo"',
+            ]
