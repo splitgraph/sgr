@@ -1238,7 +1238,7 @@ def start_repository_tunnel(
     section_id = f"{repository.namespace}/{repository.repository}"
     local_address = f"{external.params['host']}:{external.params['port']}"
 
-    rathole_client_config_path = write_rathole_client_config(
+    write_rathole_client_config(
         section_id,
         secret_token,
         tunnel_connect_host,
@@ -1247,7 +1247,7 @@ def start_repository_tunnel(
         tunnel_connect_host,
     )
 
-    launch_rathole_client(rathole_client_config_path)
+    launch_rathole_client()
 
 
 def start_ephemeral_tunnel(remote: str, local_address: str) -> None:
@@ -1262,7 +1262,7 @@ def start_ephemeral_tunnel(remote: str, local_address: str) -> None:
         private_address_port,
     ) = client.provision_ephemeral_tunnel()
 
-    rathole_client_config_path = write_rathole_client_config(
+    write_rathole_client_config(
         private_address_host,
         secret_token,
         tunnel_connect_host,
@@ -1273,7 +1273,7 @@ def start_ephemeral_tunnel(remote: str, local_address: str) -> None:
     click.echo(
         f"To connect to {local_address} from Splitgraph, use the following connection parameters:\nHost: {private_address_host}\nPort: {private_address_port}"
     )
-    launch_rathole_client(rathole_client_config_path)
+    launch_rathole_client()
 
 
 @click.command("tunnel")
