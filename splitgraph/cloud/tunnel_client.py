@@ -61,7 +61,7 @@ def get_rathole_build_key():
     if system in ["Windows", "Darwin"]:
         return system
     if system == "Linux":
-        # python 3.8 somtimes reports '' instead of 'musl' for musl libc (https://bugs.python.org/issue43248)
+        # python 3.8 sometimes reports '' instead of 'musl' for musl libc (https://bugs.python.org/issue43248)
         return "Linux-%s-%s" % (
             platform.machine(),
             "glibc" if platform.libc_ver()[0] == "glibc" else "musl",
