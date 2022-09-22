@@ -31,6 +31,7 @@ from splitgraph.commandline.cloud import (
     stub_c,
     sync_c,
     token_c,
+    tunnel_c,
     upload_c,
     validate_c,
 )
@@ -97,6 +98,7 @@ STRUCTURE = [
             "cloud stub",
             "cloud validate",
             "cloud seed",
+            "cloud tunnel",
         ],
     ),
 ]
@@ -137,6 +139,7 @@ STRUCTURE_CMD_OVERRIDE = {
     "cloud stub": stub_c,
     "cloud validate": validate_c,
     "cloud seed": seed_c,
+    "cloud tunnel": tunnel_c,
 }
 
 

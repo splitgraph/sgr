@@ -1284,10 +1284,30 @@ def start_ephemeral_tunnel(remote: str, local_address: str) -> None:
 @click.argument("repository_or_local_address", type=str)
 def tunnel_c(remote: str, repositories_file: List[Path], repository_or_local_address: str):
     """
-    Start the tunnel client to make tunneled external repo available.
+    Start tunnel to query a private data source.
+    The tunnel will run in the foreground providing Splitgraph Cloud access
+    to the data source for the duration of the process.
 
-    This will load a splitgraph.yml file and tunnel the host:port address of the
-    external repository specified in the argument.
+    To provide access to a private data source during repository creation,
+    provide its `host:port` address, e.g.:
+
+    ```
+    sgr cloud tunnel localhost:5432
+    ```
+
+    Then, create an external repository with the host and port output by
+    the command.
+
+    To query existing external repositories requiring a tunnel to access
+    their backing data source, run:
+
+    ```
+    sgr cloud tunnel namespace/repo
+    ```
+
+    Note that for this to work, the `splitgraph.yml` definition of the
+    repository must include `tunnel: true`.
+
     """
 
     if "/" in repository_or_local_address:
