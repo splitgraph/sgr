@@ -68,6 +68,7 @@ DEFAULTS: ConfigDict = {
         "dbt": "splitgraph.ingestion.dbt.data_source.DBTDataSource",
         "athena": "splitgraph.ingestion.athena.AmazonAthenaDataSource",
         "bigquery": "splitgraph.ingestion.bigquery.BigQueryDataSource",
+        "seafowl": "splitgraph.ingestion.seafowl.SeafowlDataSource",
     },
 }
 
