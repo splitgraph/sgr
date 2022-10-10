@@ -407,7 +407,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
             repository.object_engine.create_schema(staging_schema)
             repository.commit_engines()
 
-            if use_state:
+            if cursor_values:
                 self._mount_and_copy(
                     staging_schema,
                     tables,
