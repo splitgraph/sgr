@@ -278,10 +278,13 @@ def get_ingestion_state(repository: "Repository", image_hash: Optional[str]) -> 
 
 
 def prepare_new_image(
-    repository: "Repository", hash_or_tag: Optional[str], comment: str = "Singer tap ingestion"
+    repository: "Repository",
+    hash_or_tag: Optional[str],
+    comment: str = "Singer tap ingestion",
+    copy_latest: bool = True,
 ) -> Tuple[Optional[Image], str]:
     new_image_hash = "{:064x}".format(getrandbits(256))
-    if repository_exists(repository):
+    if repository_exists(repository) and copy_latest:
         # Clone the base image and delta compress against it
         base_image: Optional[Image] = repository.images[hash_or_tag] if hash_or_tag else None
         repository.images.add(parent_id=None, image=new_image_hash, comment=comment)

@@ -10,6 +10,7 @@ from psycopg2.sql import SQL, Composed, Identifier
 
 from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.common import get_temporary_table_id
+from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     Credentials,
@@ -378,12 +379,8 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
         self._validate_table_params(tables)
         tables = tables or self.tables
 
-        # Load ingestion state
-        base_image, new_image_hash = prepare_new_image(
-            repository, image_hash, comment=f"{self.get_name()} data load"
-        )
-
         if use_state:
+            # Load ingestion state
             # If we are doing sync-after-load, the previous image won't have an_sg_ingestion_state
             # table. Luckily, we can just query the previous image to find out the max values of
             # our cursors (this is going to be slower than storing the state in the image, but
@@ -391,9 +388,12 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
             state = get_ingestion_state(repository, image_hash)
             if state:
                 cursor_values = state.get("cursor_values")
-            elif base_image:
-                with base_image.query_schema() as s:
+            elif repository_exists(repository) and image_hash:
+                with repository.images[image_hash].query_schema() as s:
                     cursor_values = self._get_cursor_values(s, tables, {})
+            else:
+                state = None
+                cursor_values = None
         else:
             state = None
             cursor_values = None
@@ -402,11 +402,20 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
         # Set up a staging schema for the data
         staging_schema = get_temporary_table_id()
 
+        base_image, new_image_hash = prepare_new_image(
+            repository,
+            image_hash,
+            comment=f"{self.get_name()} data load",
+            copy_latest=bool(cursor_values),
+        )
+
         with delete_schema_at_end(repository.object_engine, staging_schema):
             repository.object_engine.delete_schema(staging_schema)
             repository.object_engine.create_schema(staging_schema)
             repository.commit_engines()
 
+            # Do the sync (append new rows) only if existing tables have a cursor value,
+            # otherwise we'll be duplicating rows
             if cursor_values:
                 self._mount_and_copy(
                     staging_schema,
