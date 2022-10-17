@@ -27,7 +27,6 @@ from click.testing import CliRunner
 from httpretty.core import HTTPrettyRequest
 
 from splitgraph.__version__ import __version__
-from splitgraph.cloud.project.models import External
 from splitgraph.cloud.tunnel_client import get_config_filename
 from splitgraph.commandline import cli
 from splitgraph.commandline.cloud import (
@@ -631,26 +630,30 @@ def test_commandline_stub(snapshot):
 
 def test_rathole_client_config():
     runner = CliRunner(mix_stderr=False)
-    external = External(
-        tunnel=True, plugin="asdf", params={"host": "127.0.0.1", "port": 5432}, tables={}
-    )
 
-    def mock_provision_tunnel(a, b):
-        print("asdf", a, b)
-        return ("foo", "bar", 1)
+    secret_token = "secret_token"
+    local_address = "127.0.0.1:5432"
+    tunnel_host = "data.splitgraph.test"
+    tunnel_port = 2333
+    private_ip6_address = "fd71:dac6:df45:7f99:d875:ece2:e581:36ea"
+
+    def mock_provision_tunnel(_a, _b):
+        return (
+            secret_token,
+            tunnel_host,
+            tunnel_port,
+            private_ip6_address,
+        )
 
     with patch(
-        "splitgraph.commandline.cloud._get_external_from_yaml", return_value=(external,)
-    ), patch(
         "splitgraph.cloud.GQLAPIClient.provision_repository_tunnel",
         new_callable=PropertyMock,
         return_value=mock_provision_tunnel,
-    ), patch(
-        "splitgraph.commandline.cloud.launch_rathole_client", return_value=None
-    ):
+    ), patch("splitgraph.commandline.cloud.launch_rathole_client", return_value=None):
         result = runner.invoke(
             tunnel_c,
             [
+                local_address,
                 "test/repo",
             ],
             catch_exceptions=False,
@@ -660,12 +663,12 @@ def test_rathole_client_config():
             non_empty_lines = [line.strip() for line in f if line.strip() != ""]
             assert non_empty_lines == [
                 "[client]",
-                'remote_addr = "bar:1"',
+                'remote_addr = "%s:%s"' % (tunnel_host, tunnel_port),
                 "[client.transport]",
                 'type = "tls"',
                 "[client.transport.tls]",
-                'hostname = "bar"',
-                '[client.services."test/repo"]',
-                'local_addr = "127.0.0.1:5432"',
-                'token = "foo"',
+                'hostname = "%s"' % tunnel_host,
+                '[client.services."%s"]' % private_ip6_address,
+                'local_addr = "%s"' % local_address,
+                'token = "%s"' % secret_token,
             ]

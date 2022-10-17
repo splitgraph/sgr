@@ -1107,7 +1107,9 @@ class GQLAPIClient:
 
         return make_repositories(parsed_metadata, parsed_external)
 
-    def provision_repository_tunnel(self, namespace: str, repository: str) -> Tuple[str, str, int]:
+    def provision_repository_tunnel(
+        self, namespace: str, repository: str
+    ) -> Tuple[str, str, int, str]:
         response = self._gql(
             {
                 "query": PROVISION_REPOSITORY_TUNNEL,
@@ -1121,6 +1123,7 @@ class GQLAPIClient:
             response.json()["data"]["provisionRepositoryTunnel"]["secretToken"],
             response.json()["data"]["provisionRepositoryTunnel"]["tunnelConnectHost"],
             response.json()["data"]["provisionRepositoryTunnel"]["tunnelConnectPort"],
+            response.json()["data"]["provisionRepositoryTunnel"]["privateAddressHost"],
         )
 
     def provision_ephemeral_tunnel(self) -> Tuple[str, str, int, str, int]:

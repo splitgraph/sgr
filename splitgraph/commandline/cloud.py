@@ -1227,14 +1227,15 @@ def start_repository_tunnel(remote: str, local_address: str, namespace_and_repos
     client = GQLAPIClient(remote)
 
     (namespace, repository) = parse_repository(namespace_and_repository)
-    (secret_token, tunnel_connect_host, tunnel_connect_port) = client.provision_repository_tunnel(
-        namespace, repository
-    )
-
-    section_id = f"{namespace}/{repository}"
+    (
+        secret_token,
+        tunnel_connect_host,
+        tunnel_connect_port,
+        private_address_host,
+    ) = client.provision_repository_tunnel(namespace, repository)
 
     write_rathole_client_config(
-        section_id,
+        private_address_host,
         secret_token,
         tunnel_connect_host,
         tunnel_connect_port,
