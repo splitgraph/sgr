@@ -26,6 +26,7 @@ from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.hooks.data_source.base import (
     SyncableDataSource,
     get_ingestion_state,
+    make_image_latest,
     prepare_new_image,
 )
 from splitgraph.utils.docker import copy_to_container, get_docker_client
@@ -366,6 +367,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
 
             logging.info("Storing normalized tables")
             _store_processed_airbyte_tables(repository, new_image_hash, staging_schema)
+            make_image_latest(repository, new_image_hash)
             repository.commit_engines()
 
         return new_image_hash

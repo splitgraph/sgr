@@ -2,7 +2,7 @@
 import click
 
 from splitgraph.commandline.common import ImageType
-from splitgraph.hooks.data_source.base import prepare_new_image
+from splitgraph.hooks.data_source.base import make_image_latest, prepare_new_image
 
 
 @click.group(name="singer")
@@ -44,6 +44,7 @@ def singer_target(image, delete_old, failure):
     repository, hash_or_tag = image
     base_image, new_image_hash = prepare_new_image(repository, hash_or_tag)
     run_patched_sync(repository, base_image, new_image_hash, delete_old, failure)
+    make_image_latest(repository, new_image_hash)
 
 
 singer_group.add_command(singer_target)

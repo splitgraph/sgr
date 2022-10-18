@@ -15,6 +15,7 @@ from splitgraph.exceptions import DataSourceError
 from splitgraph.hooks.data_source.base import (
     SyncableDataSource,
     get_ingestion_state,
+    make_image_latest,
     prepare_new_image,
 )
 from splitgraph.ingestion.common import add_timestamp_tags
@@ -158,7 +159,7 @@ class SingerDataSource(SyncableDataSource, ABC):
         store_ingestion_state(repository, new_image_hash, state, latest_state)
 
         add_timestamp_tags(repository, new_image_hash)
-
+        make_image_latest(repository, new_image_hash)
         repository.commit_engines()
 
         if failure:
