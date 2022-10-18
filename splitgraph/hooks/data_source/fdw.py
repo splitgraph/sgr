@@ -35,6 +35,7 @@ from splitgraph.hooks.data_source.base import (
     MountableDataSource,
     SyncableDataSource,
     get_ingestion_state,
+    make_image_latest,
     prepare_new_image,
 )
 from splitgraph.hooks.data_source.utils import merge_jsonschema
@@ -494,6 +495,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
                     )
 
         add_timestamp_tags(repository, new_image_hash)
+        make_image_latest(repository, new_image_hash)
         repository.commit_engines()
 
         return new_image_hash

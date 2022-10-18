@@ -1,3 +1,4 @@
+import datetime
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from importlib.resources import read_binary
@@ -33,6 +34,11 @@ INGESTION_STATE_SCHEMA = [
     TableColumn(1, "timestamp", "timestamp", True, None),
     TableColumn(2, "state", "json", False, None),
 ]
+
+
+# Temporary date for staging images that we're loading data into in
+# order to avoid them temporarily showing up as latest
+PLACEHOLDER_DATE = datetime.datetime(1, 1, 1, 0, 0, 0)
 
 
 class DataSource(ABC):
@@ -287,7 +293,9 @@ def prepare_new_image(
     if repository_exists(repository) and copy_latest:
         # Clone the base image and delta compress against it
         base_image: Optional[Image] = repository.images[hash_or_tag] if hash_or_tag else None
-        repository.images.add(parent_id=None, image=new_image_hash, comment=comment)
+        repository.images.add(
+            parent_id=None, image=new_image_hash, comment=comment, created=PLACEHOLDER_DATE
+        )
         if base_image:
             repository.engine.run_sql(
                 "INSERT INTO splitgraph_meta.tables "
@@ -305,3 +313,12 @@ def prepare_new_image(
         base_image = None
         repository.images.add(parent_id=None, image=new_image_hash, comment=comment)
     return base_image, new_image_hash
+
+
+def make_image_latest(repository: "Repository", image_hash: str) -> None:
+    repository.engine.run_sql(
+        "UPDATE splitgraph_meta.images "
+        "SET created = now() WHERE namespace = %s "
+        "AND repository = %s AND image_hash = %s",
+        (repository.namespace, repository.repository, image_hash),
+    )
