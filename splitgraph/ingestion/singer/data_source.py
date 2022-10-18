@@ -15,7 +15,6 @@ from splitgraph.exceptions import DataSourceError
 from splitgraph.hooks.data_source.base import (
     SyncableDataSource,
     get_ingestion_state,
-    make_image_latest,
     prepare_new_image,
 )
 from splitgraph.ingestion.common import add_timestamp_tags
@@ -129,7 +128,9 @@ class SingerDataSource(SyncableDataSource, ABC):
         catalog = self._run_singer_discovery(config)
         catalog = self.build_singer_catalog(catalog, tables)
 
-        base_image, new_image_hash = prepare_new_image(repository, image_hash)
+        base_image, new_image_hash = prepare_new_image(
+            repository, image_hash, use_placeholder_dt=False
+        )
         state = get_ingestion_state(repository, image_hash) if use_state else None
         logging.info("Current ingestion state: %s", state)
 
@@ -159,7 +160,6 @@ class SingerDataSource(SyncableDataSource, ABC):
         store_ingestion_state(repository, new_image_hash, state, latest_state)
 
         add_timestamp_tags(repository, new_image_hash)
-        make_image_latest(repository, new_image_hash)
         repository.commit_engines()
 
         if failure:

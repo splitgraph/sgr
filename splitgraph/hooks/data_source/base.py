@@ -288,13 +288,17 @@ def prepare_new_image(
     hash_or_tag: Optional[str],
     comment: str = "Singer tap ingestion",
     copy_latest: bool = True,
+    use_placeholder_dt: bool = False,
 ) -> Tuple[Optional[Image], str]:
     new_image_hash = "{:064x}".format(getrandbits(256))
     if repository_exists(repository) and copy_latest:
         # Clone the base image and delta compress against it
         base_image: Optional[Image] = repository.images[hash_or_tag] if hash_or_tag else None
         repository.images.add(
-            parent_id=None, image=new_image_hash, comment=comment, created=PLACEHOLDER_DATE
+            parent_id=None,
+            image=new_image_hash,
+            comment=comment,
+            created=PLACEHOLDER_DATE if use_placeholder_dt else None,
         )
         if base_image:
             repository.engine.run_sql(
@@ -311,7 +315,12 @@ def prepare_new_image(
             )
     else:
         base_image = None
-        repository.images.add(parent_id=None, image=new_image_hash, comment=comment)
+        repository.images.add(
+            parent_id=None,
+            image=new_image_hash,
+            comment=comment,
+            created=PLACEHOLDER_DATE if use_placeholder_dt else None,
+        )
     return base_image, new_image_hash
 
 
