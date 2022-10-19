@@ -42,9 +42,10 @@ def singer_target(image, delete_old, failure):
     from splitgraph.ingestion.singer.db_sync import run_patched_sync
 
     repository, hash_or_tag = image
-    base_image, new_image_hash = prepare_new_image(repository, hash_or_tag)
+    base_image, new_image_hash = prepare_new_image(
+        repository, hash_or_tag, use_placeholder_dt=False
+    )
     run_patched_sync(repository, base_image, new_image_hash, delete_old, failure)
-    make_image_latest(repository, new_image_hash)
 
 
 singer_group.add_command(singer_target)
