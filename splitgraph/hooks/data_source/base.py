@@ -288,7 +288,7 @@ def prepare_new_image(
     hash_or_tag: Optional[str],
     comment: str = "Singer tap ingestion",
     copy_latest: bool = True,
-    use_placeholder_dt: bool = False,
+    use_placeholder_dt: bool = True,
 ) -> Tuple[Optional[Image], str]:
     new_image_hash = "{:064x}".format(getrandbits(256))
     if repository_exists(repository) and copy_latest:
