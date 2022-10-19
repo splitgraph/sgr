@@ -284,7 +284,8 @@ PROVISION_REPOSITORY_TUNNEL = """mutation ProvisionRepositoryTunnel($namespace: 
   provisionRepositoryTunnel(namespace:$namespace, repository:$repository) {
     secretToken,
     tunnelConnectHost,
-    tunnelConnectPort
+    tunnelConnectPort,
+    privateAddressHost
   }
 }
 """

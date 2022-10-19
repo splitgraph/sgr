@@ -33,6 +33,7 @@ from splitgraph.commandline.engine import inject_config_into_engines
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
 from splitgraph.core.output import Color, pluralise
+from splitgraph.core.types import parse_repository
 
 if TYPE_CHECKING:
     from splitgraph.cloud import GQLAPIClient
@@ -687,7 +688,6 @@ def load_c(
                     repository.external,
                     credential_map=credential_map,
                     initial_private=initial_private,
-                    tunnel=repository.external.tunnel,
                 )
                 external_repositories.append(external_repository)
         rest_client.bulk_upsert_external(
@@ -1217,13 +1217,7 @@ def seed_c(remote, seed, github_repository, directory):
     click.echo(f"Splitgraph project generated in {os.path.abspath(directory)}.")
 
 
-def start_repository_tunnel(
-    remote: str, repository: "CoreRepository", external: "External"
-) -> None:
-    if not external.tunnel:
-        raise click.UsageError(
-            f"Repository {repository.namespace}/{repository.repository} is not tunneled"
-        )
+def start_repository_tunnel(remote: str, local_address: str, namespace_and_repository: str) -> None:
 
     # TODO: Get current version of rathole client for architecture.
     # user must manually download rathole for now
@@ -1231,15 +1225,17 @@ def start_repository_tunnel(
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
-    (secret_token, tunnel_connect_host, tunnel_connect_port) = client.provision_repository_tunnel(
-        repository.namespace, repository.repository
-    )
 
-    section_id = f"{repository.namespace}/{repository.repository}"
-    local_address = f"{external.params['host']}:{external.params['port']}"
+    (namespace, repository) = parse_repository(namespace_and_repository)
+    (
+        secret_token,
+        tunnel_connect_host,
+        tunnel_connect_port,
+        private_address_host,
+    ) = client.provision_repository_tunnel(namespace, repository)
 
     write_rathole_client_config(
-        section_id,
+        private_address_host,
         secret_token,
         tunnel_connect_host,
         tunnel_connect_port,
@@ -1278,11 +1274,9 @@ def start_ephemeral_tunnel(remote: str, local_address: str) -> None:
 
 @click.command("tunnel")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.option(
-    "--repositories-file", "-f", default=["splitgraph.yml"], type=click.Path(), multiple=True
-)
-@click.argument("repository_or_local_address", type=str)
-def tunnel_c(remote: str, repositories_file: List[Path], repository_or_local_address: str):
+@click.argument("local_address", type=str)
+@click.argument("namespace_and_repository", type=str, required=False)
+def tunnel_c(remote: str, local_address: str, namespace_and_repository: Optional[str]):
     """
     Start tunnel to query a private data source.
     The tunnel will run in the foreground providing Splitgraph Cloud access
@@ -1295,32 +1289,20 @@ def tunnel_c(remote: str, repositories_file: List[Path], repository_or_local_add
     sgr cloud tunnel localhost:5432
     ```
 
-    Then, create an external repository with the host and port output by
-    the command.
-
-    To query existing external repositories requiring a tunnel to access
-    their backing data source, run:
+    To re-attach a tunnel to an existing tunneled external repository,
+    add the namespace/repository name, eg:
 
     ```
-    sgr cloud tunnel namespace/repo
+    sgr cloud tunnel localhost:5432 mynamespace/myrepo
     ```
-
-    Note that for this to work, the `splitgraph.yml` definition of the
-    repository must include `tunnel: true`.
 
     """
 
-    if "/" in repository_or_local_address:
-        repository: "CoreRepository" = RepositoryType(exists=False).convert(
-            repository_or_local_address, None, None
-        )
-        external = _get_external_from_yaml(repositories_file, repository)[0]
-        start_repository_tunnel(remote, repository, external)
-
-    elif ":" in repository_or_local_address:
-        start_ephemeral_tunnel(remote, repository_or_local_address)
+    if namespace_and_repository is None:
+        # ephemeral tunnel case
+        start_ephemeral_tunnel(remote, local_address)
     else:
-        raise click.UsageError("Argument should be of the form namespace/repository or host:port")
+        start_repository_tunnel(remote, local_address, namespace_and_repository)
 
 
 @click.group("cloud")
