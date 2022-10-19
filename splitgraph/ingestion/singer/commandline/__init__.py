@@ -2,7 +2,7 @@
 import click
 
 from splitgraph.commandline.common import ImageType
-from splitgraph.hooks.data_source.base import make_image_latest, prepare_new_image
+from splitgraph.hooks.data_source.base import prepare_new_image
 
 
 @click.group(name="singer")
