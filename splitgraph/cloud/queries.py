@@ -255,6 +255,7 @@ GET_PLUGINS = """query ExternalPlugins($seed: String) {
     supportsSync
     supportsMount
     supportsLoad
+    supportsTunneling
   }
 }
 """
@@ -270,8 +271,10 @@ GET_PLUGIN = """query ExternalPlugin($pluginName: String!) {
     supportsSync
     supportsMount
     supportsLoad
+    supportsTunneling
   }
 }"""
+
 
 START_EXPORT = """mutation StartExport($query: String!) {
   exportQuery(query: $query, exportFormat: "csv") {
