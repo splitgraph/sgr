@@ -276,8 +276,8 @@ GET_PLUGIN = """query ExternalPlugin($pluginName: String!) {
 }"""
 
 
-START_EXPORT = """mutation StartExport($query: String!) {
-  exportQuery(query: $query, exportFormat: "csv") {
+START_EXPORT = """mutation StartExport($query: String!, $format: String! = "csv") {
+  exportQuery(query: $query, exportFormat: $format) {
     id
   }
 }

@@ -1022,6 +1022,7 @@ def gql_download(final_status="SUCCESS"):
         if body["query"] == START_EXPORT:
             assert body["variables"] == {
                 "query": "SELECT * FROM some_table",
+                "format": "csv",
             }
             return [
                 200,
