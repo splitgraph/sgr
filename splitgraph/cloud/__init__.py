@@ -902,17 +902,21 @@ class GQLAPIClient:
             output=data["output"],
         )
 
-    def start_export(self, query: str) -> str:
+    def start_export(self, query: str, export_format: Optional[str] = None) -> str:
         query = query.strip()
         if query.endswith(";"):
             logging.warning("The query ends with ';', automatically removing")
             query = query[:-1]
 
+        variables = {"query": query}
+        if export_format:
+            variables["format"] = export_format
+
         response = self._gql(
             {
                 "query": START_EXPORT,
                 "operationName": "StartExport",
-                "variables": {"query": query},
+                "variables": variables,
             },
             handle_errors=True,
         )

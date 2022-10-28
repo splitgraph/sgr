@@ -1010,7 +1010,12 @@ def wait_for_download(client: "GQLAPIClient", task_id: str) -> str:
 
 @click.command("download")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.option("--file-format", default="csv", type=click.Choice(["csv"]))
+@click.option(
+    "--file-format",
+    default="csv",
+    type=click.Choice(["csv", "parquet"]),
+    help="File format (csv or Parquet with ZSTD)",
+)
 @click.argument("query", type=str)
 @click.argument("output_path", type=str, default=None, required=False)
 def download_c(remote, file_format, query, output_path):
@@ -1023,7 +1028,7 @@ def download_c(remote, file_format, query, output_path):
 
     client = GQLAPIClient(remote)
 
-    task_id = client.start_export(query=query)
+    task_id = client.start_export(query=query, export_format=file_format)
     download_url = wait_for_download(client, task_id)
     download_file(download_url, output_path)
 
