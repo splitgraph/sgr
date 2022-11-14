@@ -887,6 +887,7 @@ class GQLAPIClient:
                 "variables": {"taskId": task_id},
             },
             handle_errors=True,
+            anonymous_ok=True,
         )
 
         data = response.json()["data"]["exportJobStatus"]
