@@ -327,6 +327,8 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         normalization_mode = self.params.get("normalization_mode", "basic")
 
         if normalization_mode == "none":
+            make_image_latest(repository, new_image_hash)
+            repository.commit_engines()
             return new_image_hash
 
         # Run normalization
