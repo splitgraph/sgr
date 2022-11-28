@@ -171,6 +171,9 @@ class PsycopgEngine(SQLEngine):
         """List of notices issued by the server during the previous execution of run_sql."""
         self.notices: List[str] = []
 
+        """The number of rows affected by the last operation (insert/delete/update/fetch)"""
+        self.rowcount: Optional[int] = 0
+
         if conn_params:
             self.conn_params = conn_params
 
@@ -459,6 +462,7 @@ class PsycopgEngine(SQLEngine):
                             # (e.g. to nag them to upgrade etc).
                             for notice in self.notices:
                                 logging.info("%s says: %s", self.name, notice)
+                    self.rowcount = cur.rowcount
                 except Exception as e:
                     # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
                     self.rollback()
