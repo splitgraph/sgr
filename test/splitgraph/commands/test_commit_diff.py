@@ -1028,15 +1028,17 @@ def test_multiengine_object_gets_recreated(local_engine_empty, pg_repo_remote, c
     assert single_object in list_objects(clean_minio)
 
 
-def test_create_object_out_of_band(local_engine_empty):
+@pytest.mark.parametrize("object_size", [2, 200000])
+def test_create_object_out_of_band(local_engine_empty, object_size):
     table_schema = [
         TableColumn(1, "key", "integer", True),
-        TableColumn(2, "value", "character varying", False),
     ]
     local_engine_empty.create_table(
         schema=None, table="test", schema_spec=table_schema, temporary=True
     )
-    local_engine_empty.run_sql("INSERT INTO pg_temp.test VALUES (1, 'one'), (2, 'two')")
+    local_engine_empty.run_sql(
+        "INSERT INTO pg_temp.test (SELECT * FROM generate_series(1, %s))", (object_size,)
+    )
 
     object_manager = ObjectManager(object_engine=local_engine_empty)
 
@@ -1052,7 +1054,7 @@ def test_create_object_out_of_band(local_engine_empty):
                 SQL("SELECT * FROM splitgraph_meta.{}").format(Identifier(object_id))
             )
         )
-        == 2
+        == object_size
     )
 
 

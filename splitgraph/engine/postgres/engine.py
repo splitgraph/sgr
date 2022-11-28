@@ -3,6 +3,8 @@ to track changes, as well as the Postgres FDW interface to upload/download objec
 import itertools
 import json
 import logging
+import random
+import string
 from contextlib import contextmanager
 from io import BytesIO, TextIOWrapper
 from pathlib import PurePosixPath
@@ -28,6 +30,11 @@ ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 SG_UD_FLAG = "sg_ud_flag"
+
+# When writing a table into a single chunk, do it in batches of 150k rows (which matches the
+# default CStore stripe length). This is because CStore seems to buffer the result of the full
+# SELECT in an INSERT ... (SELECT ...) in memory.
+SINGLE_CHUNK_WRITE_SIZE = 150000
 
 
 # PG types we can run max/min/comparisons on
@@ -480,6 +487,54 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             args = [p for pk in deleted for p in [False] + list(pk)]
             self.run_sql(query, args)
 
+    @contextmanager
+    def cursor_and_function(
+        self,
+        schema_spec: TableSchema,
+        fetch_size: int,
+        source_query: Composed,
+    ) -> Iterator[Tuple[str, str]]:
+        # Declare a cursor that will read from the source table
+        cursor_rand = "".join(
+            random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits)
+            for _ in range(10)
+        )
+        cursor_name = "_sg_object_write_" + cursor_rand
+        read_function_name = "_sg_tmp_read_cursor_" + cursor_rand
+
+        cursor_query = (
+            SQL("DECLARE {} CURSOR FOR (").format(Identifier(cursor_name))
+            + source_query
+            + SQL(");")
+        )
+
+        # Giant hack to work around the fact that we can't FETCH directly into a table.
+        # We create a function that returns a table with the same shape as ours, then get
+        # it to run the FETCH for us instead and call that.
+        # Thanks to https://stackoverflow.com/a/50855367
+        cursor_query += (
+            SQL("CREATE OR REPLACE FUNCTION {}() RETURNS TABLE(").format(
+                Identifier(read_function_name)
+            )
+            + SQL(",".join("{} %s " % validate_type(col.pg_type) for col in schema_spec)).format(
+                *(Identifier(col.name) for col in schema_spec)
+            )
+            + SQL(
+                ") AS 'BEGIN RETURN QUERY FETCH "
+                + str(fetch_size)
+                + " FROM {}; END' LANGUAGE plpgsql"
+            ).format(Identifier(cursor_name))
+        )
+        self.run_sql(cursor_query)
+
+        try:
+            yield cursor_name, read_function_name
+        finally:
+            self.run_sql(SQL("DROP FUNCTION IF EXISTS {}()").format(Identifier(read_function_name)))
+            # Drop the cursor if it exists
+            if self.run_sql("SELECT 1 FROM pg_cursors WHERE name = %s", (cursor_name,)):
+                self.run_sql(SQL("CLOSE ") + Identifier(cursor_name))
+
     def store_object(
         self,
         object_id: str,
@@ -487,6 +542,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         schema_spec: TableSchema,
         source_query_args=None,
         overwrite=False,
+        write_chunk_size: Optional[int] = None,
     ) -> None:
 
         # The physical object storage (/var/lib/splitgraph/objects) and the actual
@@ -527,13 +583,30 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         # At this point, the foreign table mounting the object exists and we've established
         # that it's a brand new table, so insert data into it.
-        self.run_sql(
-            SQL("INSERT INTO {}.{}").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+
+        if not write_chunk_size:
+            self.run_sql(
+                SQL("INSERT INTO {}.{}").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+                )
+                + source_query,
+                source_query_args,
             )
-            + source_query,
-            source_query_args,
-        )
+        else:
+            with self.cursor_and_function(schema_spec, write_chunk_size, source_query) as (
+                _,
+                function_name,
+            ):
+                while True:
+                    self.run_sql(
+                        SQL("INSERT INTO {}.{} (SELECT * FROM {}())").format(
+                            Identifier(SPLITGRAPH_META_SCHEMA),
+                            Identifier(object_id),
+                            Identifier(function_name),
+                        )
+                    )
+                    if not self.rowcount:
+                        break
 
         # Also store the table schema in a file
         self._set_object_schema(object_id, schema_spec)

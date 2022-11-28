@@ -7,8 +7,6 @@ import itertools
 import json
 import logging
 import operator
-import random
-import string
 import struct
 from datetime import datetime
 from functools import reduce
@@ -34,6 +32,7 @@ from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import (
     SG_UD_FLAG,
+    SINGLE_CHUNK_WRITE_SIZE,
     add_ud_flag_column,
     get_change_key,
 )
@@ -996,6 +995,10 @@ class FragmentManager(MetadataManager):
             schema_spec=add_ud_flag_column(table_schema),
             source_query_args=source_query_args,
             overwrite=overwrite,
+            # If we got passed a function call, it's a function that reads from a cursor
+            # that chunks the data already, so we don't need to batch writes again. Otherwise,
+            # make writes in batches of SINGLE_CHUNK_WRITE_SIZE to manage CStore memory.
+            write_chunk_size=SINGLE_CHUNK_WRITE_SIZE if not source_function else None,
         )
 
         # Get content hash for this chunk.
@@ -1208,42 +1211,20 @@ class FragmentManager(MetadataManager):
 
         log_func("Storing and indexing the table")
 
-        # Declare a cursor that will read from the source table (with an order)
-        cursor_name = "_sg_commit_" + "".join(
-            random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits)
-            for _ in range(10)
-        )
-        cursor_query = (
-            SQL("DECLARE {} CURSOR FOR (SELECT").format(Identifier(cursor_name))
+        # Read the data from the source table with an order
+        source_query = (
+            SQL("SELECT ")
             + SQL(",").join(Identifier(c.name) for c in table_schema)
             + SQL("FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
             + SQL(" ORDER BY (")
             + pk_sql
             + SQL(")")
             + cast_if_surrogate
-            + SQL(");")
         )
 
-        # Giant hack to work around the fact that we can't FETCH directly into a table.
-        # We create a function that returns a table with the same shape as ours, then get
-        # it to run the FETCH for us instead and call that.
-        # Thanks to https://stackoverflow.com/a/50855367
-        cursor_query += (
-            SQL("CREATE OR REPLACE FUNCTION {}._sg_tmp_read_cursor() RETURNS TABLE(").format(
-                Identifier(source_schema)
-            )
-            + SQL(",".join("{} %s " % validate_type(col.pg_type) for col in table_schema)).format(
-                *(Identifier(col.name) for col in table_schema)
-            )
-            + SQL(
-                ") AS 'BEGIN RETURN QUERY FETCH "
-                + str(int(chunk_size))
-                + " FROM {}; END' LANGUAGE plpgsql"
-            ).format(Identifier(cursor_name))
-        )
-        try:
-            self.object_engine.run_sql(cursor_query)
-
+        with self.object_engine.cursor_and_function(
+            table_schema, int(chunk_size), source_query
+        ) as (_, function_name):
             pbar = tqdm(
                 range(total_chunks), unit="objs", ascii=SG_CMD_ASCII, disable=not log_progress
             )
@@ -1252,9 +1233,7 @@ class FragmentManager(MetadataManager):
                     None,
                     None,
                     repository.namespace,
-                    source_function=SQL("{}._sg_tmp_read_cursor()").format(
-                        Identifier(source_schema)
-                    ),
+                    source_function=SQL("{}()").format(Identifier(function_name)),
                     extra_indexes=extra_indexes,
                     in_fragment_order=in_fragment_order,
                     overwrite=overwrite,
@@ -1263,17 +1242,6 @@ class FragmentManager(MetadataManager):
 
                 object_ids.append(object_id)
                 pbar.set_postfix(object=object_id[:10] + "...")
-        finally:
-            self.object_engine.run_sql(
-                SQL("DROP FUNCTION IF EXISTS {}._sg_tmp_read_cursor()").format(
-                    Identifier(source_schema)
-                )
-            )
-            # Drop the cursor if it exists
-            if self.object_engine.run_sql(
-                "SELECT 1 FROM pg_cursors WHERE name = %s", (cursor_name,)
-            ):
-                self.object_engine.run_sql(SQL("CLOSE ") + Identifier(cursor_name))
         return object_ids
 
     def filter_fragments(self, object_ids: List[str], table: "Table", quals: Any) -> List[str]:
