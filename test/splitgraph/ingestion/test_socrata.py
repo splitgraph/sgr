@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 from test.splitgraph.conftest import INGESTION_RESOURCES
@@ -18,6 +19,7 @@ from splitgraph.ingestion.socrata.querying import (
     _socrata_to_pg_type,
     cols_to_socrata,
     estimate_socrata_rows_width,
+    group_to_socrata,
     quals_to_socrata,
     sortkeys_to_socrata,
 )
@@ -105,8 +107,37 @@ def test_socrata_quals(quals, expected):
     assert quals_to_socrata(quals) == expected
 
 
-def test_socrata_cols():
-    assert cols_to_socrata(["a", "b", "c"]) == "`a`,`b`,`c`"
+@pytest.mark.parametrize(
+    ("cols", "group_clauses", "aggs", "expected"),
+    [
+        (["a", "b", "c"], None, None, ("`a`,`b`,`c`", {})),
+        (
+            [],
+            ["b"],
+            {
+                "avg_a": {"function": "avg", "column": "a"},
+                "c": {"function": "max", "column": "c"},
+                "countStar": {"function": "count", "column": "*"},
+            },
+            (
+                "`b`,avg(`a`) AS `avg_a`,max(`c`) AS `max_c`,count(*) AS `count`",
+                {"avg_a": "avg_a", "max_c": "c", "count": "countStar"},
+            ),
+        ),
+        (
+            [],
+            ["a"],
+            None,
+            ("`a`", {}),
+        ),
+    ],
+)
+def test_socrata_cols(cols, group_clauses, aggs, expected):
+    assert cols_to_socrata(cols, group_clauses, aggs) == expected
+
+
+def test_socrata_groupby():
+    assert group_to_socrata(["a", "b"]) == "`a`,`b`"
 
 
 def test_socrata_sortkeys():
@@ -263,7 +294,9 @@ def test_socrata_fdw():
             "Socrata dataset ID: xzkq-xp2w",
             "Query: ",
             "Columns: ",
+            "Agg map: {}",
             "Order: :id",
+            "Group: None",
         ]
 
         assert list(
@@ -284,6 +317,7 @@ def test_socrata_fdw():
                 select=f"`{_long_name_col}`,`job_titles`,`annual_salary`",
                 limit=4200,
                 order=f"`{_long_name_col}` ASC",
+                group=None,
                 exclude_system_fields="false",
             )
         ]
@@ -407,6 +441,49 @@ def test_socrata_smoke(domain, dataset_id, local_engine_empty):
         )
         result = local_engine_empty.run_sql("SELECT * FROM socrata_mount.data LIMIT 10")
         assert len(result) == 10
+    finally:
+        local_engine_empty.delete_schema("socrata_mount")
+
+
+def test_socrata_groupby_smoke(local_engine_empty):
+    try:
+        mount(
+            "socrata_mount",
+            "socrata",
+            {"domain": "data.cityofnewyork.us", "tables": {"data": "8wbx-tsch"}},
+        )
+        query = """
+            SELECT vehicle_year,
+                MIN(certification_date) AS earliest_cert,
+                COUNT(*) AS total_vehicles,
+                COUNT(*),
+                MAX(certification_date)
+            FROM socrata_mount.data
+            GROUP BY 1 ORDER BY 1 DESC LIMIT 10
+            """
+
+        result = local_engine_empty.run_sql("EXPLAIN " + query)
+
+        lines = [line[0].strip() for line in result]
+        lines = [line for line in lines if line.startswith("Multicorn")]
+
+        assert lines == [
+            "Multicorn: Socrata query to data.cityofnewyork.us",
+            "Multicorn: Socrata dataset ID: 8wbx-tsch",
+            "Multicorn: Query:",
+            "Multicorn: Columns: `vehicle_year`,min(`certification_date`) AS `min_certification_date`,count(*) AS `count`,max(`certification_date`) AS `max_certification_date`",
+            "Multicorn: Agg map: {'min_certification_date': 'min.certification_date', 'count': 'count.*', 'max_certification_date': 'max.certification_date'}",
+            "Multicorn: Order:",
+            "Multicorn: Group: `vehicle_year`",
+        ]
+
+        result = local_engine_empty.run_sql(query)
+
+        assert len(result) == 10
+        assert any(r[0] == 2022 for r in result)
+        assert all(isinstance(r[1], datetime.date) or r[1] is None for r in result)
+        assert all(isinstance(r[4], datetime.date) or r[4] is None for r in result)
+        assert all(r[2] > 0 and r[2] == r[3] for r in result)
     finally:
         local_engine_empty.delete_schema("socrata_mount")
 

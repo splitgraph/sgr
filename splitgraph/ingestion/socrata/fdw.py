@@ -7,8 +7,11 @@ from typing import Any, Dict, Optional
 import splitgraph.config
 from splitgraph.config.config import get_singleton
 from splitgraph.ingestion.socrata.querying import (
+    SUPPORTED_AGG_FUNCS,
+    SUPPORTED_OPERATORS,
     cols_to_socrata,
     estimate_socrata_rows_width,
+    group_to_socrata,
     quals_to_socrata,
     sortkeys_to_socrata,
 )
@@ -23,13 +26,14 @@ except ImportError:
 _PG_LOGLEVEL = logging.INFO
 
 
-def to_json(row, columns, column_map):
+def to_json(row, flipped_column_map, agg_map):
     result = {}
-    for col in columns:
-        val = row.get(column_map.get(col, col))
+
+    for cname, val in row.items():
         if isinstance(val, (dict, list)):
             val = json.dumps(val)
-        result[col] = val
+        result[agg_map.get(cname, flipped_column_map.get(cname, cname))] = val
+
     return result
 
 
@@ -107,26 +111,40 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
             logging.exception("Failed planning Socrata query, returning dummy values")
             return 1000000, len(columns) * 10
 
-    def explain(self, quals, columns, sortkeys=None, verbose=False):
+    def can_pushdown_upperrel(self):
+        print("can_pushdown_upperrel called")
+        return {
+            "groupby_supported": True,
+            "agg_functions": list(SUPPORTED_AGG_FUNCS),
+            "operators_supported": SUPPORTED_OPERATORS,
+        }
+
+    def explain(self, quals, columns, sortkeys=None, aggs=None, group_clauses=None, verbose=False):
         query = quals_to_socrata(quals, self.column_map)
-        select = cols_to_socrata(columns, self.column_map)
-        order = sortkeys_to_socrata(sortkeys, self.column_map)
+        select, agg_map = cols_to_socrata(columns, group_clauses, aggs, self.column_map)
+        order = sortkeys_to_socrata(sortkeys, group_clauses, aggs, self.column_map)
+        group = group_to_socrata(group_clauses, self.column_map)
 
         return [
             "Socrata query to %s" % self.domain,
             "Socrata dataset ID: %s" % self.table,
             "Query: %s" % query,
             "Columns: %s" % select,
+            "Agg map: %s" % agg_map,
             "Order: %s" % order,
+            "Group: %s" % group,
         ]
 
-    def execute(self, quals, columns, sortkeys=None):
+    def execute(self, quals, columns, sortkeys=None, aggs=None, group_clauses=None, verbose=False):
         """Main Multicorn entry point."""
         query = quals_to_socrata(quals, self.column_map)
-        select = cols_to_socrata(columns, self.column_map)
-        order = sortkeys_to_socrata(sortkeys, self.column_map)
+        select, agg_map = cols_to_socrata(columns, group_clauses, aggs, self.column_map)
+        order = sortkeys_to_socrata(sortkeys, group_clauses, aggs, self.column_map)
+        group = group_to_socrata(group_clauses, self.column_map)
 
-        logging.debug("Socrata query: %r, select: %r, order: %r", query, select, order)
+        logging.debug(
+            "Socrata query: %r, select: %r, order: %r, group: %r", query, select, order, group
+        )
 
         # TODO offsets stop working after some point?
         result = self.client.get_all(
@@ -135,11 +153,14 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
             select=select,
             limit=self.batch_size,
             order=order,
+            group=group,
             exclude_system_fields="false",
         )
 
+        flipped_column_map = {v: k for k, v in self.column_map.items()}
+
         for r in result:
-            r = to_json(r, columns, self.column_map)
+            r = to_json(r, flipped_column_map, agg_map)
             yield r
 
     @property

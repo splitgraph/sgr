@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.ingestion.common import dedupe_sg_schema
@@ -8,6 +8,18 @@ try:
 except ImportError:
     # Don't fail the import if we're running this directly.
     ANY = object()
+
+
+SUPPORTED_OPERATORS = ["=", ">", ">=", "<", "<=", "<>", "!=", "~~"]
+
+SUPPORTED_AGG_FUNCS = {
+    "avg": "avg",
+    "min": "min",
+    "max": "max",
+    "sum": "sum",
+    "count": "count",
+    "count.*": "count",
+}
 
 
 _socrata_types = {
@@ -89,12 +101,12 @@ def estimate_socrata_rows_width(columns, metadata, column_map=None):
     return cardinality, row_width
 
 
-def _emit_col(col, column_map: Optional[Dict[str, str]] = None):
+def _emit_col(col: str, column_map: Optional[Dict[str, str]] = None) -> str:
     column_map = column_map or {}
     return f"`{column_map.get(col, col)}`"
 
 
-def _emit_val(val):
+def _emit_val(val: object) -> str:
     if val is None:
         return "NULL"
     if not isinstance(val, (int, float)):
@@ -103,7 +115,7 @@ def _emit_val(val):
     return str(val)
 
 
-def _convert_op(op):
+def _convert_op(op: str) -> Optional[str]:
     if op in ["=", ">", ">=", "<", "<=", "<>", "!="]:
         return op
     if op == "~~":
@@ -111,7 +123,9 @@ def _convert_op(op):
     return None
 
 
-def _base_qual_to_socrata(col, op, value, column_map=None):
+def _base_qual_to_socrata(
+    col: str, op: str, value, column_map: Optional[Dict[str, str]] = None
+) -> str:
     soql_op = _convert_op(op)
     if not soql_op:
         return "TRUE"
@@ -126,7 +140,7 @@ def _base_qual_to_socrata(col, op, value, column_map=None):
     return f"{_emit_col(col, column_map)} {soql_op} {_emit_val(value)}"
 
 
-def _qual_to_socrata(qual, column_map=None):
+def _qual_to_socrata(qual: Any, column_map: Optional[Dict[str, str]] = None) -> str:
     if qual.is_list_operator:
         if qual.list_any_or_all == ANY:
             # Convert col op ANY([a,b,c]) into (cop op a) OR (col op b)...
@@ -143,21 +157,77 @@ def _qual_to_socrata(qual, column_map=None):
         return f"{_base_qual_to_socrata(qual.field_name, qual.operator, qual.value, column_map)}"
 
 
-def quals_to_socrata(quals, column_map: Optional[Dict[str, str]] = None):
+def quals_to_socrata(quals: List[Any], column_map: Optional[Dict[str, str]] = None) -> str:
     """Convert a list of Multicorn quals to a SoQL query"""
     return " AND ".join(f"({_qual_to_socrata(q, column_map)})" for q in quals)
 
 
-def cols_to_socrata(cols, column_map: Optional[Dict[str, str]] = None):
-    # Don't add ":id" to the request since we're getting it anyway
-    # through exclude_system_fields=false
-    return ",".join(f"{_emit_col(c, column_map)}" for c in cols if c != ":id")
+def group_to_socrata(
+    group_clauses: Optional[List[str]] = None,
+    column_map: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
+    if not group_clauses:
+        return None
+
+    return ",".join(_emit_col(c, column_map) for c in group_clauses)
 
 
-def sortkeys_to_socrata(sortkeys, column_map: Optional[Dict[str, str]] = None):
+def cols_to_socrata(
+    cols: List[str],
+    group_clauses: Optional[List[str]] = None,
+    aggs: Optional[Dict[str, Dict[str, str]]] = None,
+    column_map: Optional[Dict[str, str]] = None,
+) -> Tuple[str, Dict[str, str]]:
+
+    # Map from (Socrata agg output -> PostgreSQL agg name)
+    agg_output_map: Dict[str, str] = {}
+
+    if group_clauses or aggs:
+        target_list: List[str] = []
+        if group_clauses:
+            target_list.extend(_emit_col(c, column_map) for c in group_clauses)
+        if aggs:
+            for agg_name, agg_props in aggs.items():
+                agg_func = SUPPORTED_AGG_FUNCS[agg_props["function"]]
+                emitted_col = (
+                    _emit_col(agg_props["column"], column_map)
+                    if agg_props["column"] != "*"
+                    else "*"
+                )
+
+                # Give the agg result a custom alias because Socrata doesn't support
+                # aliases with dots / stars (even if they're quoted).
+                # This means we return a map to help the caller figure out which Socrata
+                # result columns correspond to which results
+                agg_alias = (
+                    f"{agg_func}_{agg_props['column']}"
+                    if agg_func != "count" and agg_props["column"] != "*"
+                    else "count"
+                )
+                agg_target = f"{agg_func}({emitted_col}) AS `{agg_alias}`"
+                agg_output_map[agg_alias] = agg_name
+                target_list.append(agg_target)
+    else:
+        # Don't add ":id" to the request since we're getting it anyway
+        # through exclude_system_fields=false
+        target_list = [_emit_col(c, column_map) for c in cols if c != ":id"]
+
+    return ",".join(target_list), agg_output_map
+
+
+def sortkeys_to_socrata(
+    sortkeys: List[Any],
+    group_clauses: Optional[List[str]] = None,
+    aggs: Optional[Dict[str, Dict[str, str]]] = None,
+    column_map: Optional[Dict[str, str]] = None,
+) -> str:
     if not sortkeys:
-        # Always sort on ID for stable paging
-        return ":id"
+        if not group_clauses and not aggs:
+            # Always sort on ID for stable paging
+            return ":id"
+        # In an aggregation, we don't have access to the ":id" column (we're
+        # not aggregating on it)
+        return ""
 
     clauses = []
     for key in sortkeys:
