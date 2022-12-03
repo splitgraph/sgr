@@ -188,7 +188,7 @@ COPY ./engine/src/postgres-elasticsearch-fdw/pg_es_fdw /pg_es_fdw/pg_es_fdw
 # Install the Snowflake SQLAlchemy connector
 # Use our fork that supports server-side cursors
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
-    pip install "git+https://github.com/splitgraph/snowflake-sqlalchemy.git@14e64cc0ef7374df0cecc91923ff6901b0d721b7"
+    pip install "git+https://github.com/splitgraph/snowflake-sqlalchemy.git@9e709ca9c8286cec8a789dec5dbbf9460e6652b8"
 
 # Install PyAthena for Amazon Athena SQLAlchemy-based FDW, as well as pandas
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
