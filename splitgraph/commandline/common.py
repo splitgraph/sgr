@@ -282,8 +282,9 @@ def download_file(url: str, filename: Optional[str]) -> None:
     from tqdm import tqdm
 
     response = requests.get(url, stream=True)
+
     if not filename and "Content-Disposition" in response.headers:
-        filename = re.findall("filename=(.+)", response.headers["Content-Disposition"])[0]
+        filename = re.findall('filename="(.+)"', response.headers["Content-Disposition"])[0]
     if not filename:
         filename = urlparse(url).path.split("/")[-1]
     with open(filename, "wb") as f:
