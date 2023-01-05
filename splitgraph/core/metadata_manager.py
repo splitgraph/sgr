@@ -289,8 +289,8 @@ class MetadataManager:
         candidates = self.metadata_engine.run_sql(
             SQL(  # nosec
                 "SELECT object_id, created FROM {0}.objects "
-                "WHERE object_id NOT IN (SELECT unnest(object_ids) "
-                "FROM {0}.tables) "
+                "WHERE NOT EXISTS (SELECT 1 FROM {0}.tables "
+                "WHERE ARRAY[object_id] <@ object_ids) "
                 + ("AND created < now() - INTERVAL '%s minutes' " if threshold is not None else "")
                 + "ORDER BY created"
             ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
