@@ -60,7 +60,6 @@ jobs:
       - name: "Run the tests"
         if: "!contains(github.event.head_commit.message, '[skip test]')"
         run: |
-          source "$HOME"/.poetry/env
           poetry run pytest test/ -v -m "not mounting and not example"
           ./wait-for-test-architecture.sh --mounting
           export PATH=$PATH:$TAP_MYSQL_VENV/bin
@@ -71,7 +70,6 @@ jobs:
         # recording all of them as Asciinemas anyway, so this is redundant.
         if: "!startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip test]')"
         run: |
-          source "$HOME"/.poetry/env
           export PATH=$PATH:$(readlink -f $DBT_VENV/bin)
           poetry run pytest examples/ -sv -m "example" --cov-append
       - name: "Submit coverage to Coveralls"
@@ -79,7 +77,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          source "$HOME"/.poetry/env
           poetry run coveralls --service=github
       - name: "Push out Docker engine (tags only)"
         if: "startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip engine]')"

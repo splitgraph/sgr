@@ -15,8 +15,7 @@ pushd "$REPO_ROOT_DIR"
 curl -L "$D_COMPOSE_URL" > docker-compose
 chmod +x docker-compose
 sudo mv docker-compose /usr/local/bin
-curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
-source "$HOME"/.poetry/env
+curl -sSL https://install.python-poetry.org | python -
 poetry config virtualenvs.create false
 
 popd
