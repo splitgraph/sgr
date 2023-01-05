@@ -8,8 +8,6 @@ ARCHITECTURE_DIR="${TEST_DIR}/architecture"
 CORE_ARCHITECTURE="docker-compose.core.yml"
 MOUNTING_ARCHITECTURE="docker-compose.mounting.yml"
 
-source "$HOME"/.poetry/env
-
 pushd "$ARCHITECTURE_DIR" \
     && docker-compose -f $CORE_ARCHITECTURE build \
     && docker-compose -f $CORE_ARCHITECTURE up -d \
