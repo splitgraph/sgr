@@ -16,6 +16,5 @@ curl -L "$D_COMPOSE_URL" > docker-compose
 chmod +x docker-compose
 sudo mv docker-compose /usr/local/bin
 curl -sSL https://install.python-poetry.org | python -
-poetry config virtualenvs.create false
 
 popd

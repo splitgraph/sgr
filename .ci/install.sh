@@ -7,6 +7,11 @@ cat /tmp/requirements.txt
 pip install --no-deps -r /tmp/requirements.txt
 poetry install -E pandas
 
+. "$(poetry env info --path)/bin/activate"
+export PATH=$PATH:"$PWD"/bin
+sgr --help
+which sgr || true
+
 # Needed to test the dbt example, not required by core sg
 python -m venv "$DBT_VENV"
 . "$DBT_VENV"/bin/activate
@@ -17,5 +22,3 @@ pip install --force-reinstall --upgrade markupsafe==2.0.1
 python -m venv "$TAP_MYSQL_VENV"
 . "$TAP_MYSQL_VENV"/bin/activate
 pip install tap-mysql
-
-# No deactivate here -- Poetry will use a separate venv for Splitgraph.
