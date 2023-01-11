@@ -3,7 +3,7 @@ repos:
     rev: 22.3.0
     hooks:
       - id: black
-        language_version: python3.8
+        language_version: python3
   # Mypy config
   # Note that we have to specify exclusions here. This is because mypy's exclude setting
   # gets overridden by the actual path spec.
