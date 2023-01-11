@@ -496,7 +496,7 @@ class ObjectManager(FragmentManager):
             ).format(Identifier(SPLITGRAPH_META_SCHEMA))
             + SQL(",".join(itertools.repeat("%s", len(objects))))
             + SQL(") RETURNING object_id"),
-            [now] + objects,  # type: ignore
+            [now] + objects,
             return_shape=ResultShape.MANY_ONE,
         )
         claimed = claimed or []
@@ -528,7 +528,7 @@ class ObjectManager(FragmentManager):
                     + ",".join(itertools.repeat("%s", len(objects)))
                     + ")"
                 ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                [is_ready] + list(objects),  # type: ignore
+                [is_ready] + list(objects),
             )
 
     def _release_objects(self, objects: List[str]) -> None:
