@@ -315,7 +315,8 @@ def get_table_name(stream_schema_message):
 
 def db_sync_wrapper(image: "Image", staging_schema: str):
     def wrapped(*args, **kwargs):
-        return DbSyncProxy(image=image, staging_schema=staging_schema, *args, **kwargs)
+        kwargs = dict(image=image, staging_schema=staging_schema, **kwargs)
+        return DbSyncProxy(*args, **kwargs)
 
     return wrapped
 

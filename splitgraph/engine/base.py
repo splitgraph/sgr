@@ -1,7 +1,7 @@
 import itertools
 import re
 import threading
-from abc import ABC
+from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union, cast
 
@@ -53,28 +53,31 @@ class SQLEngine(ABC):
                 self._savepoint_stack.stack.pop()
                 self.run_sql(SQL("RELEASE SAVEPOINT ") + Identifier(name))
 
+    @abstractmethod
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results.
         If the statement doesn't return any results, return None. If named=True, return named
         tuples when possible."""
-        raise NotImplementedError()
 
+    @abstractmethod
     def commit(self):
         """Commit the engine's backing connection"""
 
+    @abstractmethod
     def close(self):
         """Commit and close the engine's backing connection"""
 
+    @abstractmethod
     def rollback(self):
         """Rollback the engine's backing connection"""
 
+    @abstractmethod
     def run_sql_batch(self, statement, arguments, schema=None):
         """Run a parameterized SQL statement against multiple sets of arguments.
 
         :param statement: Statement to run
         :param arguments: Query arguments
         :param schema: Schema to run the statement in"""
-        raise NotImplementedError()
 
     def run_sql_in(
         self,
@@ -252,9 +255,9 @@ class SQLEngine(ABC):
         )
         return cast(Optional[str], result)
 
+    @abstractmethod
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
-        raise NotImplementedError()
 
     @staticmethod
     def dump_table_creation(
@@ -344,6 +347,7 @@ class SQLEngine(ABC):
         )
         self.run_sql(query, args)
 
+    @abstractmethod
     def dump_table_sql(
         self,
         schema,
@@ -366,7 +370,6 @@ class SQLEngine(ABC):
         :param target_schema: Schema to create the table in (default same as `schema`)
         :param target_table: Name of the table to insert data into (default same as `table_name`)
         """
-        raise NotImplementedError()
 
     def get_full_table_schema(self, schema: str, table_name: str) -> "TableSchema":
         """
@@ -398,51 +401,53 @@ class SQLEngine(ABC):
 
         return [TableColumn(o, n, _convert_type(dt), (n in pks), c) for o, n, dt, c in results]
 
+    @abstractmethod
     def initialize(self):
         """Does any required initialization of the engine"""
 
+    @abstractmethod
     def lock_table(self, schema, table):
         """Acquire an exclusive lock on a given table, released when the transaction commits / rolls back."""
-        raise NotImplementedError()
 
 
 class ChangeEngine(SQLEngine, ABC):
     """An SQL engine that can perform change tracking on a set of tables."""
 
+    @abstractmethod
     def get_tracked_tables(self):
         """
         :return: A list of (table_schema, table_name) that the engine currently tracks for changes
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def track_tables(self, tables):
         """
         Start engine-specific change tracking on a list of tables.
 
         :param tables: List of (table_schema, table_name) to start tracking
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def untrack_tables(self, tables):
         """
         Stop engine-specific change tracking on a list of tables and delete any pending changes.
 
         :param tables: List of (table_schema, table_name) to start tracking
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def has_pending_changes(self, schema):
         """
         Return True if the tracked schema has pending changes and False if it doesn't.
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def discard_pending_changes(self, schema, table=None):
         """
         Discard recorded pending changes for a tracked table or the whole schema
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def get_pending_changes(self, schema, table, aggregate=False):
         """
         Return pending changes for a given tracked table
@@ -456,8 +461,8 @@ class ChangeEngine(SQLEngine, ABC):
             where `action_data` is `None` for Delete and `{'c': [column_names], 'v': [column_values]}` that
             have been inserted/updated otherwise.
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def get_changed_tables(self, schema):
         """
         List tracked tables that have pending changes
@@ -465,21 +470,21 @@ class ChangeEngine(SQLEngine, ABC):
         :param schema: Schema to check for changes
         :return: List of tables with changed contents
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def get_change_key(self, schema: str, table: str) -> List[Tuple[str, str]]:
         """
         Returns the key used to identify a row in a change (list of column name, column type).
         If the tracked table has a PK, we use that; if it doesn't, the whole row is used.
         """
-        raise NotImplementedError()
 
 
-class ObjectEngine:
+class ObjectEngine(ABC):
     """
     Routines for storing/applying objects as well as sharing them with other engines.
     """
 
+    @abstractmethod
     def get_object_schema(self, object_id):
         """
         Get the schema of a given object, returned as a list of
@@ -488,12 +493,14 @@ class ObjectEngine:
         :param object_id: ID of the object
         """
 
+    @abstractmethod
     def get_object_size(self, object_id):
         """
         Return the on-disk footprint of this object, in bytes
         :param object_id: ID of the object
         """
 
+    @abstractmethod
     def delete_objects(self, object_ids):
         """
         Delete one or more objects from the engine.
@@ -501,6 +508,7 @@ class ObjectEngine:
         :param object_ids: IDs of objects to delete
         """
 
+    @abstractmethod
     def store_fragment(
         self, inserted, deleted, schema, table, source_schema, source_table, source_schema_spec
     ):
@@ -515,8 +523,8 @@ class ObjectEngine:
         :param source_table: Name of the source table
         :param source_schema_spec: Schema of the source table (optional)
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def apply_fragments(
         self,
         objects,
@@ -541,8 +549,8 @@ class ObjectEngine:
         :param progress_every: If set, will report the materialization progress via
             tqdm every `progress_every` objects.
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def upload_objects(self, objects, remote_engine):
         """
         Upload objects from the local cache to the remote engine
@@ -550,8 +558,8 @@ class ObjectEngine:
         :param objects: List of object IDs to upload
         :param remote_engine: A remote ObjectEngine to upload the objects to.
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def download_objects(self, objects, remote_engine):
         """
         Download objects from the remote engine to the local cache
@@ -561,8 +569,8 @@ class ObjectEngine:
 
         :return List of object IDs that were downloaded.
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def dump_object(self, object_id, stream, schema):
         """
         Dump an object into a series of SQL statements
@@ -571,8 +579,8 @@ class ObjectEngine:
         :param stream: Text stream to dump the object into
         :param schema: Schema the object lives in
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def store_object(
         self,
         object_id: str,
