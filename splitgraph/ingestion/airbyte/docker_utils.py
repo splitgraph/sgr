@@ -81,11 +81,17 @@ def detect_network_mode() -> str:
     # receiver with net:host. Inside Docker we have to use the host's Docker socket and
     # attach the container to our own network so that it can also use our own params.
 
+    # Credit: https://stackoverflow.com/a/71823877
+
     # This also applies in case we're running a source against a database that's also running
     # in Docker -- we want to mimic sgr too.
     if os.path.exists("/.dockerenv"):
-        with open("/proc/1/cgroup", "r") as f:
-            match = re.search(r"^.*/docker/([0-9a-f]{64})$", f.read(), re.MULTILINE)
+        with open("/proc/self/mountinfo", "r") as f:
+            match = re.search(
+                r"^.*/containers/([0-9a-f]{64})/.*$",
+                f.read(),
+                re.MULTILINE,
+            )
             if not match:
                 raise AssertionError("Could not detect Docker container ID")
         return f"container:{match.group(1)}"
