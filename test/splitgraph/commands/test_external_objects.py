@@ -9,6 +9,7 @@ from splitgraph.engine import ResultShape
 from splitgraph.exceptions import (
     IncompleteObjectDownloadError,
     IncompleteObjectUploadError,
+    ObjectCacheError,
 )
 from splitgraph.hooks.s3 import S3ExternalObjectHandler
 from splitgraph.hooks.s3_server import (
@@ -108,6 +109,10 @@ def test_s3_push_pull(
     )
 
 
+class FlakyHandlerError(Exception):
+    pass
+
+
 def _flaky_handler(incomplete=False):
     class FlakyExternalObjectHandler(S3ExternalObjectHandler):
         """
@@ -124,7 +129,7 @@ def _flaky_handler(incomplete=False):
             Downloads just the first object and then fails.
             """
             super().download_objects(objects[:1], remote_engine)
-            ex = Exception("Something bad happened.")
+            ex = FlakyHandlerError("Something bad happened.")
             if incomplete:
                 raise IncompleteObjectDownloadError(reason=ex, successful_objects=[objects[0][0]])
             else:
@@ -135,7 +140,7 @@ def _flaky_handler(incomplete=False):
             Uploads just the first object and then fails.
             """
             super().upload_objects(objects[:1], remote_engine)
-            ex = Exception("Something bad happened.")
+            ex = FlakyHandlerError("Something bad happened.")
             if incomplete:
                 raise IncompleteObjectUploadError(
                     reason=ex, successful_objects=objects[:1], successful_object_urls=objects[:1]
@@ -163,7 +168,7 @@ def test_push_upload_error(
         "splitgraph.hooks.external_objects._EXTERNAL_OBJECT_HANDLERS",
         {"S3": _flaky_handler(incomplete=interrupted)},
     ):
-        with pytest.raises(Exception):
+        with pytest.raises(FlakyHandlerError):
             PG_MNT.push(remote_repository=unprivileged_pg_repo, handler="S3", handler_options={})
 
     assert head not in unprivileged_pg_repo.images
@@ -232,7 +237,7 @@ def test_pull_download_error(local_engine_empty, unprivileged_pg_repo, clean_min
         "splitgraph.hooks.external_objects._EXTERNAL_OBJECT_HANDLERS",
         {"S3": _flaky_handler(interrupted)},
     ):
-        with pytest.raises(Exception):
+        with pytest.raises(FlakyHandlerError if interrupted else ObjectCacheError):
             clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
 
     # Check that the pull succeeded (repository registered locally) but the objects
