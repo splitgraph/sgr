@@ -1310,6 +1310,29 @@ def tunnel_c(remote: str, local_address: str, namespace_and_repository: Optional
         start_repository_tunnel(remote, local_address, namespace_and_repository)
 
 
+@click.command("sync-to-seafowl")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("vdb_id", type=str)
+@click.argument("seafowl_hostname", type=str)
+@click.argument("seafowl_secret", type=str)
+def sync_to_seafowl_c(remote: str, vdb_id: str, seafowl_hostname: str, seafowl_secret: str):
+    """
+    Sync the tables within a Splitgraph VDB to a Seafowl instance.
+
+    """
+
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+    task_id = client.start_seafowl_sync(vdb_id, seafowl_hostname, seafowl_secret)
+    final_status = wait_for_job(task_id, lambda: client.get_export_job_status(task_id))
+    if final_status.status == "SUCCESS":
+        assert final_status.output
+        return str("Sync complete")
+    else:
+        raise ValueError("Error running sync.")
+
+
 @click.group("cloud")
 def cloud_c():
     """Run actions on Splitgraph Cloud."""
@@ -1338,3 +1361,4 @@ cloud_c.add_command(stub_c)
 cloud_c.add_command(validate_c)
 cloud_c.add_command(seed_c)
 cloud_c.add_command(tunnel_c)
+cloud_c.add_command(sync_to_seafowl_c)

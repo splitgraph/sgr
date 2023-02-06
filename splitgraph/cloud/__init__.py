@@ -67,6 +67,7 @@ from splitgraph.cloud.queries import (
     REPO_PARAMS,
     START_EXPORT,
     START_LOAD,
+    START_SYNC_VDB_TO_SEAFOWL,
 )
 from splitgraph.config import CONFIG
 from splitgraph.config.config import (
@@ -1148,3 +1149,15 @@ class GQLAPIClient:
             response.json()["data"]["provisionEphemeralTunnel"]["privateAddressHost"],
             response.json()["data"]["provisionEphemeralTunnel"]["privateAddressPort"],
         )
+
+    def start_seafowl_sync(self, vdb_id: str, url: str, secret: str) -> str:
+        response = self._gql(
+            {
+                "query": START_SYNC_VDB_TO_SEAFOWL,
+                "operationName": "syncToSeafowl",
+                "variables": {"url": url, "secret": secret, "vdbId": vdb_id},
+            },
+            handle_errors=True,
+            anonymous_ok=False,
+        )
+        return cast(str, response.json()["data"]["syncToSeafowl"]["id"])
