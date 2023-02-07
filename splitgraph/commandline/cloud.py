@@ -1312,10 +1312,10 @@ def tunnel_c(remote: str, local_address: str, namespace_and_repository: Optional
 
 @click.command("sync-to-seafowl")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=False)
 @click.argument("vdb_id", type=str)
 @click.argument("seafowl_hostname", type=str)
-@click.argument("seafowl_secret", type=str)
-def sync_to_seafowl_c(remote: str, vdb_id: str, seafowl_hostname: str, seafowl_secret: str):
+def sync_to_seafowl_c(remote: str, password: str, vdb_id: str, seafowl_hostname: str):
     """
     Sync the tables within a Splitgraph VDB to a Seafowl instance.
 
@@ -1324,11 +1324,13 @@ def sync_to_seafowl_c(remote: str, vdb_id: str, seafowl_hostname: str, seafowl_s
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
-    task_id = client.start_seafowl_sync(vdb_id, seafowl_hostname, seafowl_secret)
+    task_id = client.start_seafowl_sync(vdb_id, seafowl_hostname, password)
     final_status = wait_for_job(task_id, lambda: client.get_export_job_status(task_id))
     if final_status.status == "SUCCESS":
         assert final_status.output
-        return str("Sync complete")
+        tables = [f"{sync_item[0]}.{sync_item[1]}" for sync_item in final_status.output["tables"]]
+        tables.sort()
+        click.echo("Sync complete for tables: %s" % ", ".join(tables))
     else:
         raise ValueError("Error running sync.")
 
