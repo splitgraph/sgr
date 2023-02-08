@@ -1,4 +1,4 @@
-FROM yandex/clickhouse-server:latest
+FROM clickhouse/clickhouse-server:latest
 
 RUN apt-get update -qq && \
     apt-get install -y odbc-postgresql unixodbc && \
