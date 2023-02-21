@@ -12,6 +12,7 @@ pex_binary(
         "src/py/splitgraph/splitgraph/ingestion/singer",
         "src/py/splitgraph/splitgraph/ingestion/socrata",
         "src/py/splitgraph/splitgraph/ingestion/snowflake",
+        "src/py/splitgraph/splitgraph/ingestion/sqlite",
         "src/py/splitgraph/splitgraph/ingestion/athena",
         "src/py/splitgraph/splitgraph/ingestion/bigquery",
         "src/py/splitgraph/splitgraph/hooks",
