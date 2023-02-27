@@ -48,6 +48,7 @@ class ExternalObjectHandler:
         :param remote_engine: An instance of Engine class that the objects will be registered on
         :return: A list of successfully uploaded object IDs and URLs they can be found at.
         """
+        raise NotImplementedError()
 
     def download_objects(
         self, objects: List[Tuple[str, str]], remote_engine: "PsycopgEngine"
@@ -59,6 +60,7 @@ class ExternalObjectHandler:
         :param remote_engine: An instance of Engine class that the objects will be registered on
         :return: A list of object IDs that have been successfully downloaded.
         """
+        raise NotImplementedError()
 
 
 _EXTERNAL_OBJECT_HANDLERS: Dict[str, Callable[..., ExternalObjectHandler]] = {}

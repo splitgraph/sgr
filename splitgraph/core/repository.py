@@ -477,7 +477,7 @@ class Repository:
         snap_only: bool = False,
         chunk_size: Optional[int] = None,
         split_changeset: bool = False,
-        schema: str = None,
+        schema: Optional[str] = None,
         extra_indexes: Optional[Dict[str, ExtraIndexInfo]] = None,
         in_fragment_order: Optional[Dict[str, List[str]]] = None,
         overwrite: bool = False,
@@ -1166,7 +1166,7 @@ def import_table_from_remote(
     remote_image_hash: str,
     target_repository: "Repository",
     target_tables: List[Any],
-    target_hash: str = None,
+    target_hash: Optional[str] = None,
 ) -> None:
     """
     Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash is required,
