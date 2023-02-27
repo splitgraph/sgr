@@ -533,7 +533,7 @@ def test_csv_data_source_multiple(local_engine_empty):
         "from_url_broken": MountError.construct(
             table_name="from_url_broken",
             error="requests.exceptions.MissingSchema",
-            error_text="Invalid URL 'invalid_url': No scheme supplied. Perhaps you meant http://invalid_url?",
+            error_text="Invalid URL 'invalid_url': No scheme supplied. Perhaps you meant https://invalid_url?",
         ),
         "from_s3_broken": MountError.construct(
             table_name="from_s3_broken",
