@@ -2243,14 +2243,14 @@ telegram = ["requests"]
 
 [[package]]
 name = "types-chardet"
-version = "0.1.5"
+version = "5.0.4.2"
 description = "Typing stubs for chardet"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "types-chardet-0.1.5.tar.gz", hash = "sha256:a91a7d45d1eb7d924a9d39e09ae1eccf2cb0a6e35d2d6ea0517ae5feb53caea9"},
-    {file = "types_chardet-0.1.5-py3-none-any.whl", hash = "sha256:de5c417b74d7e4d645f6fd83a59dce79198ad3e6380f8fde64d7a80c988b63c2"},
+    {file = "types-chardet-5.0.4.2.tar.gz", hash = "sha256:ff857a4d776f6e997e1c4ba8b47aa04306a728b97e56bdc4918244779602a623"},
+    {file = "types_chardet-5.0.4.2-py3-none-any.whl", hash = "sha256:de819a552f06c417559029cffaa31a96e4c3d45266cd835a627b20be62fb669e"},
 ]
 
 [[package]]
@@ -2466,4 +2466,4 @@ pandas = ["pandas", "sqlalchemy"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "8eeb0832c98ab01935a1a8ce254904703b6d5bb4d920f4c56e67847eacd8f914"
+content-hash = "1360fed0fe25f174a14ed4f26a535d318043f14d42a917bb4fb9ec32f9b3e515"
