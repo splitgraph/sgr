@@ -587,7 +587,9 @@ class RESTAPIClient:
 
 
 def AuthAPIClient(*args, **kwargs):
-    warnings.warn("AuthAPIClient is deprecated; use RESTAPIClient", DeprecationWarning, 2)
+    warnings.warn(
+        "AuthAPIClient is deprecated; use RESTAPIClient", DeprecationWarning, stacklevel=2
+    )
     return RESTAPIClient(*args, **kwargs)
 
 
