@@ -3,7 +3,7 @@
 # Install the Splitgraph library and the layered querying foreign data wrapper.
 cd /splitgraph
 
-export POETRY_VERSION=1.1.6
+export POETRY_VERSION=1.3.2
 
 curl -sSL https://install.python-poetry.org | python3.7 -
 export PATH="/root/.local/bin:$PATH"
