@@ -12,7 +12,7 @@
 ##### toolchain
 #####
 
-FROM postgres:12.3 AS toolchain
+FROM postgres:12.14-bullseye AS toolchain
 
 RUN apt-get update -qq && \
     apt-get install -y --allow-downgrades \
@@ -31,16 +31,12 @@ RUN apt-get update -qq && \
         libmongoc-dev \
         protobuf-c-compiler \
         libprotobuf-c-dev \
-        libpython3.7-dev \
-        python3.7 \
+        libpython3.9-dev \
+        python3.9 \
         python3-setuptools \
         cmake \
-        clang-7 && \
+        clang-11 && \
     rm -rf /var/lib/apt/lists/*
-
-# python3.8 executable required by Multicorn to install itself
-# python3-setuptools also needed by Multicorn and it pulls in python3.7 but
-# we'll get rid of all this junk in the next build stage.
 
 # Set locale to C instead of en-US, Postgres initdb breaks with default
 # locale otherwise + we get build warnings for FDWs.
@@ -97,7 +93,7 @@ RUN /build/build_mysql_fdw.sh
 ##### splitgraph/engine
 #####
 
-FROM postgres:12.3
+FROM postgres:12.14-bullseye
 
 # We still have to install some runtime libraries here, but no dev.
 
@@ -106,15 +102,14 @@ RUN apt-get update -qq && \
         curl \
         libprotobuf-c1 \
         libmongoc-1.0-0 \
-        libpython3.7 \
-        python3.7 \
+        libpython3.9 \
+        python3.9 \
         python3-setuptools \
         postgresql-plpython3-12 \
         git \
         wget && \
-
         curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-        python3.7 get-pip.py && \
+        python3.9 get-pip.py && \
         rm get-pip.py && \
     rm -rf /var/lib/apt/lists/*
 
@@ -154,11 +149,11 @@ RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
 
 COPY --from=builder_cstore_multicorn /output/root /
 COPY --from=builder_cstore_multicorn \
-    /usr/local/lib/python3.7/dist-packages/easy-install.pth \
-    /usr/local/lib/python3.7/dist-packages/easy-install.pth
+    /usr/local/lib/python3.9/dist-packages/easy-install.pth \
+    /usr/local/lib/python3.9/dist-packages/easy-install.pth
 COPY --from=builder_cstore_multicorn \
-    /usr/local/lib/python3.7/dist-packages/multicorn-1.4.0.dev0-py3.7-linux-x86_64.egg \
-    /usr/local/lib/python3.7/dist-packages/multicorn-1.4.0.dev0-py3.7-linux-x86_64.egg
+    /usr/local/lib/python3.9/dist-packages/multicorn-1.4.0.dev0-py3.9-linux-x86_64.egg \
+    /usr/local/lib/python3.9/dist-packages/multicorn-1.4.0.dev0-py3.9-linux-x86_64.egg
 
 COPY --from=builder_mongo_fdw /output/root /
 COPY --from=builder_mysql_fdw /output/root /

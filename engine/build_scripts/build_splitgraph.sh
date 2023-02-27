@@ -5,11 +5,11 @@ cd /splitgraph
 
 export POETRY_VERSION=1.3.2
 
-curl -sSL https://install.python-poetry.org | python3.7 -
+curl -sSL https://install.python-poetry.org | python3.9 -
 export PATH="/root/.local/bin:$PATH"
 
 # Install globally (otherwise we'll need to find a way to get Multicorn to see the venv)
-ln -sf /usr/bin/python3.7 /usr/bin/python
+ln -sf /usr/bin/python3.9 /usr/bin/python
 poetry config virtualenvs.create false
 
 # Export the requirements into pip and install them separately (faster than Poetry)
