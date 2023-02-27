@@ -1211,33 +1211,48 @@ files = [
 
 [[package]]
 name = "pglast"
-version = "3.4"
+version = "5.0"
 description = "PostgreSQL Languages AST and statements prettifier"
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pglast-3.4-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:5064cbe56577aeaf0c050113e75cea6e6cf6d7aa4af69676cc4a6f4d382352ad"},
-    {file = "pglast-3.4-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:44ec3aa00fdb390ec3d20fda4f87386eeb8d8886d95d96a7e9fe8bfe05e03a71"},
-    {file = "pglast-3.4-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:a511071a13bc4453bc77e44a07e664634b3e0e3332402dd4de61a14a46f52590"},
-    {file = "pglast-3.4-cp36-cp36m-manylinux2010_i686.whl", hash = "sha256:5e99c28866b342cf77157a5275debd19ee77c65596fdf85a7c6dd70626574c73"},
-    {file = "pglast-3.4-cp36-cp36m-manylinux2010_x86_64.whl", hash = "sha256:9329b172811d5f0cbb03dd4da17ecb59b024e51e14bae91722eb7e2fe0452b98"},
-    {file = "pglast-3.4-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:58bb747c727621b07499cf1b8db716afa41aeb7c2e2c17fd94da03f9087993e7"},
-    {file = "pglast-3.4-cp37-cp37m-manylinux1_i686.whl", hash = "sha256:69394889ff08b4a2daca081c29836de8e5f420a382c23c86164b3d391fe5c5e6"},
-    {file = "pglast-3.4-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:dec8ec13238bd32d28738376f89dab5fb743c16a35d8a70252efc7fac416bf62"},
-    {file = "pglast-3.4-cp37-cp37m-manylinux2010_i686.whl", hash = "sha256:8882d778d42ed3f8172f77530d22c157454f8ce319b9193772724659d9307249"},
-    {file = "pglast-3.4-cp37-cp37m-manylinux2010_x86_64.whl", hash = "sha256:d6e5e1ad71bd93da49c360cf4d59fda79abdc4b130bec5034fe25152af0f048b"},
-    {file = "pglast-3.4-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:5d34fe9b1a5bbb3f8ac36dabb71888011085d327639b3c2434bacaef6b730987"},
-    {file = "pglast-3.4-cp38-cp38-manylinux1_i686.whl", hash = "sha256:6ac041e990e9443a8484d5188a302165e813b6ce37aaf00e2f04997fde02ed38"},
-    {file = "pglast-3.4-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:478b32a676bba8b589919e1b3902419111db9ba73f6bc9a7da7e7b1745ff8d26"},
-    {file = "pglast-3.4-cp38-cp38-manylinux2010_i686.whl", hash = "sha256:52f2eb3ef1777e32a38029a145cc3cb7929046699138735ff2e6e7892a34a4d4"},
-    {file = "pglast-3.4-cp38-cp38-manylinux2010_x86_64.whl", hash = "sha256:8c48a59c64f2b2ab9b4509eec2f125bb936f17ca427953ca2c51cd38211e79b6"},
-    {file = "pglast-3.4-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:4a6053b9b1671c17485bf0811fae19ed8ae54475040f15d6e21f7e2df6c96ada"},
-    {file = "pglast-3.4-cp39-cp39-manylinux1_i686.whl", hash = "sha256:7a608279ef2730dd0e7b5a9bdca11949f1a49e68b74f3f18560810ab97fb852d"},
-    {file = "pglast-3.4-cp39-cp39-manylinux1_x86_64.whl", hash = "sha256:18d99c9f7576ffc9756320128bade1faddadae16036c65829a05892954723c43"},
-    {file = "pglast-3.4-cp39-cp39-manylinux2010_i686.whl", hash = "sha256:cbf52b408cb051b0afb2a3b884d4953add5aa187123631845a5f055c4b778e58"},
-    {file = "pglast-3.4-cp39-cp39-manylinux2010_x86_64.whl", hash = "sha256:721ec7727b3f30838dbe10b0e31bac82378694914a1acc8d90fcacb538c5ce7a"},
-    {file = "pglast-3.4.tar.gz", hash = "sha256:d2288d9607097a08529d9165970261c1be956934e8a8f6d9ed2a96d9b8f03fc6"},
+    {file = "pglast-5.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:b7f8efa81eb2fb25b2f24110a7357367a42beafa59ea7649dce5fbf3a263aea6"},
+    {file = "pglast-5.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ace601e8117be9d4e1194495e8d2a519a947301c712179c58a2ce154f9ac4f71"},
+    {file = "pglast-5.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d35bcdf868eb223320228586381e39a8998b4162271ac73380a959e54a671fab"},
+    {file = "pglast-5.0-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:d7991e5b62b2c062c910e7c85739a5cb45ead902e5a9b05e932cf1202d8e21e4"},
+    {file = "pglast-5.0-cp310-cp310-musllinux_1_1_aarch64.whl", hash = "sha256:dbd2f22e3eab52b8531374ec97cab0d0487b854a0667d00360751673515b9ad7"},
+    {file = "pglast-5.0-cp310-cp310-musllinux_1_1_i686.whl", hash = "sha256:5ee0cd4f1bd88476a59bb6fec65f400279682acd7f5c67674165a38df3cd008c"},
+    {file = "pglast-5.0-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:5d45c2ad0bf4aae6e1953ceb204bb2aaad989dfba0c47805c6e5f6cc6b8bb1fa"},
+    {file = "pglast-5.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:67ea917e002df2c170792cc1c95bc090a7306c535f7333897b428b437eaabf62"},
+    {file = "pglast-5.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3ab5288780bd250a9679e56e1412b22229e7a68704904a373dab8c1d9c439a50"},
+    {file = "pglast-5.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1e627a1a6e645cf2103443e38def3766960fa64ad616478563f1ac9c0ba173fe"},
+    {file = "pglast-5.0-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:eb6ca68ed7825b1a926a93f8e00e7531161a516010042069937bd6694be394b1"},
+    {file = "pglast-5.0-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:ff279c18962335b7251bec624574e6fd3027ec9f1dfe8ded332ebcca30ddba12"},
+    {file = "pglast-5.0-cp311-cp311-musllinux_1_1_i686.whl", hash = "sha256:b4889af7210e155e73cba0b7dcf145e41c2d391cbb91fa1e86c19107715ea599"},
+    {file = "pglast-5.0-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:6ab5c0e7062e190c865e88802f2de70d5eb23e981de1f460aa047256eca24d02"},
+    {file = "pglast-5.0-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:d58220681fe5c5c464547afd4fb6770667b5aa0e2960a6e80a7d7945f4b1919e"},
+    {file = "pglast-5.0-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6b566f0ad6d775611482fcb383d1e917bbfcd9aba00e714176c0f21390b7c3bd"},
+    {file = "pglast-5.0-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dca1d31803eb64238bdd350d3fdcce6157c44b792142e804b853b94ca36f0e61"},
+    {file = "pglast-5.0-cp37-cp37m-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:7402f7e030749d1474eed35b1f5c62b401574ded56da382461ff3cbaf30d2d73"},
+    {file = "pglast-5.0-cp37-cp37m-musllinux_1_1_aarch64.whl", hash = "sha256:43429e86770c9f1afbca6c44dbe8ece2ca1540047bff30ca268e696f57ced329"},
+    {file = "pglast-5.0-cp37-cp37m-musllinux_1_1_i686.whl", hash = "sha256:557aa06283db971a46085009b47b4f9b28546d0f0f1071b1fb3d5b54e0b16237"},
+    {file = "pglast-5.0-cp37-cp37m-musllinux_1_1_x86_64.whl", hash = "sha256:ce7ac49625553c78b3345a21e29d8e22d968373a23d8f4477e2f2df9ba1035a0"},
+    {file = "pglast-5.0-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:bea6dc191f0234747b3d05bc5cfdb449ce4b7d626b22a2f4d668bc7cf8049373"},
+    {file = "pglast-5.0-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fc9281d565a2c38ba20655efa459c8ffc5c9d61a46639a33625fe9c03e414bb4"},
+    {file = "pglast-5.0-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e2f63ea735dfc6920fb574854924cdf592779c2d1948ae55fabe698127cce100"},
+    {file = "pglast-5.0-cp38-cp38-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:34afac0e4c049f0b40fb4282c74db7468439c93f800295555e8f9fd86d3dc154"},
+    {file = "pglast-5.0-cp38-cp38-musllinux_1_1_aarch64.whl", hash = "sha256:ec931ce945928b98ae013202eb04367694c24e9fe0c8dbda2941ba88eff5081f"},
+    {file = "pglast-5.0-cp38-cp38-musllinux_1_1_i686.whl", hash = "sha256:441e99e8fc32ab860b88e2ed96bf7f5ddaa2d0f07b19ba6c244fb3e811e4d295"},
+    {file = "pglast-5.0-cp38-cp38-musllinux_1_1_x86_64.whl", hash = "sha256:e59c9338bb59dbc7ba1415f469cba20736dcfc361a7946c8c4b762c30361d2ea"},
+    {file = "pglast-5.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:ffd66c504e94f8e205c6920fbcc6b74caaec215b8dca6a952bbd605ae07a1347"},
+    {file = "pglast-5.0-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:080d1720bbe24a277cad052893e1b457a623dbbfb7fce442eb20846305435993"},
+    {file = "pglast-5.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f97c97b93fe67ea16770271d045fe647402972f0f075313402bcb8dca3ec4d95"},
+    {file = "pglast-5.0-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:ab6963a10de0b43fba58ba5545eecedcc8f297665ebf0d15353ad95cc2afd129"},
+    {file = "pglast-5.0-cp39-cp39-musllinux_1_1_aarch64.whl", hash = "sha256:091dd4746a859b6d1d039abaabe39fdae491bc75638abb021afaafd04668ff73"},
+    {file = "pglast-5.0-cp39-cp39-musllinux_1_1_i686.whl", hash = "sha256:161b4cee4392ca37ec3de3e4bb189bc1e101ad049abb217a28ec1dc4879fd510"},
+    {file = "pglast-5.0-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:e3ffcb7fed6fea38f85fcd5da5adb75707132533dbfe2cd1cb56ede865115872"},
+    {file = "pglast-5.0.tar.gz", hash = "sha256:6d1fdee69642ae730252df7312ccc8d1a565a9ecd3cf04770c87695efffaa863"},
 ]
 
 [package.dependencies]
@@ -2466,4 +2481,4 @@ pandas = ["pandas", "sqlalchemy"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "8eeb0832c98ab01935a1a8ce254904703b6d5bb4d920f4c56e67847eacd8f914"
+content-hash = "3ac25bb2ae6708663f671b316e32dd03b3be1913629eb3307d4e542a7d931bce"
