@@ -22,10 +22,10 @@ tqdm = ">=4.46.0"
 packaging = ">=20.1"
 tabulate = ">=0.8.7"
 asciitree = ">=0.3.3"
-"ruamel.yaml" = "^0.17.17"
+"ruamel.yaml" = ">=0.17.21"
 jsonschema = ">=3.1.0"
 cryptography = ">=3.4.0"
-pydantic = ">=1.8.1"
+pydantic = ">=1.10"
 chardet = "^4.0.0"
 # Pin cffi to < 1.15.
 # Versions after that vendor a libffi-9c61262e.so.8.1.0 which would be

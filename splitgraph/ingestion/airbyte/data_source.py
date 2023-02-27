@@ -165,7 +165,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         tables: Optional[TableInfo] = None,
     ) -> SyncState:
         # We override the main sync() instead
-        pass
+        raise NotImplementedError()
 
     def load(self, repository: "Repository", tables: Optional[TableInfo] = None) -> str:
         return self.sync(repository, image_hash=None, tables=tables, use_state=False)

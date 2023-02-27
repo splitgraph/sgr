@@ -1079,7 +1079,7 @@ class GQLAPIClient:
             return parsed_responses[0]
         return None
 
-    def load_all_repositories(self, limit_to: List[str] = None) -> List[Repository]:
+    def load_all_repositories(self, limit_to: Optional[List[str]] = None) -> List[Repository]:
         if limit_to:
             parsed_metadata = []
             parsed_external = []

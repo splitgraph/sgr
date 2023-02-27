@@ -354,7 +354,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC)
         tables: Optional[TableInfo] = None,
     ) -> SyncState:
         # We override the main sync() instead
-        pass
+        raise NotImplementedError()
 
     def _get_cursor_value(
         self, schema: str, table: str, cursor_fields: List[str]

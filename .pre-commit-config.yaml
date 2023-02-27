@@ -8,7 +8,7 @@ repos:
   # Note that we have to specify exclusions here. This is because mypy's exclude setting
   # gets overridden by the actual path spec.
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v0.982'
+    rev: 'v1.0.1'
     hooks:
       - id: mypy
         additional_dependencies:
