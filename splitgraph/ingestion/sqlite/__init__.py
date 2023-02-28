@@ -119,7 +119,7 @@ class SQLiteDataSource(LoadableDataSource):
         "properties": {
             "url": {
                 "type": "string",
-                "description": "HTTP URL to the sqlite file",
+                "description": "HTTP URL to the SQLite file",
                 "title": "URL",
             }
         },
