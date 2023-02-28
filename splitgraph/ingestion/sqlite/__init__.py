@@ -103,7 +103,8 @@ def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> Intros
         pk,
     ) in query_connection(con, LIST_TABLES_QUERY, {}):
         table = schema.get(table_name, ([], TableParams({})))
-        cast(Tuple[List[TableColumn], TableParams], table)[0].append(
+        assert isinstance(table, tuple)
+        table[0].append(
             TableColumn(column_id + 1, column_name, sqlite_to_postgres_type(column_type), pk != 0)
         )
         schema[table_name] = table
