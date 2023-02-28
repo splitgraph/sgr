@@ -92,7 +92,7 @@ def sqlite_to_postgres_type(sqlite_type: str) -> str:
 
 
 def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> IntrospectionResult:
-    schema: IntrospectionResult = cast(IntrospectionResult, {})
+    schema = IntrospectionResult({})
     for (
         table_name,
         column_id,
