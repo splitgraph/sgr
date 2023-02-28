@@ -3,9 +3,8 @@ import itertools
 import os
 import sqlite3
 import tempfile
-from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, cast
 
 import requests
 from psycopg2.sql import SQL, Identifier
