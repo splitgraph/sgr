@@ -18,6 +18,7 @@ from splitgraph.core.types import (
     TableInfo,
     TableParams,
 )
+from splitgraph.engine.postgres.engine import _quote_ident
 from splitgraph.hooks.data_source.base import LoadableDataSource
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ JOIN pragma_table_info(tbl_name) s
 ORDER BY 1,2;
 """
 
+
 # based on https://stackoverflow.com/a/16696317
 def download_file(url: str, local_fh: tempfile._TemporaryFileWrapper) -> int:
     total_bytes_written = 0
@@ -40,15 +42,15 @@ def download_file(url: str, local_fh: tempfile._TemporaryFileWrapper) -> int:
         r.raise_for_status()
         for chunk in r.iter_content(chunk_size=8192):
             total_bytes_written += local_fh.write(chunk)
+    local_fh.flush()
     return total_bytes_written
 
 
 @contextmanager
 def minio_file(url: str) -> Generator[str, None, None]:
-    with tempfile.NamedTemporaryFile(mode="wb", delete=False) as local_fh:
+    with tempfile.NamedTemporaryFile(mode="wb", delete=True) as local_fh:
         download_file(url, local_fh)
-    yield local_fh.name
-    os.remove(local_fh.name)
+        yield local_fh.name
 
 
 def query_connection(
@@ -64,10 +66,6 @@ def db_from_minio(url: str) -> Generator[sqlite3.Connection, None, None]:
     with minio_file(url) as f:
         with contextlib.closing(sqlite3.connect(f)) as con:
             yield con
-
-
-def sql_quote_str(s: str) -> str:
-    return s.replace("'", "''").replace('"', '""')
 
 
 # partly based on https://stackoverflow.com/questions/1942586/comparison-of-database-column-types-in-mysql-postgresql-and-sqlite-cross-map
@@ -143,7 +141,7 @@ class SQLiteDataSource(LoadableDataSource):
                     schema_spec=schema_spec,
                 )
                 table_contents = query_connection(
-                    con, 'SELECT * FROM "{}"'.format(sql_quote_str(table_name))  #  nosec
+                    con, "SELECT * FROM {}".format(_quote_ident(table_name))  #  nosec
                 )
                 self.engine.run_sql_batch(
                     SQL("INSERT INTO {0}.{1} ").format(Identifier(schema), Identifier(table_name))
