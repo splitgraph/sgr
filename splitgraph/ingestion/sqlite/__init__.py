@@ -134,7 +134,8 @@ class SQLiteDataSource(LoadableDataSource):
         with db_from_minio(str(self.params.get("url"))) as con:
             introspection_result = sqlite_connection_to_introspection_result(con)
             for table_name, table_definition in introspection_result.items():
-                schema_spec = cast(Tuple[List[TableColumn], TableParams], table_definition)[0]
+                assert isinstance(table_definition, tuple)
+                schema_spec = table_definition[0]
                 self.engine.create_table(
                     schema=schema,
                     table=table_name,
