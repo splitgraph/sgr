@@ -4,7 +4,7 @@ import os
 import sqlite3
 import tempfile
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional
 
 import requests
 from psycopg2.sql import SQL, Identifier
@@ -37,7 +37,7 @@ ORDER BY 1,2;
 # based on https://stackoverflow.com/a/16696317
 def download_file(url: str, local_fh: tempfile._TemporaryFileWrapper) -> int:
     total_bytes_written = 0
-    with requests.get(url, stream=True, verify=os.environ["SSL_CERT_FILE"]) as r:
+    with requests.get(url, stream=True, verify=os.environ.get("SSL_CERT_FILE", True)) as r:
         r.raise_for_status()
         for chunk in r.iter_content(chunk_size=8192):
             total_bytes_written += local_fh.write(chunk)
@@ -110,7 +110,16 @@ def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> Intros
 
 class SQLiteDataSource(LoadableDataSource):
 
-    table_params_schema: Dict[str, Any] = {"type": "object", "properties": {}}
+    table_params_schema: Dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "HTTP URL to the SQLite file",
+                "title": "URL",
+            },
+        },
+    }
 
     params_schema: Dict[str, Any] = {
         "type": "object",
@@ -130,7 +139,12 @@ class SQLiteDataSource(LoadableDataSource):
     _icon_file = "sqlite.svg"  # TODO
 
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
-        with db_from_minio(str(self.params.get("url"))) as con:
+        url = str(self.params.get("url"))
+        if type(tables) == dict and len(tables) == 1:
+            assert isinstance(tables, dict)
+            for (_schema, table_params) in tables.values():
+                url = table_params.get("url", url)
+        with db_from_minio(url) as con:
             introspection_result = sqlite_connection_to_introspection_result(con)
             for table_name, table_definition in introspection_result.items():
                 assert isinstance(table_definition, tuple)
