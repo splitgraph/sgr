@@ -18,6 +18,7 @@ from splitgraph.core.types import (
     IntrospectionResult,
     MountError,
     Params,
+    PreviewResult,
     SyncState,
     TableColumn,
     TableInfo,
@@ -127,6 +128,13 @@ class MountableDataSource(DataSource, ABC):
         overwrite: bool = True,
     ) -> Optional[List[MountError]]:
         """Instantiate the data source as foreign tables in a schema"""
+        raise NotImplementedError
+
+
+class PreviewableDataSource(DataSource, ABC):
+    @abstractmethod
+    def preview(self, tables: Optional[TableInfo]) -> PreviewResult:
+        """Preview data in tables mounted by this data source"""
         raise NotImplementedError
 
 

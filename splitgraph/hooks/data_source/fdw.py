@@ -33,6 +33,7 @@ from splitgraph.exceptions import (
 )
 from splitgraph.hooks.data_source.base import (
     MountableDataSource,
+    PreviewableDataSource,
     SyncableDataSource,
     get_ingestion_state,
     make_image_latest,
@@ -47,7 +48,9 @@ if TYPE_CHECKING:
     from splitgraph.engine.postgres.psycopg import PsycopgEngine
 
 
-class ForeignDataWrapperDataSource(MountableDataSource, SyncableDataSource, ABC):
+class ForeignDataWrapperDataSource(
+    MountableDataSource, SyncableDataSource, PreviewableDataSource, ABC
+):
     credentials_schema: Dict[str, Any] = {
         "type": "object",
     }
