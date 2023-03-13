@@ -51,8 +51,8 @@ from splitgraph.cloud.queries import (
     BULK_UPDATE_REPO_SOURCES,
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
-    CSV_URL,
     EXPORT_JOB_STATUS,
+    FILE_URL,
     FIND_REPO,
     GET_PLUGIN,
     GET_PLUGINS,
@@ -947,15 +947,15 @@ class GQLAPIClient:
         response.raise_for_status()
         return response.text
 
-    def get_csv_upload_download_urls(self) -> Tuple[str, str]:
+    def get_file_upload_download_urls(self) -> Tuple[str, str]:
         response = self._gql(
             {
-                "query": CSV_URL,
-                "operationName": "CSVURLs",
+                "query": FILE_URL,
+                "operationName": "FILEURLs",
             },
             handle_errors=True,
         )
-        urls = response.json()["data"]["csvUploadDownloadUrls"]
+        urls = response.json()["data"]["fileUploadDownloadUrls"]
         return urls["upload"], urls["download"]
 
     def _run_start_load_gql_with(self, variables: Dict[str, Any]) -> str:

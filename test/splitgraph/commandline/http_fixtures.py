@@ -7,8 +7,8 @@ from splitgraph.cloud import (
     BULK_UPDATE_REPO_SOURCES,
     BULK_UPSERT_REPO_PROFILES,
     BULK_UPSERT_REPO_TOPICS,
-    CSV_URL,
     EXPORT_JOB_STATUS,
+    FILE_URL,
     GET_PLUGIN,
     GET_PLUGINS,
     INGESTION_JOB_STATUS,
@@ -671,7 +671,7 @@ def gql_upload(namespace, repository, final_status="SUCCESS"):
 
         if body["query"] == JOB_LOGS:
             return mock_gql_job_logs(body, response_headers)
-        elif body["query"] == CSV_URL:
+        elif body["query"] == FILE_URL:
             upload_id = "{0:016x}".format(random.getrandbits(64))
             download_links.append(f"{STORAGE_ENDPOINT}/download/{upload_id}")
             upload_links.append(f"{STORAGE_ENDPOINT}/upload/{upload_id}")
@@ -682,7 +682,7 @@ def gql_upload(namespace, repository, final_status="SUCCESS"):
                 json.dumps(
                     {
                         "data": {
-                            "csvUploadDownloadUrls": {
+                            "fileUploadDownloadUrls": {
                                 "upload": upload_links[-1],
                                 "download": download_links[-1],
                             }

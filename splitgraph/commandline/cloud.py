@@ -963,7 +963,7 @@ def upload_c(remote, file_format, repository, files):
 
     download_urls = []
     for file in files:
-        upload, download = client.get_csv_upload_download_urls()
+        upload, download = client.get_file_upload_download_urls()
         download_urls.append(download)
         upload_file(file, upload)
 

@@ -208,8 +208,8 @@ query JobLogs($namespace: String!, $repository: String!, $taskId: String!) {
 }
 """
 
-CSV_URL = """query CSVURLs {
-  csvUploadDownloadUrls {
+FILE_URL = """query FILEURLs {
+  fileUploadDownloadUrls {
     upload
     download
   }
