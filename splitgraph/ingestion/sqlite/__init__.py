@@ -4,7 +4,7 @@ import os
 import sqlite3
 import tempfile
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Union
 
 import requests
 from psycopg2.sql import SQL, Identifier
@@ -12,13 +12,15 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.core.types import (
     Credentials,
     IntrospectionResult,
+    MountError,
     Params,
+    PreviewResult,
     TableColumn,
     TableInfo,
     TableParams,
 )
 from splitgraph.engine.postgres.engine import _quote_ident
-from splitgraph.hooks.data_source.base import LoadableDataSource
+from splitgraph.hooks.data_source.base import LoadableDataSource, PreviewableDataSource
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -37,7 +39,7 @@ ORDER BY 1,2;
 # based on https://stackoverflow.com/a/16696317
 def download_file(url: str, local_fh: tempfile._TemporaryFileWrapper) -> int:
     total_bytes_written = 0
-    with requests.get(url, stream=True, verify=os.environ["SSL_CERT_FILE"]) as r:
+    with requests.get(url, stream=True, verify=os.environ.get("SSL_CERT_FILE", True)) as r:
         r.raise_for_status()
         for chunk in r.iter_content(chunk_size=8192):
             total_bytes_written += local_fh.write(chunk)
@@ -108,9 +110,27 @@ def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> Intros
     return schema
 
 
-class SQLiteDataSource(LoadableDataSource):
+def get_preview_rows(
+    con: sqlite3.Connection, table_name: str, limit: Optional[int] = 10
+) -> Union[MountError, List[Dict[str, Any]]]:
+    # TODO: catch errors and return them as MountErrors
+    return query_connection(
+        con, "SELECT * FROM {} LIMIT {}".format(_quote_ident(table_name), limit)  #  nosec
+    )
 
-    table_params_schema: Dict[str, Any] = {"type": "object", "properties": {}}
+
+class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
+
+    table_params_schema: Dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "HTTP URL to the SQLite file",
+                "title": "URL",
+            },
+        },
+    }
 
     params_schema: Dict[str, Any] = {
         "type": "object",
@@ -126,11 +146,18 @@ class SQLiteDataSource(LoadableDataSource):
     supports_mount = False
     supports_load = True
     supports_sync = False
+    _icon_file = "sqlite.svg"
 
-    _icon_file = "sqlite.svg"  # TODO
+    def _get_url(self, tables: Optional[TableInfo] = None):
+        url = str(self.params.get("url"))
+        if type(tables) == dict and len(tables) == 1:
+            assert isinstance(tables, dict)
+            for (_schema, table_params) in tables.values():
+                url = table_params.get("url", url)
+        return url
 
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
-        with db_from_minio(str(self.params.get("url"))) as con:
+        with db_from_minio(self._get_url(tables)) as con:
             introspection_result = sqlite_connection_to_introspection_result(con)
             for table_name, table_definition in introspection_result.items():
                 assert isinstance(table_definition, tuple)
@@ -151,7 +178,7 @@ class SQLiteDataSource(LoadableDataSource):
                 )  # nosec
 
     def introspect(self) -> IntrospectionResult:
-        with db_from_minio(str(self.params.get("url"))) as con:
+        with db_from_minio(str(self._get_url())) as con:
             return sqlite_connection_to_introspection_result(con)
 
     def __init__(
@@ -174,3 +201,14 @@ class SQLiteDataSource(LoadableDataSource):
     def get_remote_schema_name(self) -> str:
         # We ignore the schema name and use the bucket/prefix passed in the params instead.
         return "data"
+
+    def preview(self, tables: Optional[TableInfo]) -> PreviewResult:
+        result = PreviewResult({})
+        if type(tables) == dict:
+            assert isinstance(tables, dict)
+            with db_from_minio(self._get_url(tables)) as con:
+                con.row_factory = sqlite3.Row
+                result = PreviewResult(
+                    {table_name: get_preview_rows(con, table_name) for table_name in tables.keys()}
+                )
+        return result
