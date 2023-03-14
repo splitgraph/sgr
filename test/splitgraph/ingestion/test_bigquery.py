@@ -1,4 +1,5 @@
 import base64
+import re
 from unittest.mock import Mock
 
 import pytest
@@ -69,9 +70,13 @@ def test_bigquery_data_source_options_no_creds_file():
 
 @pytest.mark.mounting
 def test_bigquery_mount_expected_error():
-    with pytest.raises(DatabaseError, match="Could not automatically determine credentials"):
+    with pytest.raises(DatabaseError) as exc_info:
         mount(
             "bq",
             "bigquery",
             {"project": "bigquery-public-data", "dataset_name": "hacker_news"},
         )
+    re1 = re.compile(r"Could not automatically determine credentials", re.MULTILINE)
+    re2 = re.compile(r"Your default credentials were not found", re.MULTILINE)
+    exc_message = exc_info.value.args[0]
+    assert len(re1.findall(exc_message)) + len(re2.findall(exc_message)) > 0
