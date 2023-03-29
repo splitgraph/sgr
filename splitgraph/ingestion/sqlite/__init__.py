@@ -1,6 +1,7 @@
 import contextlib
 import itertools
 import os
+import re
 import sqlite3
 import tempfile
 from contextlib import contextmanager
@@ -35,6 +36,17 @@ JOIN pragma_table_info(tbl_name) s
 ORDER BY 1,2;
 """
 
+RE_SINGLE_PARAM_TYPE = re.compile(r"^([A-Z ]+)\(\s*([0-9]+)\s*\)$")
+RE_DOUBLE_PARAM_TYPE = re.compile(r"^([A-Z ]+)\(\s*([0-9]+)\s*,\s*([0-9]+)\s*\)$")
+# from: https://www.sqlite.org/datatype3.html#affinity_name_examples
+VARCHAR_ALIASES = {
+    "CHARACTER",
+    "VARCHAR",
+    "VARYING CHARACTER",
+    "NCHAR",
+    "NATIVE CHARACTER",
+    "NVARCHAR",
+}
 
 # based on https://stackoverflow.com/a/16696317
 def download_file(url: str, local_fh: tempfile._TemporaryFileWrapper) -> int:
@@ -70,7 +82,17 @@ def db_from_minio(url: str) -> Generator[sqlite3.Connection, None, None]:
 
 
 # partly based on https://stackoverflow.com/questions/1942586/comparison-of-database-column-types-in-mysql-postgresql-and-sqlite-cross-map
-def sqlite_to_postgres_type(sqlite_type: str) -> str:
+def sqlite_to_postgres_type(raw_sqlite_type: str) -> str:
+    sqlite_type = raw_sqlite_type.upper()
+    match = re.search(RE_SINGLE_PARAM_TYPE, sqlite_type)
+    if match:
+        (type_name, param) = match.groups()
+        if type_name in VARCHAR_ALIASES:
+            return "VARCHAR(%s)" % param
+        return sqlite_type
+    match = re.search(RE_DOUBLE_PARAM_TYPE, sqlite_type)
+    if match:
+        return "%s(%s,%s)" % match.groups()
     if sqlite_type == "DATETIME":
         return "TIMESTAMP WITHOUT TIME ZONE"
     # from: https://www.sqlite.org/datatype3.html#determination_of_column_affinity
