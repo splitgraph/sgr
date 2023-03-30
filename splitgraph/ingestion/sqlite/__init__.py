@@ -1,6 +1,7 @@
 import contextlib
 import itertools
 import os
+import re
 import sqlite3
 import tempfile
 from contextlib import contextmanager
@@ -35,6 +36,17 @@ JOIN pragma_table_info(tbl_name) s
 ORDER BY 1,2;
 """
 
+RE_SINGLE_PARAM_TYPE = re.compile(r"^([A-Z ]+)\(\s*([0-9]+)\s*\)$")
+RE_DOUBLE_PARAM_TYPE = re.compile(r"^([A-Z ]+)\(\s*([0-9]+)\s*,\s*([0-9]+)\s*\)$")
+# from: https://www.sqlite.org/datatype3.html#affinity_name_examples
+VARCHAR_ALIASES = {
+    "CHARACTER",
+    "VARCHAR",
+    "VARYING CHARACTER",
+    "NCHAR",
+    "NATIVE CHARACTER",
+    "NVARCHAR",
+}
 
 # based on https://stackoverflow.com/a/16696317
 def download_file(url: str, local_fh: tempfile._TemporaryFileWrapper) -> int:
@@ -70,7 +82,19 @@ def db_from_minio(url: str) -> Generator[sqlite3.Connection, None, None]:
 
 
 # partly based on https://stackoverflow.com/questions/1942586/comparison-of-database-column-types-in-mysql-postgresql-and-sqlite-cross-map
-def sqlite_to_postgres_type(sqlite_type: str) -> str:
+def sqlite_to_postgres_type(raw_sqlite_type: str) -> str:
+    sqlite_type = raw_sqlite_type.upper()
+    match = re.search(RE_SINGLE_PARAM_TYPE, sqlite_type)
+    if match:
+        (type_name, param) = match.groups()
+        if type_name in VARCHAR_ALIASES:
+            type_name = "VARCHAR"
+        return "%s(%s)" % (type_name, param)
+    match = re.search(RE_DOUBLE_PARAM_TYPE, sqlite_type)
+    if match:
+        # Only NUMERIC and DECIMAL have double parameters, which both exist
+        # in PostgreSQL as well.
+        return "%s(%s,%s)" % match.groups()
     if sqlite_type == "DATETIME":
         return "TIMESTAMP WITHOUT TIME ZONE"
     # from: https://www.sqlite.org/datatype3.html#determination_of_column_affinity
@@ -82,11 +106,11 @@ def sqlite_to_postgres_type(sqlite_type: str) -> str:
         return "TEXT"
     # If the declared type for a column contains the string "BLOB" or if no type is specified then the column has affinity BLOB.
     if "BLOB" in sqlite_type:
-        return "BLOB"
+        return "BYTEA"
     # If the declared type for a column contains any of the strings "REAL", "FLOA", or "DOUB" then the column has REAL affinity.
     if "REAL" in sqlite_type or "FLOA" in sqlite_type or "DOUB" in sqlite_type:
         return "REAL"
-    # Otherwise, the affinity is NUMERIC. TODO: Precision and scale
+    # Otherwise, the affinity is NUMERIC.
     return "NUMERIC"
 
 
@@ -110,13 +134,23 @@ def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> Intros
     return schema
 
 
+BINARY_DATA_MESSAGE = "[binary data]"
+
+
+def sanitize_preview_row(row: sqlite3.Row) -> Dict[str, Any]:
+    return {k: row[k] if type(row[k]) != bytes else BINARY_DATA_MESSAGE for k in row.keys()}
+
+
 def get_preview_rows(
     con: sqlite3.Connection, table_name: str, limit: Optional[int] = 10
 ) -> Union[MountError, List[Dict[str, Any]]]:
     # TODO: catch errors and return them as MountErrors
-    return query_connection(
-        con, "SELECT * FROM {} LIMIT {}".format(_quote_ident(table_name), limit)  #  nosec
-    )
+    return [
+        sanitize_preview_row(row)
+        for row in query_connection(
+            con, "SELECT * FROM {} LIMIT {}".format(_quote_ident(table_name), limit)  #  nosec
+        )
+    ]
 
 
 class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
