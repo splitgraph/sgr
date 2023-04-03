@@ -8,7 +8,7 @@ import tempfile
 from contextlib import contextmanager
 from datetime import datetime
 from numbers import Number
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
 from psycopg2.sql import SQL, Identifier
@@ -142,29 +142,6 @@ def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> Intros
 BINARY_DATA_MESSAGE = "[binary data]"
 
 
-def sql_quote_str(s: str) -> str:
-    return s.replace("'", "''")
-
-
-def emit_value(value: Any) -> str:
-    if value is None:
-        return "NULL"
-
-    if isinstance(value, float):
-        if math.isnan(value):
-            return "NULL"
-        return f"{value:.20f}"
-
-    if isinstance(value, Number) and not isinstance(value, bool):
-        return str(value)
-
-    if isinstance(value, datetime):
-        return f"'{value.isoformat()}'"
-
-    quoted = sql_quote_str(str(value))
-    return f"'{quoted}'"
-
-
 def sanitize_preview_row(row: sqlite3.Row) -> Dict[str, Any]:
     return {k: row[k] if type(row[k]) != bytes else BINARY_DATA_MESSAGE for k in row.keys()}
 
@@ -191,16 +168,15 @@ def get_select_query(
     primary_keys: List[str],
     end_of_last_batch: Optional[sqlite3.Row],
     batch_size: int,
-):
+) -> Tuple[str, Dict[str, Any]]:
     effective_pks = primary_keys if len(primary_keys) > 0 else [SQLITE_IMPLICIT_ROWID_COLUMN_NAME]
     pk_column_list = ", ".join([_quote_ident(col) for col in effective_pks])
     where_clause = "true"
+    parameters = {}
     if end_of_last_batch is not None:
-        last_batch_end_tuple = ", ".join(
-            [emit_value(end_of_last_batch[col]) for col in effective_pks]
-        )
-        where_clause = f"({pk_column_list}) > ({last_batch_end_tuple})"
-    return "SELECT {}* FROM {} WHERE {} ORDER BY {} ASC LIMIT {}".format(  #  nosec
+        parameters = {col: end_of_last_batch[col] for col in effective_pks}
+        where_clause = f"({pk_column_list}) > ({', '.join(['%s'] * len(effective_pks))})"
+    query = "SELECT {}* FROM {} WHERE {} ORDER BY {} ASC LIMIT {}".format(  #  nosec
         # add the implicit rowid column to the select if no explicit primary
         # key columns exist on table, based on: https://www.sqlite.org/withoutrowid.html
         f"{SQLITE_IMPLICIT_ROWID_COLUMN_NAME}, " if len(primary_keys) == 0 else "",
@@ -209,6 +185,7 @@ def get_select_query(
         pk_column_list,
         batch_size,
     )  #  nosec
+    return (query, parameters)
 
 
 class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
@@ -261,9 +238,10 @@ class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
         end_of_last_batch: Optional[sqlite3.Row] = None
         total_row_count = 0
         while last_batch_row_count == batch_size:
-            table_contents = query_connection(
-                con, get_select_query(table_name, primary_keys, end_of_last_batch, batch_size)
+            query, parameters = get_select_query(
+                table_name, primary_keys, end_of_last_batch, batch_size
             )
+            table_contents = query_connection(con, query, parameters)
             last_batch_row_count = len(table_contents)
             end_of_last_batch = None if last_batch_row_count == 0 else table_contents[-1]
             total_row_count += last_batch_row_count
