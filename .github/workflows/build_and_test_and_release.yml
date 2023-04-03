@@ -24,7 +24,7 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: "3.8"
-      - uses: actions/cache@v1
+      - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
           key: pip_cache
@@ -38,7 +38,7 @@ jobs:
         run: "./.ci/install_prereqs.sh"
       - name: "Install package"
         run: ./.ci/install.sh
-      - uses: actions/cache@v1
+      - uses: actions/cache@v3
         with:
           path: ~/docker_images
           key: docker_cache
