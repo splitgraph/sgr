@@ -55,7 +55,7 @@ class ExternalObjectHandler:
     ) -> Sequence[str]:
         """Download objects from the external location into the Splitgraph cache.
 
-        :param objects: List of tuples `(object_id, object_url)` that this handler had previosly
+        :param objects: List of tuples `(object_id, object_url)` that this handler had previously
             uploaded the objects to.
         :param remote_engine: An instance of Engine class that the objects will be registered on
         :return: A list of object IDs that have been successfully downloaded.

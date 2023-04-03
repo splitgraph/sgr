@@ -147,7 +147,7 @@ This can also be changed by passing `--verbosity` to `sgr`, e.g. `sgr --verbosit
     "SG_ENGINE_POSTGRES_DB_NAME": "Name of the default database that the superuser connects to to initialize Splitgraph.",
     "SG_ENGINE_OBJECT_PATH": "Path on the engine's filesystem where Splitgraph physical object files are stored.",
     "SG_LQ_TUNING": "Postgres query planner configuration for Splitfile execution and table imports. This is run before a layered query is executed and allows to tune query planning in case of LQ performance issues. For possible values, see the [PostgreSQL documentation](https://www.postgresql.org/docs/12/runtime-config-query.html).",
-    "SG_COMMIT_CHUNK_SIZE": "Default chunk size when `sgr commit` is run. Can be overriden in the command line client by passing `--chunk-size`",
+    "SG_COMMIT_CHUNK_SIZE": "Default chunk size when `sgr commit` is run. Can be overridden in the command line client by passing `--chunk-size`",
     "SG_ENGINE_POOL": "Size of the connection pool used to download/upload objects. Note that in the case of layered querying with joins on multiple tables, each table will use this many parallel threads to download objects, which can overwhelm the engine. Decrease this value in that case.",
     "SG_CONFIG_FILE": "Location of the Splitgraph configuration file. By default, Splitgraph looks for the configuration in `~/.splitgraph/.sgconfig` and then the current directory.",
     "SG_META_SCHEMA": "Name of the metadata schema. Note that whilst this can be changed, it hasn't been tested and won't be taken into account by engines connecting to this one.",

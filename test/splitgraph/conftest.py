@@ -521,7 +521,7 @@ def remote_engine(test_remote_engine):
 def unprivileged_remote_engine(remote_engine_registry):
     remote_engine_registry.commit()
     remote_engine_registry.close()
-    # Assuption: unprivileged_remote_engine is the same server as remote_engine_registry but with an
+    # Assumption: unprivileged_remote_engine is the same server as remote_engine_registry but with an
     # unprivileged user.
     engine = get_engine("unprivileged_remote_engine")
     engine.close()

@@ -46,7 +46,7 @@ IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_data"
 
 class Image(NamedTuple):
     """
-    Represents a Splitgraph image. Should't be created directly, use Image-loading methods in the
+    Represents a Splitgraph image. Shouldn't be created directly, use Image-loading methods in the
     :class:`splitgraph.core.repository.Repository` class instead.
     """
 
