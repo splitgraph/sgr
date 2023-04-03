@@ -21,20 +21,20 @@ def test_sqlite_select_query():
     # explicit pk, no previous batch
     assert get_select_query("my_table", ["id"], None, 10) == (
         'SELECT * FROM "my_table" WHERE true ORDER BY "id" ASC LIMIT 10',
-        {},
+        [],
     )
     # implicit pk, no previous batch
     assert get_select_query("my_table", [], None, 10) == (
         'SELECT ROWID, * FROM "my_table" WHERE true ORDER BY "ROWID" ASC LIMIT 10',
-        {},
+        [],
     )
     # explicit pk, has previous batch
     assert get_select_query("my_table", ["id1", "id2"], {"id1": 0, "id2": "a"}, 10) == (
-        'SELECT * FROM "my_table" WHERE ("id1", "id2") > (%s, %s) ORDER BY "id1", "id2" ASC LIMIT 10',
-        {"id1": 0, "id2": "a"},
+        'SELECT * FROM "my_table" WHERE ("id1", "id2") > (?, ?) ORDER BY "id1", "id2" ASC LIMIT 10',
+        [0, "a"],
     )
     # implicit pk, has previous batch
     assert get_select_query("my_table", [], {"ROWID": 500}, 10) == (
-        'SELECT ROWID, * FROM "my_table" WHERE ("ROWID") > (%s) ORDER BY "ROWID" ASC LIMIT 10',
-        {"ROWID": 500},
+        'SELECT ROWID, * FROM "my_table" WHERE ("ROWID") > (?) ORDER BY "ROWID" ASC LIMIT 10',
+        [500],
     )
