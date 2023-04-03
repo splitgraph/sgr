@@ -1,14 +1,11 @@
 import contextlib
 import itertools
-import math
 import os
 import re
 import sqlite3
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime
-from numbers import Number
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Union
 
 import requests
 from psycopg2.sql import SQL, Identifier
@@ -22,7 +19,6 @@ from splitgraph.core.types import (
     TableColumn,
     TableInfo,
     TableParams,
-    TableSchema,
 )
 from splitgraph.engine.postgres.engine import _quote_ident
 from splitgraph.hooks.data_source.base import LoadableDataSource, PreviewableDataSource
@@ -82,7 +78,6 @@ def query_connection(
 def db_from_minio(url: str) -> Generator[sqlite3.Connection, None, None]:
     with minio_file(url) as f:
         with contextlib.closing(sqlite3.connect(f)) as con:
-            con.row_factory = sqlite3.Row
             yield con
 
 
@@ -158,36 +153,6 @@ def get_preview_rows(
     ]
 
 
-SQLITE_IMPLICIT_ROWID_COLUMN_NAME = "ROWID"
-# copy 1000 rows in a single iteration
-DEFAULT_BATCH_SIZE = 1000
-
-
-def get_select_query(
-    table_name: str,
-    primary_keys: List[str],
-    end_of_last_batch: Optional[sqlite3.Row],
-    batch_size: int,
-) -> Tuple[str, Dict[str, Any]]:
-    effective_pks = primary_keys if len(primary_keys) > 0 else [SQLITE_IMPLICIT_ROWID_COLUMN_NAME]
-    pk_column_list = ", ".join([_quote_ident(col) for col in effective_pks])
-    where_clause = "true"
-    parameters = {}
-    if end_of_last_batch is not None:
-        parameters = {col: end_of_last_batch[col] for col in effective_pks}
-        where_clause = f"({pk_column_list}) > ({', '.join(['%s'] * len(effective_pks))})"
-    query = "SELECT {}* FROM {} WHERE {} ORDER BY {} ASC LIMIT {}".format(  #  nosec
-        # add the implicit rowid column to the select if no explicit primary
-        # key columns exist on table, based on: https://www.sqlite.org/withoutrowid.html
-        f"{SQLITE_IMPLICIT_ROWID_COLUMN_NAME}, " if len(primary_keys) == 0 else "",
-        _quote_ident(table_name),
-        where_clause,
-        pk_column_list,
-        batch_size,
-    )  #  nosec
-    return (query, parameters)
-
-
 class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
 
     table_params_schema: Dict[str, Any] = {
@@ -225,36 +190,6 @@ class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
                 url = table_params.get("url", url)
         return url
 
-    def _batched_copy(
-        self,
-        con: sqlite3.Connection,
-        schema: str,
-        table_name: str,
-        schema_spec: TableSchema,
-        batch_size: int,
-    ) -> int:
-        primary_keys = [col.name for col in schema_spec if col.is_pk]
-        last_batch_row_count = batch_size
-        end_of_last_batch: Optional[sqlite3.Row] = None
-        total_row_count = 0
-        while last_batch_row_count == batch_size:
-            query, parameters = get_select_query(
-                table_name, primary_keys, end_of_last_batch, batch_size
-            )
-            table_contents = query_connection(con, query, parameters)
-            last_batch_row_count = len(table_contents)
-            end_of_last_batch = None if last_batch_row_count == 0 else table_contents[-1]
-            total_row_count += last_batch_row_count
-            insert_table_contents = (
-                table_contents if len(primary_keys) > 0 else [row[1:] for row in table_contents]
-            )
-            self.engine.run_sql_batch(
-                SQL("INSERT INTO {0}.{1} ").format(Identifier(schema), Identifier(table_name))
-                + SQL(" VALUES (" + ",".join(itertools.repeat("%s", len(schema_spec))) + ")"),
-                insert_table_contents,
-            )  # nosec
-        return total_row_count
-
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
         with db_from_minio(self._get_url(tables)) as con:
             introspection_result = sqlite_connection_to_introspection_result(con)
@@ -266,7 +201,15 @@ class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
                     table=table_name,
                     schema_spec=schema_spec,
                 )
-                self._batched_copy(con, schema, table_name, schema_spec, DEFAULT_BATCH_SIZE)
+                table_contents = query_connection(
+                    con, "SELECT * FROM {}".format(_quote_ident(table_name))  #  nosec
+                )
+                self.engine.run_sql_batch(
+                    SQL("INSERT INTO {0}.{1} ").format(Identifier(schema), Identifier(table_name))
+                    + SQL(" VALUES (" + ",".join(itertools.repeat("%s", len(schema_spec))) + ")"),
+                    # TODO: break this up into multiple batches for larger sqlite files
+                    table_contents,
+                )  # nosec
 
     def introspect(self) -> IntrospectionResult:
         with db_from_minio(str(self._get_url())) as con:
@@ -298,6 +241,7 @@ class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
         if type(tables) == dict:
             assert isinstance(tables, dict)
             with db_from_minio(self._get_url(tables)) as con:
+                con.row_factory = sqlite3.Row
                 result = PreviewResult(
                     {table_name: get_preview_rows(con, table_name) for table_name in tables.keys()}
                 )
