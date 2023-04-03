@@ -194,7 +194,7 @@ Full set of changes: [`v0.2.10...v0.2.11`](https://github.com/splitgraph/sgr/com
 
   * Fix CSV schema inference not supporting BIGINT data types (https://github.com/splitgraph/sgr/pull/407)
   * Fix Splitfiles only expecting tags to contain alphanumeric characters (https://github.com/splitgraph/sgr/pull/407)
-  * Speedups for the Snowflake / SQLAlchemy data soure (https://github.com/splitgraph/sgr/pull/405)
+  * Speedups for the Snowflake / SQLAlchemy data source (https://github.com/splitgraph/sgr/pull/405)
 
 Full set of changes: [`v0.2.9...v0.2.10`](https://github.com/splitgraph/sgr/compare/v0.2.9...v0.2.10)
 
