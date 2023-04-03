@@ -1,13 +1,10 @@
 import contextlib
 import itertools
-import math
 import os
 import re
 import sqlite3
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime
-from numbers import Number
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
@@ -71,10 +68,10 @@ def minio_file(url: str) -> Generator[str, None, None]:
 
 
 def query_connection(
-    con: sqlite3.Connection, sql: str, parameters: Optional[Dict[str, str]] = None
+    con: sqlite3.Connection, sql: str, parameters: Optional[List[Any]] = None
 ) -> List[Any]:
     with contextlib.closing(con.cursor()) as cursor:
-        cursor.execute(sql, parameters or {})
+        cursor.execute(sql, parameters or [])
         return cursor.fetchall()
 
 
@@ -129,7 +126,7 @@ def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> Intros
         _notnull,
         _default_value,
         pk,
-    ) in query_connection(con, LIST_TABLES_QUERY, {}):
+    ) in query_connection(con, LIST_TABLES_QUERY):
         table = schema.get(table_name, ([], TableParams({})))
         assert isinstance(table, tuple)
         table[0].append(
@@ -168,14 +165,14 @@ def get_select_query(
     primary_keys: List[str],
     end_of_last_batch: Optional[sqlite3.Row],
     batch_size: int,
-) -> Tuple[str, Dict[str, Any]]:
+) -> Tuple[str, List[Any]]:
     effective_pks = primary_keys if len(primary_keys) > 0 else [SQLITE_IMPLICIT_ROWID_COLUMN_NAME]
     pk_column_list = ", ".join([_quote_ident(col) for col in effective_pks])
     where_clause = "true"
-    parameters = {}
+    parameters = []
     if end_of_last_batch is not None:
-        parameters = {col: end_of_last_batch[col] for col in effective_pks}
-        where_clause = f"({pk_column_list}) > ({', '.join(['%s'] * len(effective_pks))})"
+        parameters = [end_of_last_batch[col] for col in effective_pks]
+        where_clause = f"({pk_column_list}) > ({', '.join(['?'] * len(effective_pks))})"
     query = "SELECT {}* FROM {} WHERE {} ORDER BY {} ASC LIMIT {}".format(  #  nosec
         # add the implicit rowid column to the select if no explicit primary
         # key columns exist on table, based on: https://www.sqlite.org/withoutrowid.html
