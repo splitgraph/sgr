@@ -5,7 +5,17 @@ import re
 import sqlite3
 import tempfile
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import requests
 from psycopg2.sql import SQL, Identifier
@@ -102,7 +112,8 @@ def sqlite_to_postgres_type(raw_sqlite_type: str) -> str:
     # from: https://www.sqlite.org/datatype3.html#determination_of_column_affinity
     # If the declared type contains the string "INT" then it is assigned INTEGER affinity.
     if "INT" in sqlite_type:
-        return "INTEGER"
+        # SQLite only has 64 bit integers in memory, see: https://www.sqlite.org/datatype3.html#storage_classes_and_datatypes
+        return "BIGINT"
     # If the declared type of the column contains any of the strings "CHAR", "CLOB", or "TEXT" then that column has TEXT affinity. Notice that the type VARCHAR contains the string "CHAR" and is thus assigned TEXT affinity.
     if "CHAR" in sqlite_type or "CLOB" in sqlite_type or "TEXT" in sqlite_type:
         return "TEXT"
@@ -118,6 +129,7 @@ def sqlite_to_postgres_type(raw_sqlite_type: str) -> str:
 
 def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> IntrospectionResult:
     schema = IntrospectionResult({})
+    tables_with_untyped_columns: Set[str] = set()
     for (
         table_name,
         column_id,
@@ -127,12 +139,21 @@ def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> Intros
         _default_value,
         pk,
     ) in query_connection(con, LIST_TABLES_QUERY):
-        table = schema.get(table_name, ([], TableParams({})))
-        assert isinstance(table, tuple)
-        table[0].append(
-            TableColumn(column_id + 1, column_name, sqlite_to_postgres_type(column_type), pk != 0)
-        )
-        schema[table_name] = table
+        if column_type == "":
+            tables_with_untyped_columns.add(table_name)
+        else:
+            table = schema.get(table_name, ([], TableParams({})))
+            assert isinstance(table, tuple)
+            table[0].append(
+                TableColumn(
+                    column_id + 1, column_name, sqlite_to_postgres_type(column_type), pk != 0
+                )
+            )
+            schema[table_name] = table
+    # remove tables with invalid untyped columns
+    for t in tables_with_untyped_columns:
+        if t in schema:
+            del schema[t]
     return schema
 
 
@@ -245,11 +266,18 @@ class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
             insert_table_contents = (
                 table_contents if len(primary_keys) > 0 else [row[1:] for row in table_contents]
             )
-            self.engine.run_sql_batch(
-                SQL("INSERT INTO {0}.{1} ").format(Identifier(schema), Identifier(table_name))
-                + SQL(" VALUES (" + ",".join(itertools.repeat("%s", len(schema_spec))) + ")"),
-                insert_table_contents,
-            )  # nosec
+            try:
+                self.engine.run_sql_batch(
+                    SQL("INSERT INTO {0}.{1} ").format(Identifier(schema), Identifier(table_name))
+                    + SQL(" VALUES (" + ",".join(itertools.repeat("%s", len(schema_spec))) + ")"),
+                    insert_table_contents,
+                )  # nosec
+            except Exception as e:
+                print(
+                    "Received exception %s running query '%s' with parameters %s"
+                    % (str(e), query, str(parameters))
+                )
+                raise e
         return total_row_count
 
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
