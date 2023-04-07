@@ -2,7 +2,7 @@ from splitgraph.ingestion.sqlite import get_select_query, sqlite_to_postgres_typ
 
 
 def test_type_mapping():
-    assert sqlite_to_postgres_type("INT") == "INTEGER"
+    assert sqlite_to_postgres_type("INT") == "BIGINT"
     assert sqlite_to_postgres_type("TEXT") == "TEXT"
     assert sqlite_to_postgres_type("text") == "TEXT"
     assert sqlite_to_postgres_type("varchar(255)") == "VARCHAR(255)"
