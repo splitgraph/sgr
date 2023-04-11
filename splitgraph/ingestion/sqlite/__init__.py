@@ -1,5 +1,6 @@
 import contextlib
 import itertools
+import logging
 import os
 import re
 import sqlite3
@@ -153,6 +154,9 @@ def sqlite_connection_to_introspection_result(con: sqlite3.Connection) -> Intros
     # remove tables with invalid untyped columns
     for t in tables_with_untyped_columns:
         if t in schema:
+            logging.warning(
+                "Ignoring table '%s' as it includes columns without a declared type." % t
+            )
             del schema[t]
     return schema
 
@@ -273,9 +277,11 @@ class SQLiteDataSource(LoadableDataSource, PreviewableDataSource):
                     insert_table_contents,
                 )  # nosec
             except Exception as e:
-                print(
-                    "Received exception %s running query '%s' with parameters %s"
-                    % (str(e), query, str(parameters))
+                logging.error(
+                    "Error running query '%s' with parameters %s",
+                    query,
+                    str(parameters),
+                    exc_info=e,
                 )
                 raise e
         return total_row_count
