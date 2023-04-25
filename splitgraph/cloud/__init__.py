@@ -66,8 +66,8 @@ from splitgraph.cloud.queries import (
     REPO_CONDITIONS,
     REPO_PARAMS,
     START_EXPORT,
+    START_EXPORT_VDB_TO_SEAFOWL,
     START_LOAD,
-    START_SYNC_VDB_TO_SEAFOWL,
 )
 from splitgraph.config import CONFIG
 from splitgraph.config.config import (
@@ -1155,11 +1155,11 @@ class GQLAPIClient:
     def start_seafowl_sync(self, vdb_id: str, url: str, secret: str) -> str:
         response = self._gql(
             {
-                "query": START_SYNC_VDB_TO_SEAFOWL,
-                "operationName": "syncToSeafowl",
+                "query": START_EXPORT_VDB_TO_SEAFOWL,
+                "operationName": "exportToSeafowl",
                 "variables": {"url": url, "secret": secret, "vdbId": vdb_id},
             },
             handle_errors=True,
             anonymous_ok=False,
         )
-        return cast(str, response.json()["data"]["syncToSeafowl"]["id"])
+        return cast(str, response.json()["data"]["exportToSeafowl"]["vdbs"][0]["jobId"])
