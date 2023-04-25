@@ -317,15 +317,20 @@ EXPORT_JOB_STATUS = """query ExportJobStatus($taskId: UUID!) {
 }
 """
 
-START_SYNC_VDB_TO_SEAFOWL = """mutation syncToSeafowl($url: String!, $secret: String!, $vdbId: String!) {
-    syncToSeafowl(
-        target: {
-            url: $url,
-            secret: $secret
-        },
-        vdbId: $vdbId
-    ) {
-        id
+START_EXPORT_VDB_TO_SEAFOWL = """mutation exportToSeafowl(
+  $url: String!
+  $secret: String!
+  $vdbId: String!
+) {
+  exportToSeafowl(
+    seafowlInstance: {
+      selfHosted: { url: $url, secret: $secret}
     }
+    vdbs: [{ source: { vdbId: $vdbId } }]
+  ) {
+    vdbs {
+      jobId
+    }
+  }
 }
 """
