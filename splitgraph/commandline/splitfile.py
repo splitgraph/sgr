@@ -53,7 +53,7 @@ def build_c(splitfile, args, output_repository, layered_querying):
     from splitgraph.core.repository import Repository
     from splitgraph.splitfile.execution import execute_commands
 
-    args = {k: v for k, v in args}
+    args = dict(args)
     click.echo("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
 
     if output_repository is None:
@@ -245,12 +245,8 @@ def rebuild_c(image_spec, update, against, layered_querying):
     # Replace the sources used to construct the image with either the latest ones or the images specified by the user.
     # This doesn't require us at this point to have pulled all the dependencies: the Splitfile executor will do it
     # after we feed in the reconstructed and patched Splitfile.
-    deps = {k: v for k, v in image.provenance()}
-    new_images = (
-        {repo: repl_image for repo, repl_image in against}
-        if not update
-        else {repo: "latest" for repo, _ in deps.items()}
-    )
+    deps = dict(image.provenance())
+    new_images = dict(against) if not update else {repo: "latest" for repo, _ in deps.items()}
     deps.update(new_images)
 
     click.echo("Rerunning %s:%s against:" % (str(repository), image.image_hash))

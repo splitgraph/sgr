@@ -536,7 +536,7 @@ def test_arg_flag_supercedes_env_var(fs_fast):
 
     with patch.object(sys, "argv", mock_argv):
         with patch_os_environ(mock_environ):
-            assert os.environ.get("SG_NAMESPACE", None) == "namespace-from-env-var"
+            assert os.environ.get("SG_NAMESPACE") == "namespace-from-env-var"
             assert sys.argv[2] == "namespace-from-arg"
 
             config = create_config_dict()

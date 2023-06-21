@@ -345,12 +345,9 @@ EOF
         if not isinstance(tables, dict):
             return {}
 
-        result = {
-            k: v
-            for k, v in tables.get(table_name, cast(Tuple[TableSchema, TableParams], ({}, {})))[
-                1
-            ].items()
-        }
+        result = dict(
+            tables.get(table_name, cast(Tuple[TableSchema, TableParams], ({}, {})))[1].items()
+        )
 
         # Set a default s3_object if we're using S3 and not HTTP
         if "url" not in result:

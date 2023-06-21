@@ -382,13 +382,12 @@ class ObjectManager(FragmentManager):
         partial_failure: Optional[IncompleteObjectUploadError] = None
         try:
             with switch_engine(self.object_engine):
-                successful = {
-                    o: u
-                    for o, u in external_handler.upload_objects(new_objects, self.metadata_engine)
-                }
+                successful = dict(
+                    external_handler.upload_objects(new_objects, self.metadata_engine)
+                )
         except IncompleteObjectUploadError as e:
             partial_failure = e
-            successful = {o: u for o, u in zip(e.successful_objects, e.successful_object_urls)}
+            successful = dict(zip(e.successful_objects, e.successful_object_urls))
 
         locations = [(o, u, handler) for o, u in successful.items()]
         self.register_object_locations(locations)

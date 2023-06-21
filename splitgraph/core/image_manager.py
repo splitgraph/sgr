@@ -42,7 +42,7 @@ class ImageManager:
         return result
 
     def _make_image(self, img_tuple: Any) -> Image:
-        r_dict = {k: v for k, v in zip(IMAGE_COLS, img_tuple)}
+        r_dict = dict(zip(IMAGE_COLS, img_tuple))
         r_dict.update(repository=self.repository)
         return Image(**r_dict)
 
