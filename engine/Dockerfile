@@ -187,8 +187,8 @@ RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
 
 # Install PyAthena for Amazon Athena SQLAlchemy-based FDW, as well as pandas
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
-    pip install "PyAthena>=2.4.1" && \
-    pip install "pandas>=1.0.0"
+    pip install "PyAthena==2.25.2" && \
+    pip install "pandas==1.5.3"
 
 # Install Google's Big Query SQLAlchemy dialect lib
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \

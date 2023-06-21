@@ -1355,9 +1355,7 @@ class FragmentManager(MetadataManager):
         # Go through all objects and see if they 1) come after any of our chosen objects and 2)
         # overlap those objects' PKs (if they come after them)
         original_order = {object_id: i for i, object_id in enumerate(all_objects)}
-        object_pk_dict = {
-            object_id: object_pk for object_id, object_pk in zip(all_objects, object_pks)
-        }
+        object_pk_dict = dict(zip(all_objects, object_pks))
         objects_to_scan = set(filtered_objects)
         for overlap_candidate in all_objects:
             if overlap_candidate in objects_to_scan:

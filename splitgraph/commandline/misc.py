@@ -301,7 +301,7 @@ def _eval(command, args):
     object_manager = ObjectManager(object_engine=engine, metadata_engine=engine)
 
     command_locals = locals().copy()
-    command_locals.update({k: v for k, v in args})
+    command_locals.update(dict(args))
 
     # The whole point of this function is to unsafely run Python code from the cmdline,
     # so silence the Bandit warning.

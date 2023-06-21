@@ -128,9 +128,7 @@ class ExternalResponse(BaseModel):
         ingestion_schedule: Optional[IngestionSchedule] = None
 
         if self.ingestionScheduleByNamespaceAndRepository:
-            schemas = {
-                tn: ts for tn, ts in self.ingestionScheduleByNamespaceAndRepository.schema_.items()
-            }
+            schemas = dict(self.ingestionScheduleByNamespaceAndRepository.schema_.items())
             ingestion_schedule = IngestionSchedule(
                 schedule=self.ingestionScheduleByNamespaceAndRepository.schedule,
                 enabled=self.ingestionScheduleByNamespaceAndRepository.enabled,

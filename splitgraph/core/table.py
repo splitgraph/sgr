@@ -492,7 +492,7 @@ class Table:
                     )
                 )
                 for row in result:
-                    yield {c: v for c, v in zip(columns, row)}
+                    yield dict(zip(columns, row))
 
         try:
             yield _generate_results()
