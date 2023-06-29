@@ -12,7 +12,7 @@ repository = "https://github.com/splitgraph/sgr"
 python = ">=3.8,<4.0"
 click = "^7"
 psycopg2-binary = "^2"
-parsimonious = "^0.8"
+parsimonious = ">=0.8,<0.11"
 minio = ">=4"
 pglast = {version = "==3.4", markers = 'sys_platform != "win32"'}
 requests = ">=2.22"
