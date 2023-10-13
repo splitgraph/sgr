@@ -126,7 +126,7 @@ jobs:
         run: |
           ./.ci/build_wheel.sh
       - name: "Upload release artifacts"
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: dist
           path: dist
@@ -155,7 +155,7 @@ jobs:
           pyinstaller -F splitgraph.spec
           dist/sgr.exe --version
       - name: Upload binary as artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: sgr-windows
           path: dist/sgr.exe
@@ -193,7 +193,7 @@ jobs:
           dist/sgr clone --download-all splitgraph/census
           dist/sgr checkout splitgraph/census:latest
       - name: Upload binary as artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: sgr-linux
           path: dist/sgr
@@ -220,7 +220,7 @@ jobs:
           pyinstaller -F splitgraph.spec
           dist/sgr --version
       - name: Upload single-file binary as artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: sgr-osx
           path: dist/sgr
@@ -230,7 +230,7 @@ jobs:
           dist/sgr-pkg/sgr --version
           cd dist/sgr-pkg && tar zcvf ../sgr.tgz .
       - name: Upload multi-file binary.gz as artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: sgr-osx
           path: dist/sgr.tgz
